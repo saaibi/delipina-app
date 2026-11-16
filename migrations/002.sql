@@ -1,0 +1,3 @@
+CREATE TABLE push_deliveries(notification_id uuid REFERENCES notifications,endpoint text REFERENCES subscriptions(endpoint) ON DELETE CASCADE,sent_at timestamptz DEFAULT now(),PRIMARY KEY(notification_id,endpoint));
+CREATE TABLE locations(courier_id uuid PRIMARY KEY REFERENCES users,lat numeric NOT NULL,lng numeric NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE settlements(id uuid PRIMARY KEY,courier_id uuid REFERENCES users,day date NOT NULL,expected_cash bigint NOT NULL,received_cash bigint NOT NULL,verified_transfers bigint NOT NULL,confirmed_by uuid REFERENCES users,confirmed_at timestamptz DEFAULT now(),UNIQUE(courier_id,day));

@@ -1,0 +1,17 @@
+CREATE TABLE IF NOT EXISTS migrations(id text PRIMARY KEY);
+CREATE TABLE users(id uuid PRIMARY KEY, email text UNIQUE NOT NULL, name text NOT NULL, role text NOT NULL CHECK(role IN ('admin','courier','client','preparation')), google_sub text UNIQUE, credit_limit bigint NOT NULL DEFAULT 0 CHECK(credit_limit>=0), credit_used bigint NOT NULL DEFAULT 0 CHECK(credit_used>=0), active boolean NOT NULL DEFAULT true);
+CREATE TABLE sessions(token text PRIMARY KEY,user_id uuid REFERENCES users,expires_at timestamptz NOT NULL);
+CREATE TABLE branches(id uuid PRIMARY KEY,client_id uuid REFERENCES users,address text NOT NULL,city text NOT NULL CHECK(city IN ('Bucaramanga','Girón','Floridablanca','Piedecuesta')));
+CREATE TABLE products(id uuid PRIMARY KEY,name text NOT NULL,presentation text NOT NULL,unit text CHECK(unit IN ('kg','pack')),price bigint NOT NULL CHECK(price>=0),active boolean NOT NULL DEFAULT true);
+CREATE TABLE prices(client_id uuid REFERENCES users,product_id uuid REFERENCES products,price bigint CHECK(price>=0),PRIMARY KEY(client_id,product_id));
+CREATE TABLE orders(id uuid PRIMARY KEY,client_id uuid REFERENCES users,branch_id uuid REFERENCES branches,status text NOT NULL DEFAULT 'pending',courier_id uuid REFERENCES users,delivered_by uuid REFERENCES users,delivered_at timestamptz,window_start timestamptz NOT NULL,window_end timestamptz NOT NULL,total bigint NOT NULL,credit boolean NOT NULL DEFAULT false,notes text NOT NULL DEFAULT '',cancel_requested boolean DEFAULT false,reason text,created_at timestamptz DEFAULT now(),CHECK(window_end>window_start));
+CREATE TABLE items(order_id uuid REFERENCES orders,product_id uuid REFERENCES products,name text NOT NULL,quantity numeric(12,3) CHECK(quantity>0),price bigint NOT NULL);
+CREATE TABLE invoices(id uuid PRIMARY KEY,order_id uuid UNIQUE REFERENCES orders,client_id uuid REFERENCES users,number text,photo_url text,total bigint NOT NULL,balance bigint NOT NULL CHECK(balance>=0));
+CREATE TABLE payments(id uuid PRIMARY KEY,client_id uuid REFERENCES users,receiver_id uuid REFERENCES users,method text CHECK(method IN ('cash','nequi','bancolombia')),amount bigint NOT NULL CHECK(amount>0),verified boolean NOT NULL,created_at timestamptz DEFAULT now());
+CREATE TABLE allocations(payment_id uuid REFERENCES payments,invoice_id uuid REFERENCES invoices,amount bigint CHECK(amount>0),PRIMARY KEY(payment_id,invoice_id));
+CREATE TABLE audit(id bigserial PRIMARY KEY,order_id uuid REFERENCES orders,actor_id uuid REFERENCES users,action text NOT NULL,created_at timestamptz DEFAULT now());
+CREATE TABLE notifications(id uuid PRIMARY KEY,user_id uuid REFERENCES users,title text NOT NULL,order_id uuid REFERENCES orders,read boolean DEFAULT false,created_at timestamptz DEFAULT now());
+CREATE TABLE subscriptions(user_id uuid REFERENCES users,endpoint text PRIMARY KEY,payload jsonb NOT NULL);
+CREATE TABLE idempotency(user_id uuid REFERENCES users,key text,request_hash text NOT NULL,response jsonb NOT NULL,PRIMARY KEY(user_id,key));
+CREATE TABLE settings(id int PRIMARY KEY DEFAULT 1,data jsonb NOT NULL);
+INSERT INTO settings VALUES(1,'{"origin":"Plaza de mercado San Francisco, local 135, Bucaramanga","open":6,"close":18,"leadHours":2}');

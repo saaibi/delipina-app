@@ -1,0 +1,6 @@
+{
+  "appId": "com.delipina.app",
+  "appName": "Delipiña",
+  "webDir": "dist",
+  "plugins": { "SplashScreen": { "launchShowDuration": 0 } }
+}

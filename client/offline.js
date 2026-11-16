@@ -1,0 +1,87 @@
+import { storage } from "./storage";
+const db = storage();
+let uid;
+export function setOfflineUser(id) {
+  uid = id;
+}
+export async function saveIdentity(user) {
+  await (await db).put("cache", user, "identity");
+}
+export async function savedIdentity() {
+  return (await db).get("cache", "identity");
+}
+export async function clearOffline() {
+  const d = await db;
+  await d.clear("cache");
+  await d.clear("queue");
+  uid = null;
+}
+export async function api(path, options = {}) {
+  const r = await fetch("/api" + path, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...options.headers },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const d = await r.json();
+  if (!r.ok) throw Error(d.error || "Error");
+  return d;
+}
+export async function cached(path) {
+  const key = uid + path;
+  try {
+    const data = await api(path);
+    await (await db).put("cache", data, key);
+    return data;
+  } catch (e) {
+    if (!navigator.onLine) {
+      const data = await (await db).get("cache", key);
+      if (data) return data;
+    }
+    throw e;
+  }
+}
+export async function submitOrder(body) {
+  const key = crypto.randomUUID();
+  await (await db).put("queue", { key, uid, body });
+  if (navigator.onLine) {
+    try {
+      const r = await api("/orders", {
+        method: "POST",
+        headers: { "Idempotency-Key": key },
+        body,
+      });
+      await (await db).delete("queue", key);
+      return r;
+    } catch (e) {
+      if (navigator.onLine)
+        throw Error(
+          e.message + " · El borrador permanece en la cola para revisar.",
+        );
+    }
+  }
+  return { queued: true };
+}
+export async function discard(key) {
+  await (await db).delete("queue", key);
+}
+export async function sync() {
+  const d = await db;
+  const results = [];
+  for (const item of await d.getAll("queue")) {
+    if (item.uid !== uid) continue;
+    try {
+      await api("/orders", {
+        method: "POST",
+        headers: { "Idempotency-Key": item.key },
+        body: item.body,
+      });
+      await d.delete("queue", item.key);
+    } catch (e) {
+      results.push(e.message);
+    }
+  }
+  return results;
+}
+export async function queued() {
+  return (await (await db).getAll("queue")).filter((i) => i.uid === uid);
+}

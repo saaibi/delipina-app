@@ -1,0 +1,16 @@
+{
+  "name": "Delipiña",
+  "short_name": "Delipiña",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#123e2b",
+  "theme_color": "#123e2b",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
