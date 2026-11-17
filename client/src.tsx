@@ -1,9 +1,14 @@
+import { ProductChoices, productImages } from "./products";
+import { DayClosings } from "./business";
+import { suggestedDelivery } from "./ui";
+import Alert from "@mui/material/Alert";
+import { ManagementTable } from "./management";
 import {
   usePushPreferences,
   PushPermissionPrompt,
   NotificationSettings,
 } from "./push";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
 import {
@@ -71,7 +76,7 @@ function App() {
     [invoices, I] = useState([]),
     [payments, PAY] = useState([]),
     [notifications, N] = useState([]),
-    [modal, M] = useState(null),
+    [modal, setModal] = useState(null),
     [drawer, D] = useState(false),
     [view, V] = useState("orders"),
     [error, E] = useState(""),
@@ -87,35 +92,101 @@ function App() {
     [online, ON] = useState(navigator.onLine),
     [pending, PN] = useState(0),
     [settings, SET] = useState(null),
+    [business, BD] = useState(null),
+    [closings, CL] = useState([]),
     [settlements, SS] = useState([]);
+  const authEpoch = useRef(0),
+    subject = useRef<string | null>(null);
+  function clearData() {
+    authEpoch.current++;
+    subject.current = null;
+    O([]);
+    P([]);
+    B([]);
+    US([]);
+    I([]);
+    PAY([]);
+    N([]);
+    SS([]);
+    CL([]);
+    BD(null);
+    PN(0);
+  }
+  async function enter(u: any) {
+    clearData();
+    subject.current = u.id;
+    L(true);
+    try {
+      await refresh(u);
+      U(u);
+    } finally {
+      L(false);
+    }
+  }
+  const M = (value: any) => {
+    E("");
+    setModal(value);
+  };
   const push = usePushPreferences(user?.id, config);
+  useEffect(() => {
+    if (!user) return;
+    const timer = setInterval(() => {
+      if (!document.hidden)
+        cached("/business-day")
+          .then(BD)
+          .catch(() => {});
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [user?.id]);
+  useEffect(() => {
+    if (user) V(user.role === "courier" ? "mine" : "orders");
+  }, [user?.id]);
+  useEffect(() => {
+    if (business?.day && view === "orders") FD(business.day);
+  }, [business?.day]);
   const run = async (fn) => {
     E("");
     try {
       return await fn();
     } catch (e) {
+      if (e.status === 401) {
+        clearData();
+        U(null);
+        await clearOffline();
+      }
       E(e.message);
     }
   };
   async function refresh(u = user) {
-    if (!u) return;
+    if (!u || subject.current !== u.id) return;
+    const epoch = authEpoch.current;
+    const guard = (setter: any) => (value: any) => {
+      if (epoch === authEpoch.current && subject.current === u.id)
+        setter(value);
+    };
     setOfflineUser(u.id);
     await saveIdentity(u);
     const tasks = [
-      cached("/orders").then(O),
-      cached("/products").then(P),
-      cached("/notifications").then(N),
-      cached("/settings").then(SET),
-      queued().then((q) => PN(q.length)),
+      cached("/orders").then(guard(O)),
+      cached("/products").then(guard(P)),
+      cached("/notifications").then(guard(N)),
+      cached("/settings").then(guard(SET)),
+      cached("/business-day").then(guard(BD)),
+      queued().then((q) => guard(PN)(q.length)),
     ];
     if (["admin", "client"].includes(u.role))
-      tasks.push(cached("/branches").then(B));
-    if (u.role === "admin") tasks.push(cached("/users").then(US));
-    if (u.role !== "preparation") tasks.push(cached("/invoices").then(I));
+      tasks.push(cached("/branches").then(guard(B)));
+    if (u.role === "admin")
+      tasks.push(
+        cached("/users").then(guard(US)),
+        cached("/business-days").then(guard(CL)),
+      );
+    if (u.role !== "preparation")
+      tasks.push(cached("/invoices").then(guard(I)));
     if (["admin", "courier"].includes(u.role))
       tasks.push(
-        cached("/payments").then(PAY),
-        cached("/settlements").then(SS),
+        cached("/payments").then(guard(PAY)),
+        cached("/settlements").then(guard(SS)),
       );
     await Promise.all(tasks);
   }
@@ -124,12 +195,14 @@ function App() {
       try {
         C(await api("/config"));
         const u = await api("/me");
+        subject.current = u.id;
         U(u);
         await refresh(u);
       } catch {
         if (!navigator.onLine) {
           const u = await savedIdentity();
           if (u) {
+            subject.current = u.id;
             U(u);
             await refresh(u);
           }
@@ -188,7 +261,7 @@ function App() {
               method: "POST",
               body: { credential: r.credential },
             });
-            U(u);
+            await enter(u);
           }),
       });
       google.accounts.id.renderButton(document.getElementById("google"), {
@@ -212,6 +285,25 @@ function App() {
     prep = user?.role === "preparation",
     client = user?.role === "client",
     delivery = user?.role === "courier";
+  const editUser = (u) => M({ kind: "editUser", user: u });
+  const deleteUser = (u) => M({ kind: "deleteUser", user: u });
+  const restoreUser = (u) =>
+    run(async () => {
+      await api("/users/" + u.id, {
+        method: "PATCH",
+        body: { active: true, restore: true },
+      });
+      await refresh();
+    });
+  const editProduct = (p) => M({ kind: "editProduct", product: p });
+  const toggleProduct = (p) =>
+    run(async () => {
+      await api("/products/" + p.id, {
+        method: "PATCH",
+        body: { ...p, price: Number(p.price), active: !p.active },
+      });
+      await refresh();
+    });
   if (loading)
     return (
       <div className="splash">
@@ -273,7 +365,7 @@ function App() {
                 key={r}
                 onClick={() =>
                   run(async () =>
-                    U(
+                    enter(
                       await api("/auth/dev", {
                         method: "POST",
                         body: { email: r + "@demo.test" },
@@ -342,6 +434,7 @@ function App() {
         view={view}
         online={online}
         pending={pending}
+        business={business}
         unread={notifications.filter((n) => !n.read).length}
         onNotice={() => D(!drawer)}
         onNavigate={(v) => {
@@ -351,30 +444,13 @@ function App() {
         onLogout={() =>
           run(async () => {
             await api("/logout", { method: "POST" });
+            clearData();
             await clearOffline();
             U(null);
           })
         }
       />
-      <SecondaryActions
-        role={user.role}
-        onAction={M}
-        onPush={() =>
-          run(async () => {
-            if (!config.vapidPublicKey)
-              throw Error("Push pendiente de configurar VAPID");
-            const permission = await Notification.requestPermission();
-            if (permission !== "granted") throw Error("Permiso no concedido");
-            const reg = await navigator.serviceWorker.ready;
-            const sub = await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: config.vapidPublicKey,
-            });
-            await api("/push", { method: "POST", body: sub.toJSON() });
-            S("Notificaciones activadas");
-          })
-        }
-      />
+      <SecondaryActions role={user.role} onAction={M} />
       <main className={full ? "workspace maximized" : "workspace"}>
         <div className="heading">
           <div>
@@ -383,7 +459,7 @@ function App() {
               {view === "payments"
                 ? "Cartera y cobros"
                 : view === "history"
-                  ? "Historial de pedidos"
+                  ? "Ventas"
                   : view === "users"
                     ? "Usuarios"
                     : view === "catalog"
@@ -406,8 +482,11 @@ function App() {
                   : "Cada pedido, en su momento."}
             </p>
           </div>
-          {(admin || client) && (
+          {(admin || client) && view === "orders" && (
             <Button onClick={() => M("order")}>＋ Crear pedido</Button>
+          )}
+          {admin && view === "history" && (
+            <Button onClick={() => M("closeDay")}>Cerrar jornada</Button>
           )}
           {prep && (
             <Button className="neutral" onClick={() => F(!full)}>
@@ -458,11 +537,13 @@ function App() {
                 <Button onClick={() => M("catalog")}>
                   Administrar catálogo
                 </Button>
-                {products.map((p) => (
-                  <p key={p.id}>
-                    {p.name} · {p.presentation} · {money(p.price)}
-                  </p>
-                ))}
+                <ManagementTable
+                  kind="catalog"
+                  rows={products}
+                  onEdit={editProduct}
+                  onRemove={toggleProduct}
+                  onRestore={toggleProduct}
+                />
               </>
             ) : (
               <>
@@ -470,6 +551,12 @@ function App() {
                 {admin && (
                   <>
                     <h2>Administración</h2>
+                    <Button
+                      className="neutral"
+                      onClick={() => M("catalogList")}
+                    >
+                      Catálogo de productos
+                    </Button>
                     <Button onClick={() => M("users")}>
                       Usuarios y acceso
                     </Button>
@@ -616,11 +703,12 @@ function App() {
               )}
               {admin && (
                 <>
-                  <input
-                    placeholder="Buscar cliente"
-                    aria-label="Buscar cliente"
+                  <Field
+                    required={false}
+                    label="Buscar cliente"
                     value={search}
                     onChange={(e) => Q(e.target.value)}
+                    sx={{ m: 0, minWidth: 170, flex: 1 }}
                   />
                   <DateInput
                     label="Fecha de entrega"
@@ -858,6 +946,9 @@ function App() {
             )}
           </>
         )}
+        {admin && view === "history" && (
+          <DayClosings rows={closings} money={money} />
+        )}
         <footer>
           Plaza San Francisco · Bucaramanga{" "}
           <span>
@@ -907,6 +998,8 @@ function App() {
                   order: "Crear pedido",
                   user: "Crear usuario",
                   users: "Usuarios y acceso",
+                  catalogList: "Catálogo de productos",
+                  closeDay: "Cerrar jornada",
                   branch: "Crear sucursal",
                   catalog: "Catálogo",
                   settings: "Configuración",
@@ -923,12 +1016,65 @@ function App() {
                   settlement: "Confirmar cuadre diario",
                   credit: "Autorizar cupo",
                   price: "Precio especial por cliente",
+                  editUser: "Editar usuario",
+                  deleteUser: "Eliminar usuario",
+                  editProduct: "Editar producto",
                 }[modal.kind]
           }
         >
+          {error && <Alert severity="error">{error}</Alert>}
+          {modal === "catalogList" && admin && (
+            <>
+              <Button onClick={() => M("catalog")}>Crear producto</Button>
+              <ManagementTable
+                kind="catalog"
+                rows={products}
+                onEdit={editProduct}
+                onRemove={toggleProduct}
+                onRestore={toggleProduct}
+              />
+            </>
+          )}
+          {modal === "closeDay" && admin && (
+            <Form
+              onSubmit={(b) =>
+                run(async () => {
+                  await api("/business-day/close", {
+                    method: "POST",
+                    body: { day: b.day },
+                  });
+                  M(null);
+                  S("Jornada cerrada. El historial y los saldos se conservan.");
+                  await refresh();
+                })
+              }
+            >
+              <Field
+                name="day"
+                label="Día de la jornada"
+                type="date"
+                defaultValue={business?.day}
+              />
+              <p>
+                Se guardará el resumen del día. Los pedidos programados para
+                mañana seguirán en la jornada de mañana. Antes de cerrar deben
+                resolverse los pedidos y verificarse las transferencias de este
+                día.
+              </p>
+              <Button type="submit">Confirmar cierre de jornada</Button>
+            </Form>
+          )}
           {modal === "order" && (
             <OrderForm
-              {...{ admin, users, branches, products, settings, user }}
+              {...{
+                admin,
+                users,
+                branches,
+                products,
+                settings,
+                user,
+                business,
+              }}
               onSubmit={(b) =>
                 run(async () => {
                   const r = await submitOrder(b);
@@ -946,12 +1092,166 @@ function App() {
           {modal === "users" && admin && (
             <>
               <Button onClick={() => M("user")}>Crear usuario</Button>
-              {users.map((u) => (
-                <p key={u.id}>
-                  {u.name} · {u.email} · {roles[u.role]}
-                </p>
-              ))}
+              <ManagementTable
+                kind="users"
+                rows={users}
+                onEdit={editUser}
+                onRemove={deleteUser}
+                onRestore={restoreUser}
+              />
             </>
+          )}
+          {modal.kind === "editUser" && (
+            <Form
+              onSubmit={(b) =>
+                run(async () => {
+                  await api("/users/" + modal.user.id, {
+                    method: "PATCH",
+                    body: {
+                      name: b.name,
+                      email: b.email,
+                      role: b.role,
+                      creditLimit: Math.round(Number(b.creditLimit) * 100),
+                      active: b.active === "on",
+                      restore: !!modal.user.deleted_at && b.active === "on",
+                    },
+                  });
+                  M("users");
+                  await refresh();
+                })
+              }
+            >
+              <Field
+                label="Nombre"
+                name="name"
+                defaultValue={modal.user.name}
+              />
+              <Field
+                label="Correo Google"
+                name="email"
+                type="email"
+                defaultValue={modal.user.email}
+              />
+              <Select label="Rol" name="role" defaultValue={modal.user.role}>
+                {Object.entries(roles).map(([key, label]) => (
+                  <option value={key} key={key}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+              <Field
+                label="Cupo total COP"
+                type="number"
+                name="creditLimit"
+                min="0"
+                defaultValue={Number(modal.user.credit_limit) / 100}
+              />
+              <label className="check">
+                <input
+                  type="checkbox"
+                  name="active"
+                  defaultChecked={modal.user.active}
+                />{" "}
+                Acceso activo
+              </label>
+              <p>
+                Si cambias el correo o el rol, se revocan sus sesiones. El nuevo
+                correo deberá verificarse con Google.
+              </p>
+              <Button type="submit">Guardar usuario</Button>
+            </Form>
+          )}
+          {modal.kind === "deleteUser" && (
+            <>
+              <p>
+                ¿Eliminar el acceso de <strong>{modal.user.name}</strong>?
+              </p>
+              <p>
+                Su historial de pedidos y cobros se conserva. Puedes restaurar
+                el usuario después.
+              </p>
+              <Button
+                className="danger"
+                onClick={() =>
+                  run(async () => {
+                    await api("/users/" + modal.user.id, { method: "DELETE" });
+                    M("users");
+                    await refresh();
+                  })
+                }
+              >
+                Eliminar usuario
+              </Button>
+            </>
+          )}
+          {modal.kind === "editProduct" && (
+            <Form
+              onSubmit={(b) =>
+                run(async () => {
+                  await api("/products/" + modal.product.id, {
+                    method: "PATCH",
+                    body: {
+                      ...b,
+                      price: Math.round(Number(b.price) * 100),
+                      active: b.active === "on",
+                    },
+                  });
+                  M("catalogList");
+                  await refresh();
+                })
+              }
+            >
+              <Field
+                name="name"
+                label="Producto / corte"
+                defaultValue={modal.product.name}
+              />
+              <Field
+                name="presentation"
+                label="Presentación"
+                defaultValue={modal.product.presentation}
+              />
+              <Select
+                name="unit"
+                label="Venta por"
+                defaultValue={modal.product.unit}
+              >
+                <option value="kg">Kilogramos (decimales)</option>
+                <option value="pack">Empaque de peso fijo (entero)</option>
+              </Select>
+              <Field
+                name="price"
+                label="Precio COP"
+                type="number"
+                min="0"
+                defaultValue={Number(modal.product.price) / 100}
+              />
+              <label className="check">
+                <input
+                  type="checkbox"
+                  name="active"
+                  defaultChecked={modal.product.active}
+                />{" "}
+                Producto disponible
+              </label>
+              <Select
+                name="image_key"
+                label="Imagen de la presentación"
+                defaultValue={modal.product.image_key || ""}
+              >
+                <option value="">Sin imagen específica</option>
+                {productImages.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </Select>{" "}
+              <p>
+                Los pedidos ya registrados conservan sus precios y
+                presentaciones.
+              </p>
+              <Button type="submit">Guardar producto</Button>
+            </Form>
           )}
           {modal === "user" && (
             <Form
@@ -971,16 +1271,13 @@ function App() {
             >
               <Field label="Nombre" name="name" />
               <Field label="Correo Google" name="email" type="email" />
-              <label>
-                Rol
-                <Select name="role">
-                  {Object.entries(roles).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-                </Select>
-              </label>
+              <Select label="Rol" name="role">
+                {Object.entries(roles).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </Select>
               <Field
                 label="Cupo autorizado COP (0 sin crédito)"
                 name="creditLimit"
@@ -1002,62 +1299,35 @@ function App() {
               }
             >
               {admin && (
-                <label>
-                  Cliente
-                  <Select name="clientId">
-                    {users
-                      .filter((u) => u.role === "client")
-                      .map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                  </Select>
-                </label>
+                <Select label="Cliente" name="clientId">
+                  {users
+                    .filter((u) => u.role === "client")
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                </Select>
               )}
               <Field name="address" label="Dirección" />
-              <label>
-                Municipio
-                <Select name="city">
-                  {["Bucaramanga", "Girón", "Floridablanca", "Piedecuesta"].map(
-                    (c) => (
-                      <option key={c}>{c}</option>
-                    ),
-                  )}
-                </Select>
-              </label>
+              <Select label="Municipio" name="city">
+                {["Bucaramanga", "Girón", "Floridablanca", "Piedecuesta"].map(
+                  (c) => (
+                    <option key={c}>{c}</option>
+                  ),
+                )}
+              </Select>
               <Button type="submit">Guardar sucursal</Button>
             </Form>
           )}
           {modal === "catalog" && (
             <>
-              <p>
-                Precios locales ficticios. Configura los valores comerciales
-                antes de operar.
-              </p>
-              {products.map((p) => (
-                <p key={p.id}>
-                  {p.name} · {p.presentation} · {money(p.price)}{" "}
-                  <Button
-                    className="danger"
-                    onClick={() =>
-                      run(async () => {
-                        await api("/products/" + p.id, {
-                          method: "PATCH",
-                          body: {
-                            ...p,
-                            price: Number(p.price),
-                            active: !p.active,
-                          },
-                        });
-                        await refresh();
-                      })
-                    }
-                  >
-                    {p.active ? "Deshabilitar" : "Habilitar"}
-                  </Button>
+              {config?.devAuth && (
+                <p>
+                  Precios locales ficticios. Configura los valores comerciales
+                  antes de operar.
                 </p>
-              ))}
+              )}
               <Form
                 onSubmit={(b) =>
                   run(async () => {
@@ -1065,19 +1335,29 @@ function App() {
                       method: "POST",
                       body: { ...b, price: Math.round(Number(b.price) * 100) },
                     });
+                    M("catalogList");
                     await refresh();
                   })
                 }
               >
                 <Field name="name" label="Producto / corte" />
                 <Field name="presentation" label="Presentación" />
-                <label>
-                  Unidad
-                  <Select name="unit">
-                    <option value="kg">Kilogramos (decimales)</option>
-                    <option value="pack">Empaque de peso fijo (entero)</option>
-                  </Select>
-                </label>
+                <Select label="Unidad" name="unit">
+                  <option value="kg">Kilogramos (decimales)</option>
+                  <option value="pack">Empaque de peso fijo (entero)</option>
+                </Select>
+                <Select
+                  name="image_key"
+                  label="Imagen de la presentación"
+                  defaultValue=""
+                >
+                  <option value="">Sin imagen específica</option>
+                  {productImages.map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
                 <Field name="price" label="Precio COP" type="number" min="0" />
                 <Button type="submit">Agregar producto</Button>
               </Form>
@@ -1188,19 +1468,16 @@ function App() {
                 })
               }
             >
-              <label>
-                Cliente
-                <Select name="clientId">
-                  {users
-                    .filter((u) => u.role === "client")
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} · cupo {money(u.credit_limit)} · reservado{" "}
-                        {money(u.credit_used)}
-                      </option>
-                    ))}
-                </Select>
-              </label>
+              <Select label="Cliente" name="clientId">
+                {users
+                  .filter((u) => u.role === "client")
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} · cupo {money(u.credit_limit)} · reservado{" "}
+                      {money(u.credit_used)}
+                    </option>
+                  ))}
+              </Select>
               <Field
                 name="creditLimit"
                 label="Cupo total COP"
@@ -1223,28 +1500,22 @@ function App() {
                 })
               }
             >
-              <label>
-                Cliente
-                <Select name="clientId">
-                  {users
-                    .filter((u) => u.role === "client")
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                </Select>
-              </label>
-              <label>
-                Producto
-                <Select name="productId">
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} · {p.presentation}
+              <Select label="Cliente" name="clientId">
+                {users
+                  .filter((u) => u.role === "client")
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
                     </option>
                   ))}
-                </Select>
-              </label>
+              </Select>
+              <Select label="Producto" name="productId">
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {p.presentation}
+                  </option>
+                ))}
+              </Select>
               <Field
                 name="price"
                 label="Precio especial COP · todas las sucursales"
@@ -1270,18 +1541,15 @@ function App() {
                 })
               }
             >
-              <label>
-                Mensajero
-                <Select name="courierId">
-                  {users
-                    .filter((u) => u.role === "courier")
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                </Select>
-              </label>
+              <Select label="Mensajero" name="courierId">
+                {users
+                  .filter((u) => u.role === "courier")
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+              </Select>
               <Field name="day" label="Fecha del cuadre" type="date" />
               <Field
                 name="receivedCash"
@@ -1309,18 +1577,15 @@ function App() {
                 })
               }
             >
-              <label>
-                Mensajero
-                <Select name="courierId">
-                  {users
-                    .filter((u) => u.role === "courier")
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                </Select>
-              </label>
+              <Select label="Mensajero" name="courierId">
+                {users
+                  .filter((u) => u.role === "courier")
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+              </Select>
               <Button type="submit">Guardar asignación</Button>
             </Form>
           )}
@@ -1431,11 +1696,21 @@ function Form({ onSubmit, children }) {
     </form>
   );
 }
-function OrderForm({ admin, users, branches, products, onSubmit, user }) {
+function OrderForm({
+  admin,
+  users,
+  branches,
+  products,
+  onSubmit,
+  user,
+  settings,
+  business,
+}) {
   const [c, C] = useState(
       admin ? users.find((u) => u.role === "client")?.id : user.id,
     ),
     [quant, Q] = useState({});
+  const [suggested] = useState(() => suggestedDelivery(settings, business));
   return (
     <Form
       onSubmit={(b) =>
@@ -1456,64 +1731,60 @@ function OrderForm({ admin, users, branches, products, onSubmit, user }) {
       }
     >
       {admin && (
-        <label>
-          Cliente
-          <Select value={c} onChange={(e) => C(e.target.value)}>
-            {users
-              .filter((u) => u.role === "client")
-              .map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-          </Select>
-        </label>
-      )}
-      <label>
-        Sucursal
-        <Select name="branchId" required>
-          {branches
-            .filter((b) => b.client_id === c)
-            .map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.address} · {b.city}
+        <Select label="Cliente" value={c} onChange={(e) => C(e.target.value)}>
+          {users
+            .filter((u) => u.role === "client")
+            .map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
               </option>
             ))}
         </Select>
-      </label>
+      )}
+      <Select label="Sucursal" name="branchId" required>
+        {branches
+          .filter((b) => b.client_id === c)
+          .map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.address} · {b.city}
+            </option>
+          ))}
+      </Select>
       <div className="row">
-        <Field name="start" label="Entrega desde" type="datetime-local" />
-        <Field name="end" label="Hasta" type="datetime-local" />
+        <Field
+          name="start"
+          label="Entrega desde"
+          type="datetime-local"
+          defaultValue={suggested.start}
+        />
+        <Field
+          name="end"
+          label="Hasta"
+          type="datetime-local"
+          defaultValue={suggested.end}
+        />
       </div>
       <p>
         Hora de Colombia · mínimo 2 horas de anticipación según configuración.
       </p>
-      {products
-        .filter((p) => p.active)
-        .map((p) => (
-          <label className="product" key={p.id}>
-            <span>
-              {p.name}
-              <small>
-                {p.presentation} · {money(p.price)} / {p.unit}
-              </small>
-            </span>
-            <input
-              aria-label={"Cantidad " + p.name}
-              type="number"
-              min="0"
-              step={p.unit === "kg" ? ".001" : "1"}
-              value={quant[p.id] || ""}
-              onChange={(e) => Q({ ...quant, [p.id]: e.target.value })}
-            />
-          </label>
-        ))}
+      <ProductChoices
+        products={products}
+        quantities={quant}
+        onQuantity={(id, value) => Q({ ...quant, [id]: value })}
+        money={money}
+      />
       <label className="check">
         <input name="credit" type="checkbox" /> Solicitar crédito autorizado
       </label>
       <label>
-        Observaciones
-        <textarea name="notes" maxLength={1000} />
+        <Field
+          name="notes"
+          label="Observaciones"
+          required={false}
+          multiline
+          rows={3}
+          maxLength={1000}
+        />
       </label>
       <Button type="submit">
         Confirmar pedido{admin ? "" : " para revisión"}
@@ -1538,16 +1809,13 @@ function PaymentForm({ invoices, onSubmit }) {
       }
     >
       <Field label="Total recibido COP" name="amount" type="number" min="1" />
-      <label>
-        Medio
-        <Select name="method">
-          <option value="cash">Efectivo</option>
-          <option value="nequi">Nequi · pendiente de verificación</option>
-          <option value="bancolombia">
-            Transferencia Bancolombia · pendiente de verificación
-          </option>
-        </Select>
-      </label>
+      <Select label="Medio" name="method">
+        <option value="cash">Efectivo</option>
+        <option value="nequi">Nequi · pendiente de verificación</option>
+        <option value="bancolombia">
+          Transferencia Bancolombia · pendiente de verificación
+        </option>
+      </Select>
       <h3>Distribución por factura</h3>
       {invoices.map((i) => (
         <Field

@@ -1,3 +1,4 @@
+import { assertBusinessDateOpen } from "../business-day.js";
 import {
   Controller,
   Get,
@@ -120,6 +121,7 @@ export class OrdersController {
         hour(end) > cfg.close
       )
         fail(400, "Rango fuera del horario o anticipación");
+      await assertBusinessDateOpen(c, day(start));
       if (!Array.isArray(b.items) || !b.items.length || b.items.length > 100)
         fail(400, "Agrega productos");
       let total = 0;

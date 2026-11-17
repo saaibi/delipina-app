@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     region: virginia
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: node dist-server/migrate.js && npm start
     healthCheckPath: /api/health
     envVars:
@@ -22,9 +22,3 @@ services:
         value: delipina
       - key: PG_POOL_MAX
         value: "3"
-      - key: GOOGLE_CLIENT_ID
-        value: ""
-      - key: VAPID_PUBLIC_KEY
-        value: ""
-      - key: VAPID_PRIVATE_KEY
-        value: ""

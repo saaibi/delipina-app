@@ -1,3 +1,4 @@
+import { BusinessDayModule } from "./modules/business-day.module.js";
 import { Module } from "@nestjs/common";
 import { AuthModule } from "./modules/auth.module.js";
 import { CatalogModule } from "./modules/catalog.module.js";
@@ -8,6 +9,7 @@ import { PaymentsModule } from "./modules/payments.module.js";
 import { NotificationsModule } from "./modules/notifications.module.js";
 @Module({
   imports: [
+    BusinessDayModule,
     AuthModule,
     CatalogModule,
     CustomersModule,

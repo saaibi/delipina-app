@@ -1,3 +1,4 @@
+import { assertBusinessDateOpen } from "../business-day.js";
 import {
   Controller,
   Get,
@@ -81,6 +82,7 @@ export class PaymentsController {
         if (prev.request_hash !== hash) fail(409, "Clave reutilizada");
         return prev.response;
       }
+      await assertBusinessDateOpen(c);
       if (
         !["cash", "nequi", "bancolombia"].includes(b.method) ||
         !Array.isArray(b.allocations) ||

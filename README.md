@@ -35,7 +35,8 @@ Cambiar `.env`: `DATABASE_URL=postgresql://postgres:local-only@127.0.0.1:55432/d
 ## Verificación
 
 ```sh
-npm test
+npm run test:local  # Base PostgreSQL embebida efímera, sin alterar datos de desarrollo
+npm test            # Contra DATABASE_URL explícita (usar base de pruebas)
 npm run typecheck
 npm run build
 ```
@@ -46,7 +47,7 @@ Las pruebas realizan solicitudes HTTP reales contra NestJS y SQL real: permisos,
 
 `server/modules/` contiene módulos y controladores NestJS de autenticación, catálogo, clientes, pedidos, pagos, notificaciones y configuración. `server/domain.ts` conserva reglas compartidas y `db.ts` las transacciones. `client/*.tsx` y `client/*.ts` son fuentes TypeScript; `client/sw.ts` se compila y su precaché se completa con los assets de producción. `shared/contracts.ts` contiene contratos de dominio. Los proyectos nativos generan código Java/Swift de Capacitor; la aplicación compartida permanece en TypeScript.
 
-La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, selectores MUI y MUI X. Barra lateral web por rol, navegación móvil con iconos/etiquetas y SpeedDial accesible. Administración tiene cinco módulos en una línea: Pedidos, Historial, Cobros, Catálogo y Ajustes. Usuarios y acceso está dentro de Ajustes. Todos los perfiles tienen Ajustes para sus notificaciones. Si el permiso push está concedido, la suscripción se activa al entrar; si falta permiso, se muestra la solicitud y se conserva el control en Ajustes. Una desactivación elegida por el usuario se respeta, y un permiso denegado no genera solicitudes repetidas. Si faltan claves del servidor se informa allí sin solicitar un permiso inútil. No se usan paquetes Pro/Premium ni claves de licencia.
+La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, selectores MUI y MUI X. Barra lateral web por rol, navegación móvil con iconos/etiquetas y SpeedDial accesible. Administración tiene cuatro módulos en una línea: Pedidos, Ventas, Cobros y Ajustes. Usuarios y Catálogo están dentro de Ajustes. Los usuarios se editan, eliminan de forma lógica y restauran, conservando sus movimientos; no se permite perder el último administrador ni retirar un usuario con pedidos activos. Los listados tienen búsqueda, estados y paginación. Crear pedido aparece solo en Pedidos y en el SpeedDial, que puede arrastrarse y restablecer su posición. Todos los campos de texto y selectores usan el estilo outlined de MUI. Todos los perfiles tienen Ajustes para sus notificaciones. Si el permiso push está concedido, la suscripción se activa al entrar; si falta permiso, se muestra la solicitud y se conserva el control en Ajustes. Una desactivación elegida por el usuario se respeta, y un permiso denegado no genera solicitudes repetidas. Si faltan claves del servidor se informa allí sin solicitar un permiso inútil. No se usan paquetes Pro/Premium ni claves de licencia.
 
 ## Implementado
 
@@ -65,6 +66,8 @@ La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, s
 - Google Maps abre origen/destino reales, sin ruta simulada.
 - PWA con caché de aplicación y datos por usuario, cola IndexedDB y claves idempotentes. Solo creación de pedidos se encola offline; cobros, asignaciones y cambios de estado requieren conexión. En modo offline no se garantiza precio/cupo/horario hasta validar en servidor. Logout borra caché y cola local.
 - Android/iOS Capacitor generados, adaptador SQLite nativo para la misma caché/cola. **Proyecto preparado, no APK compilado, no app instalada.**
+- Selección visual de presentaciones con las fotos proporcionadas por el usuario (recorte CSS, sin redibujar los productos), cantidades directas y referencia visual configurable en catálogo.
+- Jornadas por fecha de Colombia: badge Abierto/Cerrado según horario/cierre, cierre administrativo con resumen histórico, validación transaccional que impide registrar nuevos movimientos en un día cerrado y nueva jornada al cambiar el día. Los pedidos anticipados corresponden a su fecha de entrega y no se borran al cerrar hoy; la cartera continúa entre jornadas. El cierre exige resolver los pedidos del día y verificar sus transferencias.
 
 ## Producción / Render Free
 
@@ -91,7 +94,7 @@ El despliegue puede iniciar sin Google, pero queda **cerrado al ingreso** hasta 
 - Interacciones móviles de deslizar para aceptar/revisar rechazo: pendientes; los botones accesibles actuales funcionan. No equivaler abrir a aceptar.
 - Cola offline necesita una pantalla completa de edición/resolución de conflictos. En esta base los fallos conservan el borrador y muestran el error; no se descartan silenciosamente.
 - Auditoría SQL base; panel de auditoría, paginación y búsqueda del historial por servidor pendientes para escalar.
-- Sin pruebas reales de permisos GPS de dispositivo, push en segundo plano, login Google o SQLite de dispositivo hasta disponer de configuración/dispositivo.
+- Sin pruebas reales de permisos GPS de dispositivo, push en segundo plano, login Google o SQLite de dispositivo hasta disponer de configuración/dispositivo. Las claves Web Push se generan y guardan en el entorno de Render; OAuth y los canales móviles todavía requieren configuración externa.
 
 ## Fuentes verificadas (16 noviembre 2026)
 

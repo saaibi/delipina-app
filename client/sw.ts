@@ -5,7 +5,7 @@ sw.addEventListener("install", (e) =>
   e.waitUntil(
     caches
       .open(CACHE)
-      .then((c) => c.addAll(["/", "/logo.png", ...PRECACHE_ASSETS])),
+      .then((c) => c.addAll(["/", "/logo.png","/presentaciones-delipina.png", ...PRECACHE_ASSETS])),
   ),
 );
 sw.addEventListener("activate", (e) =>

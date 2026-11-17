@@ -36,7 +36,7 @@ export class CustomersController {
     auth(req, ["admin"]);
     return (
       await pool.query(
-        "SELECT id,email,name,role,credit_limit,credit_used,active FROM users ORDER BY name",
+        "SELECT id,email,name,role,credit_limit,credit_used,active,deleted_at FROM users ORDER BY name",
       )
     ).rows;
   }
@@ -60,33 +60,102 @@ export class CustomersController {
       )
     ).rows[0];
   }
-  @Patch("users/:id")
-  @HttpCode(200)
-  async patchUsersId(
-    @Req() req: any,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  @Patch("users/:id") @HttpCode(200) async patchUsersId(@Req() req: any) {
+    return this.updateUser(req, false);
+  }
+  @Delete("users/:id") @HttpCode(200) async deleteUsersId(@Req() req: any) {
+    return this.updateUser(req, true);
+  }
+  private async updateUser(req: any, deleting: boolean) {
     const admin = auth(req, ["admin"]);
-    const b = req.body;
+    const b = deleting ? { active: false } : req.body;
     return tx(async (c) => {
+      await c.query("SELECT pg_advisory_xact_lock(hashtext('delipina:users'))");
       const u = (
         await c.query("SELECT * FROM users WHERE id=$1 FOR UPDATE", [
           req.params.id,
         ])
       ).rows[0];
       if (!u) fail(404, "Usuario inexistente");
-      if (u.id === admin.id && b.active === false)
-        fail(409, "No puedes deshabilitar tu propia cuenta");
-      const limit = cents(b.creditLimit);
+      const name = b.name === undefined ? u.name : text(b.name, 100),
+        email =
+          b.email === undefined ? u.email : text(b.email, 200).toLowerCase(),
+        role = b.role === undefined ? u.role : b.role,
+        active = b.active === undefined ? u.active : b.active === true;
+      if (
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        !["admin", "courier", "client", "preparation"].includes(role)
+      )
+        fail(400, "Correo o rol inválido");
+      if (u.id === admin.id && (!active || role !== "admin"))
+        fail(
+          409,
+          "No puedes eliminar o retirar tu propio acceso administrativo",
+        );
+      if (u.deleted_at && active && !b.restore)
+        fail(409, "Restaura explícitamente el usuario eliminado");
+      if (
+        u.role === "admin" &&
+        u.active &&
+        (!active || role !== "admin") &&
+        Number(
+          (
+            await c.query(
+              "SELECT count(*) AS n FROM users WHERE role='admin' AND active",
+            )
+          ).rows[0].n,
+        ) <= 1
+      )
+        fail(409, "Debe conservarse un administrador activo");
+      if (!active || role !== u.role) {
+        const pending = (
+          await c.query(
+            "SELECT 1 FROM orders WHERE (client_id=$1 OR courier_id=$1) AND status NOT IN ('delivered','rejected','cancelled') LIMIT 1",
+            [u.id],
+          )
+        ).rowCount;
+        if (pending)
+          fail(
+            409,
+            "Completa, cancela o reasigna sus pedidos activos antes de cambiar el acceso",
+          );
+        if (
+          role !== u.role &&
+          u.role === "client" &&
+          (Number(u.credit_used) > 0 ||
+            (
+              await c.query(
+                "SELECT 1 FROM invoices WHERE client_id=$1 AND balance>0 LIMIT 1",
+                [u.id],
+              )
+            ).rowCount)
+        )
+          fail(
+            409,
+            "El cliente tiene saldos pendientes y debe conservar su rol",
+          );
+      }
+      const limit =
+        role === "client"
+          ? cents(
+              b.creditLimit === undefined
+                ? Number(u.credit_limit)
+                : b.creditLimit,
+            )
+          : 0;
       if (limit < Number(u.credit_used))
         fail(409, "El cupo no puede ser inferior al saldo reservado");
-      await c.query("UPDATE users SET credit_limit=$2,active=$3 WHERE id=$1", [
-        u.id,
-        limit,
-        b.active !== false,
-      ]);
-      if (b.active === false)
+      const changedIdentity = email !== u.email || role !== u.role;
+      await c.query(
+        "UPDATE users SET name=$2,email=$3,role=$4,credit_limit=$5,active=$6,google_sub=CASE WHEN email<>$3 THEN NULL ELSE google_sub END,deleted_at=CASE WHEN $7 THEN now() WHEN $8 THEN NULL ELSE deleted_at END WHERE id=$1",
+        [u.id, name, email, role, limit, active, deleting, !!b.restore],
+      );
+      if (!active || changedIdentity)
         await c.query("DELETE FROM sessions WHERE user_id=$1", [u.id]);
+      await c.query("INSERT INTO audit(actor_id,action) VALUES($1,$2)", [
+        admin.id,
+        "user:" + u.id + ":" + (deleting ? "deleted" : "edited"),
+      ]);
       return { ok: true };
     });
   }

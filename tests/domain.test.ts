@@ -241,6 +241,120 @@ test("Migraciones aisladas conservan estructura y datos de otros schemas", async
     await pool.query(`DROP SCHEMA IF EXISTS "${other}" CASCADE`);
   }
 });
+test("Administración edita, elimina y restaura usuarios; cliente no puede modificar accesos", async () => {
+  const email = randomUUID() + "@demo.test";
+  const created = await call("admin", "post", "/users", {
+    name: "Usuario para prueba",
+    email,
+    role: "client",
+    creditLimit: 0,
+  });
+  assert.equal(created.status, 200);
+  const id = created.body.id;
+  assert.equal(
+    (await call("client", "patch", "/users/" + id, { name: "No permitido" }))
+      .status,
+    403,
+  );
+  assert.equal(
+    (
+      await call("admin", "patch", "/users/" + id, {
+        name: "Nombre actualizado",
+        email,
+        role: "courier",
+        active: true,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await call("admin", "delete", "/users/" + users.admin.id)).status,
+    409,
+  );
+  assert.equal((await call("admin", "delete", "/users/" + id)).status, 200);
+  const archived = (await call("admin", "get", "/users")).body.find(
+    (u) => u.id === id,
+  );
+  assert.equal(archived.active, false);
+  assert.ok(archived.deleted_at);
+  assert.equal(
+    (
+      await call("admin", "patch", "/users/" + id, {
+        active: true,
+        restore: true,
+      })
+    ).status,
+    200,
+  );
+});
+test("Catálogo editable conserva referencia visual y permisos", async () => {
+  const r = await call("admin", "post", "/products", {
+    name: "Presentación de prueba",
+    presentation: "Bolsa de prueba",
+    unit: "kg",
+    price: 120000,
+    image_key: "trozos",
+  });
+  assert.equal(r.status, 200);
+  assert.equal(
+    (
+      await call("client", "patch", "/products/" + r.body.id, {
+        ...r.body,
+        price: 1000,
+      })
+    ).status,
+    403,
+  );
+  const updated = await call("admin", "patch", "/products/" + r.body.id, {
+    ...r.body,
+    name: "Presentación actualizada",
+    price: 140000,
+    active: false,
+    image_key: "picada",
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.image_key, "picada");
+  assert.equal(updated.body.active, false);
+});
+test("Cierre diario conserva historia y permite pedidos para una jornada futura", async () => {
+  const day = (await call("admin", "get", "/business-day")).body.day;
+  assert.match(day, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(
+    (await call("client", "post", "/business-day/close", { day })).status,
+    403,
+  );
+  const oldBalance = (
+    await pool.query("SELECT COALESCE(sum(balance),0) AS n FROM invoices")
+  ).rows[0].n;
+  try {
+    const closed = await call("admin", "post", "/business-day/close", { day });
+    assert.equal(closed.status, 200, JSON.stringify(closed.body));
+    assert.equal(
+      (await call("admin", "get", "/business-day")).body.reason,
+      "daily_close",
+    );
+    const future = await call("client", "post", "/orders", body, randomUUID());
+    assert.equal(future.status, 200);
+    const rejectedPayment = await call(
+      "courier",
+      "post",
+      "/payments",
+      { clientId: users.client.id, method: "cash", amount: 1, allocations: [] },
+      randomUUID(),
+    );
+    assert.equal(rejectedPayment.status, 409);
+    assert.equal(
+      (await pool.query("SELECT COALESCE(sum(balance),0) AS n FROM invoices"))
+        .rows[0].n,
+      oldBalance,
+    );
+  } finally {
+    await pool.query(
+      "UPDATE business_days SET closed_at=NULL,closed_by=NULL,summary=NULL WHERE day=$1",
+      [day],
+    );
+  }
+});
 test("Socket exige sesión y solo transmite invalidaciones sin datos privados", async () => {
   const { createRealtime } = await import("../dist-server/realtime.js");
   const { io: connect } = await import("socket.io-client");

@@ -26,7 +26,8 @@ export async function api(
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const d = await r.json();
-  if (!r.ok) throw Error(d.error || "Error");
+  if (!r.ok)
+    throw Object.assign(Error(d.error || "Error"), { status: r.status });
   return d;
 }
 export async function cached(path) {

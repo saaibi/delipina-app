@@ -1,4 +1,7 @@
-import React, { useState } from "react";
+import StatusChip from "@mui/material/Chip";
+import WifiOff from "@mui/icons-material/WifiOff";
+import RestorePosition from "@mui/icons-material/RestartAlt";
+import React, { useState, useRef, useEffect } from "react";
 import { createTheme } from "@mui/material/styles";
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
@@ -112,6 +115,8 @@ export function Field({
   min,
   max,
   step,
+  maxLength,
+  accept,
   ...props
 }: any) {
   if (["date", "datetime-local", "time"].includes(type))
@@ -125,7 +130,10 @@ export function Field({
       type={type}
       fullWidth
       margin="normal"
-      slotProps={{ htmlInput: { min, max, step } }}
+      slotProps={{
+        htmlInput: { min, max, step, maxLength, accept },
+        inputLabel: type === "file" ? { shrink: true } : undefined,
+      }}
       {...props}
     />
   );
@@ -139,9 +147,11 @@ export function DateInput({
   defaultValue,
   required = false,
 }: any) {
-  const [internal, S] = useState(defaultValue ? dayjs(defaultValue) : null);
+  const parse = (v: any) =>
+    type === "date" ? dayjs.tz(v, "America/Bogota") : dayjs(v);
+  const [internal, S] = useState(defaultValue ? parse(defaultValue) : null);
   const controlled = value !== undefined;
-  const current = controlled ? (value ? dayjs(value) : null) : internal;
+  const current = controlled ? (value ? parse(value) : null) : internal;
   const Picker =
     type === "datetime-local"
       ? DateTimePicker
@@ -185,11 +195,19 @@ export function DateInput({
     </Box>
   );
 }
-export function Select({ children, ...props }: any) {
+export function Select({ children, label, ...props }: any) {
   return (
-    <NativeSelect fullWidth variant="standard" {...props}>
+    <TextField
+      select
+      variant="outlined"
+      fullWidth
+      margin="normal"
+      label={label || props["aria-label"]}
+      slotProps={{ select: { native: true } }}
+      {...props}
+    >
       {children}
-    </NativeSelect>
+    </TextField>
   );
 }
 export function Modal({ title, children, onClose }: any) {
@@ -216,10 +234,9 @@ const navFor = (role: string) =>
   role === "admin"
     ? [
         ["orders", "Pedidos", ReceiptLong],
-        ["history", "Historial", History],
+        ["history", "Ventas", History],
         ["payments", "Cobros", Payments],
 
-        ["catalog", "Catálogo", Inventory],
         ["settings", "Ajustes", Settings],
       ]
     : role === "courier"
@@ -248,6 +265,7 @@ export function Navigation({
   unread,
   online,
   pending,
+  business,
 }: any) {
   const nav = navFor(user.role);
   const mobileNav = nav;
@@ -271,10 +289,24 @@ export function Navigation({
             {user.name}
           </Typography>
           <Box sx={{ flex: 1 }} />
-          <Typography variant="caption">
-            {online ? "● En línea" : "○ Sin conexión"}
-            {pending > 0 && ` · ${pending} pendientes`}
-          </Typography>
+          <StatusChip
+            size="small"
+            label={
+              business
+                ? business.isOpen
+                  ? "Abierto"
+                  : "Cerrado"
+                : "Consultando"
+            }
+            color={
+              business ? (business.isOpen ? "success" : "error") : "default"
+            }
+            sx={{ fontWeight: 700 }}
+          />
+          {!online && <WifiOff aria-label="Sin conexión" />}
+          {pending > 0 && (
+            <Typography variant="caption">{pending} por sincronizar</Typography>
+          )}
           <IconButton
             color="inherit"
             aria-label="Notificaciones"
@@ -364,10 +396,31 @@ export function Navigation({
     </>
   );
 }
-export function SecondaryActions({ role, onAction, onPush }: any) {
+export function SecondaryActions({ role, onAction }: any) {
+  const [position, POS] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("delipina-speed-dial") || "null");
+    } catch {
+      return null;
+    }
+  });
+  const drag = useRef<any>(null),
+    suppress = useRef(false);
+  const clamp = (x: number, y: number) => ({
+    x: Math.max(8, Math.min(window.innerWidth - 68, x)),
+    y: Math.max(
+      88,
+      Math.min(window.innerHeight - (window.innerWidth < 900 ? 140 : 68), y),
+    ),
+  });
+  const reset = () => {
+    POS(null);
+    localStorage.removeItem("delipina-speed-dial");
+  };
   const actions =
     role === "admin"
       ? [
+          ["Crear pedido", ReceiptLong, () => onAction("order")],
           ["Crear sucursal", AddLocationAlt, () => onAction("branch")],
           [
             "Autorizar cupo",
@@ -377,30 +430,85 @@ export function SecondaryActions({ role, onAction, onPush }: any) {
           ["Precio especial", PriceChange, () => onAction({ kind: "price" })],
         ]
       : role === "client"
-        ? [["Crear sucursal", AddLocationAlt, () => onAction("branch")]]
+        ? [
+            ["Crear pedido", ReceiptLong, () => onAction("order")],
+            ["Crear sucursal", AddLocationAlt, () => onAction("branch")],
+          ]
         : [];
   if (!actions.length) return null;
+  actions.push(["Restablecer posición", RestorePosition, reset]);
   return (
-    <SpeedDial
-      ariaLabel="Acciones secundarias"
-      icon={<SpeedDialIcon />}
+    <Box
       sx={{
         position: "fixed",
-        bottom: { xs: 90, md: 28 },
-        right: 24,
+        ...(position
+          ? { left: position.x, top: position.y }
+          : { bottom: { xs: 90, md: 28 }, right: 24 }),
         zIndex: 1199,
+        touchAction: "none",
+      }}
+      onPointerDown={(e) => {
+        if (!(e.target as HTMLElement).closest(".MuiSpeedDial-fab")) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        drag.current = {
+          px: e.clientX,
+          py: e.clientY,
+          x: rect.x,
+          y: rect.y,
+          moved: false,
+        };
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d) return;
+        if (Math.hypot(e.clientX - d.px, e.clientY - d.py) > 7) d.moved = true;
+        if (d.moved) {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          e.preventDefault();
+          const next = clamp(d.x + e.clientX - d.px, d.y + e.clientY - d.py);
+          POS(next);
+          localStorage.setItem("delipina-speed-dial", JSON.stringify(next));
+        }
+      }}
+      onPointerUp={() => {
+        if (drag.current?.moved) suppress.current = true;
+        drag.current = null;
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+      }}
+      onClickCapture={(e) => {
+        if (suppress.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          suppress.current = false;
+        }
       }}
     >
-      {actions.map(([name, Icon, handler]: any) => (
-        <SpeedDialAction
-          key={name}
-          icon={<Icon />}
-          slotProps={{ tooltip: { title: name } }}
-          onClick={handler}
-          aria-label={name}
-        />
-      ))}
-    </SpeedDial>
+      <SpeedDial
+        ariaLabel="Acciones secundarias. Puedes arrastrar el botón para moverlo"
+        icon={<SpeedDialIcon />}
+        sx={{
+          position: "relative",
+          height: 56,
+          "& .MuiSpeedDial-actions": {
+            position: "absolute",
+            bottom: 56,
+            pb: 1,
+          },
+        }}
+      >
+        {actions.map(([name, Icon, handler]: any) => (
+          <SpeedDialAction
+            key={name}
+            icon={<Icon />}
+            slotProps={{ tooltip: { title: name } }}
+            onClick={handler}
+            aria-label={name}
+          />
+        ))}
+      </SpeedDial>
+    </Box>
   );
 }
 
@@ -418,4 +526,27 @@ export function NoticeDrawer({ onClose, children }: any) {
       {children}
     </Drawer>
   );
+}
+
+export function suggestedDelivery(settings: any, business: any) {
+  let start = dayjs()
+    .tz("America/Bogota")
+    .add(settings?.leadHours || 2, "hour")
+    .add(1, "minute")
+    .second(0)
+    .millisecond(0);
+  const open = settings?.open ?? 6,
+    close = settings?.close ?? 18;
+  const today = dayjs().tz("America/Bogota").format("YYYY-MM-DD");
+  if (start.hour() < open) start = start.hour(open).minute(0);
+  if (
+    start.add(1, "hour").hour() > close ||
+    start.hour() >= close ||
+    (business?.closedAt && start.format("YYYY-MM-DD") === today)
+  )
+    start = start.add(1, "day").hour(open).minute(0);
+  return {
+    start: start.toISOString(),
+    end: start.add(1, "hour").toISOString(),
+  };
 }
