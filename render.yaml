@@ -5,7 +5,7 @@ services:
     plan: free
     region: virginia
     buildCommand: npm ci && npm run build
-    startCommand: node server/migrate.js && npm start
+    startCommand: node dist-server/migrate.js && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION

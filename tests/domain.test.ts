@@ -2,11 +2,14 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 import { randomUUID } from "node:crypto";
-import { app, errors } from "../server/app.js";
-import { pool } from "../server/db.js";
-errors();
+import { createApp } from "../dist-server/app.js";
+const nest = await createApp();
+await nest.init();
+const app = nest.getHttpServer();
+import { pool } from "../dist-server/db.js";
+
 const origin = "http://localhost:3000";
-const users = {};
+const users: Record<string, any> = {};
 async function login(role) {
   const r = await request(app)
     .post("/api/auth/dev")
@@ -211,4 +214,46 @@ test("Flujo, permisos, crédito, abonos, sincronización y toma concurrente", as
     users.client.id,
   ]);
 });
-after(() => pool.end());
+test("Socket exige sesión y solo transmite invalidaciones sin datos privados", async () => {
+  const { createRealtime } = await import("../dist-server/realtime.js");
+  const { io: connect } = await import("socket.io-client");
+  const io = createRealtime(app);
+  await nest.listen(0, "127.0.0.1");
+  const address = app.address();
+  const url = "http://127.0.0.1:" + address.port;
+  const unauth = connect(url, { autoConnect: false, reconnection: false });
+  await new Promise<void>((resolve, reject) => {
+    const t = setTimeout(() => reject(Error("Socket sin respuesta")), 3000);
+    unauth.on("connect_error", (e) => {
+      clearTimeout(t);
+      assert.equal(e.message, "Unauthorized");
+      unauth.disconnect();
+      resolve();
+    });
+    unauth.connect();
+  });
+  const client = connect(url, {
+    autoConnect: false,
+    reconnection: false,
+    extraHeaders: { Cookie: users.client.cookie },
+  });
+  await new Promise<void>((resolve, reject) => {
+    const t = setTimeout(
+      () => reject(Error("Socket no recuperó estado")),
+      3000,
+    );
+    client.on("refresh", (payload) => {
+      clearTimeout(t);
+      assert.equal(payload, undefined);
+      resolve();
+    });
+    client.on("connect_error", reject);
+    client.connect();
+  });
+  client.disconnect();
+  await io.close();
+});
+after(async () => {
+  await nest.close();
+  await pool.end();
+});

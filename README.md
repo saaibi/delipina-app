@@ -1,10 +1,10 @@
 # Delipiña
 
-Aplicación React + Node.js independiente del prototipo Sites. Primera base vertical para pruebas; no operar todavía con datos financieros reales.
+Aplicación TypeScript con React + NestJS sobre Node.js independiente del prototipo Sites. Primera base vertical para pruebas; no operar todavía con datos financieros reales.
 
 ## Arranque local
 
-Requiere Node **26.13.1 LTS** y npm. React **19.3.1**, dependencias fijadas en `package-lock.json`.
+Requiere Node **26.13.1 LTS** y npm. React **19.3.1**, NestJS **12.5.1**, Material UI **9.5.0**, MUI X Date Pickers **9.18.0** (gratuitos), TypeScript **7.0.2**; dependencias fijadas en `package-lock.json`.
 
 ```sh
 npm ci
@@ -36,10 +36,17 @@ Cambiar `.env`: `DATABASE_URL=postgresql://postgres:local-only@127.0.0.1:55432/d
 
 ```sh
 npm test
+npm run typecheck
 npm run build
 ```
 
-Las pruebas realizan solicitudes HTTP reales contra Express y SQL real: permisos, proyección de preparación sin precios/pagos/mensajero, aislamiento de cliente, transiciones, reserva concurrente de cupo, toma concurrente, abonos concurrentes, transferencias pendientes y verificación administrativa, idempotencia de pedidos y pagos. El flujo crea datos demo persistentes; usar una base desechable para CI.
+Las pruebas realizan solicitudes HTTP reales contra NestJS y SQL real: permisos, proyección de preparación sin precios/pagos/mensajero, aislamiento de cliente, transiciones, reserva concurrente de cupo, toma concurrente, abonos concurrentes, transferencias pendientes y verificación administrativa, idempotencia de pedidos y pagos. El flujo crea datos demo persistentes; usar una base desechable para CI.
+
+## Arquitectura
+
+`server/modules/` contiene módulos y controladores NestJS de autenticación, catálogo, clientes, pedidos, pagos, notificaciones y configuración. `server/domain.ts` conserva reglas compartidas y `db.ts` las transacciones. `client/*.tsx` y `client/*.ts` son fuentes TypeScript; `client/sw.ts` se compila y su precaché se completa con los assets de producción. `shared/contracts.ts` contiene contratos de dominio. Los proyectos nativos generan código Java/Swift de Capacitor; la aplicación compartida permanece en TypeScript.
+
+La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, selectores MUI y MUI X. Barra lateral web por rol, navegación móvil con iconos/etiquetas y SpeedDial accesible. No se usan paquetes Pro/Premium ni claves de licencia.
 
 ## Implementado
 
@@ -93,3 +100,22 @@ El despliegue puede iniciar sin Google, pero queda **cerrado al ingreso** hasta 
 - [Render Free](https://render.com/docs/free).
 - [PGlite Socket](https://pglite.dev/docs/pglite-socket).
 - [Capacitor SQLite](https://github.com/capacitor-community/sqlite), [Push móvil](https://capacitorjs.com/docs/apis/push-notifications).
+
+## Resultado de publicación y compilaciones (16 noviembre 2026)
+
+Repositorio **privado**: https://github.com/saaibi/delipina-app .
+
+Render confirmó el espacio `Saaibi Yesid's workspace`. La creación de `delipina-db` Free fue rechazada con `cannot have more than one active free tier database`: ya existe `playita-db` de otra aplicación. No se modificó esa instancia ni se contrató ningún plan pago. No hay URL de Delipiña desplegada. El Blueprint está preparado para cuando haya una base Free disponible; no ejecutar mientras persista ese límite. Compartir una instancia mediante otra base lógica requeriría decidir expresamente esa arquitectura y su capacidad/fecha de expiración; no se hizo automáticamente.
+
+Capacitor `add` y `sync` completados para Android/iOS. `assembleDebug` llegó a Gradle y falló porque **no existe Android SDK configurado** (`SDK location not found`). `xcodebuild` falló porque **la licencia de Xcode está sin aceptar**. No hay APK, IPA ni app instalada. Se conserva el proyecto y los comandos para continuar después de que el propietario instale/configure SDK y acepte las licencias correspondientes.
+
+```sh
+npm run build
+npx cap sync
+# Android (ANDROID_HOME debe apuntar a SDK 36 instalado):
+cd android && ./gradlew assembleDebug
+# iOS, después de aceptar la licencia Xcode y habilitar el SDK:
+xcodebuild -project ios/App/App.xcodeproj -scheme App -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
+
+Las apps nativas necesitan URL de API/CORS, OAuth de navegador de sistema, FCM/APNs y configuración de firma para distribución. Estos pasos no están conectados y no se afirma que el contenedor móvil sea una app productiva terminada.

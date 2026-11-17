@@ -16,7 +16,10 @@ export async function clearOffline() {
   await d.clear("queue");
   uid = null;
 }
-export async function api(path, options = {}) {
+export async function api(
+  path: string,
+  options: Omit<RequestInit, "body"> & { body?: unknown } = {},
+) {
   const r = await fetch("/api" + path, {
     ...options,
     headers: { "Content-Type": "application/json", ...options.headers },

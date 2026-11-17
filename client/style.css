@@ -200,7 +200,7 @@ p {
   width: auto;
   min-width: 155px;
 }
-.toolbar span {
+.toolbar > span {
   margin-left: auto;
   font-size: 13px;
   color: #7c8778;
@@ -713,7 +713,7 @@ footer {
     width: 45%;
     min-width: 100px;
   }
-  .toolbar span {
+  .toolbar > span {
     width: 100%;
   }
   .row {
@@ -796,4 +796,97 @@ footer {
 }
 .splash {
   background: #123d24;
+}
+@media (min-width: 900px) {
+  .workspace:not(.maximized) {
+    margin-left: 220px;
+    max-width: calc(100% - 220px);
+    padding: 36px 32px;
+  }
+}
+@media (max-width: 899px) {
+  .workspace {
+    padding-bottom: 100px;
+  }
+}
+.MuiNativeSelect-root {
+  padding: 10px !important;
+}
+.MuiDialogContent-root form {
+  padding-top: 10px;
+}
+.MuiSpeedDial-fab {
+  background: #e8bc36 !important;
+  color: #143e2b !important;
+}
+.MuiButton-root {
+  font-family: inherit !important;
+}
+.MuiDialog-root .MuiTextField-root input {
+  border: 0;
+  padding: 16px;
+}
+.MuiPickersInputBase-root {
+  background: #fff;
+}
+.MuiBottomNavigationAction-root .MuiBottomNavigationAction-label {
+  font-size: 11px !important;
+}
+.MuiAppBar-root img {
+  display: block;
+}
+.MuiDialog-root label.MuiInputLabel-root {
+  margin: 0;
+  display: block;
+}
+.MuiDialog-root .MuiInputBase-root {
+  margin-bottom: 4px;
+}
+.MuiButton-root.neutral {
+  background: transparent;
+}
+.MuiButton-root.danger {
+  color: #fff;
+}
+.heading small {
+  letter-spacing: 1.6px;
+}
+.stats .MuiButton-root {
+  display: block;
+  text-align: left;
+}
+.toolbar > .MuiInputBase-root {
+  width: auto;
+  flex: 1;
+  min-width: 155px;
+  background: white;
+  border-radius: 8px;
+  padding: 3px 8px;
+}
+.toolbar > .MuiBox-root {
+  flex: 1;
+  min-width: 180px;
+  margin: 0;
+}
+.toolbar input {
+  min-width: 0;
+}
+.MuiFormLabel-root {
+  margin: 0 !important;
+  display: block !important;
+}
+.MuiToolbar-root .MuiTypography-root {
+  color: #fff;
+}
+.MuiPickersSectionList-root {
+  justify-content: flex-start !important;
+}
+.MuiDateCalendar-root button {
+  padding: 0;
+}
+.toolbar .MuiPickersInputBase-root {
+  height: 48px;
+}
+.MuiSpeedDialAction-fab {
+  background: white !important;
 }

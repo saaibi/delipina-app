@@ -13,6 +13,17 @@ import {
   savedIdentity,
 } from "./offline";
 import "./style.css";
+import {
+  Providers,
+  Navigation,
+  SecondaryActions,
+  Button,
+  Field,
+  Select,
+  Modal,
+  DateInput,
+  NoticeDrawer,
+} from "./ui";
 import { GPS, Tracking } from "./gps";
 const labels = {
     pending: "Pendiente de confirmar",
@@ -143,7 +154,9 @@ function App() {
     const socket = io();
     socket.on("refresh", () => run(() => refresh()));
     socket.on("connect", () => run(() => refresh()));
-    return () => socket.disconnect();
+    return () => {
+      socket.disconnect();
+    };
   }, [user?.id]);
   useEffect(() => {
     const handler = (e) => {
@@ -250,7 +263,7 @@ function App() {
             <small>ENTORNO LOCAL · DATOS FICTICIOS</small>
             <h2>Explorar la aplicación</h2>
             {Object.entries(roles).map(([r, n]) => (
-              <button
+              <Button
                 key={r}
                 onClick={() =>
                   run(async () =>
@@ -264,39 +277,39 @@ function App() {
                 }
               >
                 {n} →
-              </button>
+              </Button>
             ))}
           </section>
         )}
         {error && <p role="alert">{error}</p>}
       </main>
     );
-  const selected = orders
-    .filter(
-      (o) =>
-        (!status || o.status === status) &&
-        (!search ||
-          o.client_name?.toLowerCase().includes(search.toLowerCase())) &&
-        (!admin ||
-          !filterDate ||
-          (view === "history"
-            ? new Date(o.window_start).toLocaleDateString("en-CA", {
-                timeZone: "America/Bogota",
-              }) >= filterDate
-            : o.status === "pending" ||
-              new Date(o.window_start).toLocaleDateString("en-CA", {
-                timeZone: "America/Bogota",
-              }) === filterDate)) &&
-        (!admin ||
-          view !== "history" ||
-          !historyEnd ||
-          new Date(o.window_start).toLocaleDateString("en-CA", {
-            timeZone: "America/Bogota",
-          }) <= historyEnd) &&
-        (!courier || o.courier_id === courier) &&
-        (view !== "available" || !o.courier_id) &&
-        (view !== "mine" || o.courier_id === user.id),
-    )
+  const scoped = orders.filter(
+    (o) =>
+      (!search ||
+        o.client_name?.toLowerCase().includes(search.toLowerCase())) &&
+      (!admin ||
+        !filterDate ||
+        (view === "history"
+          ? new Date(o.window_start).toLocaleDateString("en-CA", {
+              timeZone: "America/Bogota",
+            }) >= filterDate
+          : o.status === "pending" ||
+            new Date(o.window_start).toLocaleDateString("en-CA", {
+              timeZone: "America/Bogota",
+            }) === filterDate)) &&
+      (!admin ||
+        view !== "history" ||
+        !historyEnd ||
+        new Date(o.window_start).toLocaleDateString("en-CA", {
+          timeZone: "America/Bogota",
+        }) <= historyEnd) &&
+      (!courier || o.courier_id === courier) &&
+      (view !== "available" || !o.courier_id) &&
+      (view !== "mine" || o.courier_id === user.id),
+  );
+  const selected = scoped
+    .filter((o) => !status || o.status === status)
     .sort(
       (a, b) =>
         (a.status === "pending" ? -1 : a.status === "ready" && prep ? 1 : 0) -
@@ -304,10 +317,10 @@ function App() {
             ? -1
             : b.status === "ready" && prep
               ? 1
-              : 0) || new Date(a.window_start) - new Date(b.window_start),
+              : 0) || +new Date(a.window_start) - +new Date(b.window_start),
     );
   function urgency(o) {
-    const left = new Date(o.window_end) - Date.now();
+    const left = +new Date(o.window_end) - Date.now();
     return left < 0
       ? ["red", "Rango vencido"]
       : left < 3600000
@@ -317,96 +330,44 @@ function App() {
 
   return (
     <>
-      <header className="top">
-        <img src="/logo.png" alt="Delipiña" />
-        <span className="role">{roles[user.role]}</span>
-        <span className="connection">
-          {online ? "● En línea" : "○ Sin conexión"}
-          {pending > 0 && ` · ${pending} por sincronizar`}
-        </span>
-        <button
-          className="bell neutral"
-          aria-label="Notificaciones"
-          onClick={() => D(!drawer)}
-        >
-          ♧
-          {notifications.some((n) => !n.read) && (
-            <b>{notifications.filter((n) => !n.read).length}</b>
-          )}
-        </button>
-        <details>
-          <summary aria-label="Acciones">☰ Acciones</summary>
-          <div className="menu">
-            {admin && (
-              <>
-                <button onClick={() => M("user")}>
-                  Usuarios · Crear usuario
-                </button>
-                <button onClick={() => M("catalog")}>Catálogo</button>
-                <button onClick={() => M("settings")}>Configuración</button>
-                <button onClick={() => M({ kind: "credit" })}>
-                  Autorizar cupo
-                </button>
-                <button onClick={() => M({ kind: "price" })}>
-                  Precios por cliente
-                </button>
-                <button
-                  onClick={() => {
-                    V("history");
-                    ST("");
-                  }}
-                >
-                  Historial de pedidos
-                </button>
-              </>
-            )}
-            {(admin || client) && (
-              <button onClick={() => M("branch")}>Crear sucursal</button>
-            )}
-            {user.role !== "preparation" && (
-              <button
-                onClick={() => {
-                  V("payments");
-                  ST("");
-                }}
-              >
-                Cartera y cobros
-              </button>
-            )}
-            <button
-              onClick={() =>
-                run(async () => {
-                  if (!config.vapidPublicKey)
-                    throw Error("Push pendiente de configurar VAPID");
-                  const permission = await Notification.requestPermission();
-                  if (permission !== "granted")
-                    throw Error("Permiso de notificación no concedido");
-                  const reg = await navigator.serviceWorker.ready;
-                  const sub = await reg.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: config.vapidPublicKey,
-                  });
-                  await api("/push", { method: "POST", body: sub.toJSON() });
-                  S("Notificaciones activadas");
-                })
-              }
-            >
-              Activar notificaciones push
-            </button>
-            <button
-              onClick={() =>
-                run(async () => {
-                  await api("/logout", { method: "POST" });
-                  await clearOffline();
-                  U(null);
-                })
-              }
-            >
-              Cerrar sesión
-            </button>
-          </div>
-        </details>
-      </header>
+      <Navigation
+        user={user}
+        view={view}
+        online={online}
+        pending={pending}
+        unread={notifications.filter((n) => !n.read).length}
+        onNotice={() => D(!drawer)}
+        onNavigate={(v) => {
+          V(v);
+          ST("");
+        }}
+        onLogout={() =>
+          run(async () => {
+            await api("/logout", { method: "POST" });
+            await clearOffline();
+            U(null);
+          })
+        }
+      />
+      <SecondaryActions
+        role={user.role}
+        onAction={M}
+        onPush={() =>
+          run(async () => {
+            if (!config.vapidPublicKey)
+              throw Error("Push pendiente de configurar VAPID");
+            const permission = await Notification.requestPermission();
+            if (permission !== "granted") throw Error("Permiso no concedido");
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: config.vapidPublicKey,
+            });
+            await api("/push", { method: "POST", body: sub.toJSON() });
+            S("Notificaciones activadas");
+          })
+        }
+      />
       <main className={full ? "workspace maximized" : "workspace"}>
         <div className="heading">
           <div>
@@ -416,13 +377,19 @@ function App() {
                 ? "Cartera y cobros"
                 : view === "history"
                   ? "Historial de pedidos"
-                  : prep
-                    ? "Preparación"
-                    : client
-                      ? "Mis pedidos"
-                      : delivery
-                        ? "Mis entregas"
-                        : "Pedidos del día"}
+                  : view === "users"
+                    ? "Usuarios"
+                    : view === "catalog"
+                      ? "Catálogo"
+                      : view === "settings"
+                        ? "Configuración"
+                        : prep
+                          ? "Preparación"
+                          : client
+                            ? "Mis pedidos"
+                            : delivery
+                              ? "Mis entregas"
+                              : "Pedidos del día"}
             </h1>
             <p>
               {prep
@@ -433,24 +400,24 @@ function App() {
             </p>
           </div>
           {(admin || client) && (
-            <button onClick={() => M("order")}>＋ Crear pedido</button>
+            <Button onClick={() => M("order")}>＋ Crear pedido</Button>
           )}
           {prep && (
-            <button className="neutral" onClick={() => F(!full)}>
+            <Button className="neutral" onClick={() => F(!full)}>
               {full ? "Minimizar" : "Maximizar"}
-            </button>
+            </Button>
           )}
         </div>
         {error && (
           <div className="alert" role="alert">
             {error}
-            <button onClick={() => E("")}>✕</button>
+            <Button onClick={() => E("")}>✕</Button>
           </div>
         )}
         {notice && (
           <div className="success" role="status">
             {notice}
-            <button onClick={() => S("")}>✕</button>
+            <Button onClick={() => S("")}>✕</Button>
           </div>
         )}
         {!online && (
@@ -459,7 +426,50 @@ function App() {
             al reconectar y vuelven a validar horario, precios y cupo.
           </div>
         )}
-        {view === "payments" ? (
+        {["users", "catalog", "settings"].includes(view) && admin ? (
+          <div className="panel">
+            <h2>
+              {view === "users"
+                ? "Usuarios y acceso"
+                : view === "catalog"
+                  ? "Productos y precios"
+                  : "Configuración operativa"}
+            </h2>
+            {view === "users" ? (
+              <>
+                <Button onClick={() => M("user")}>Crear usuario</Button>
+                {users.map((u) => (
+                  <p key={u.id}>
+                    {u.name} · {u.email} · {roles[u.role]} ·{" "}
+                    {u.active ? "Activo" : "Deshabilitado"}
+                  </p>
+                ))}
+              </>
+            ) : view === "catalog" ? (
+              <>
+                <Button onClick={() => M("catalog")}>
+                  Administrar catálogo
+                </Button>
+                {products.map((p) => (
+                  <p key={p.id}>
+                    {p.name} · {p.presentation} · {money(p.price)}
+                  </p>
+                ))}
+              </>
+            ) : (
+              <>
+                <p>{settings?.origin}</p>
+                <p>
+                  Entregas {settings?.open}:00–{settings?.close}:00 ·
+                  Anticipación {settings?.leadHours} h
+                </p>
+                <Button onClick={() => M("settings")}>
+                  Editar configuración
+                </Button>
+              </>
+            )}
+          </div>
+        ) : view === "payments" ? (
           <>
             <div className="panel">
               <h2>Facturas externas registradas</h2>
@@ -474,21 +484,21 @@ function App() {
                     </p>
                   </div>
                   {(admin || delivery) && Number(i.balance) > 0 && (
-                    <button
+                    <Button
                       onClick={() =>
                         M({ kind: "payment", clientId: i.client_id })
                       }
                     >
                       Registrar abono
-                    </button>
+                    </Button>
                   )}
                   {admin && (
-                    <button
+                    <Button
                       className="neutral"
                       onClick={() => M({ kind: "invoice", invoice: i })}
                     >
                       Vincular factura
-                    </button>
+                    </Button>
                   )}
                 </article>
               ))}
@@ -497,9 +507,9 @@ function App() {
               <div className="panel">
                 <h2>Movimientos recibidos</h2>
                 {admin && (
-                  <button onClick={() => M({ kind: "settlement" })}>
+                  <Button onClick={() => M({ kind: "settlement" })}>
                     Confirmar cuadre diario
-                  </button>
+                  </Button>
                 )}
                 {payments.map((p) => (
                   <article className="invoice" key={p.id}>
@@ -511,7 +521,7 @@ function App() {
                       </p>
                     </div>
                     {admin && !p.verified && (
-                      <button
+                      <Button
                         onClick={() =>
                           run(async () => {
                             await api(`/payments/${p.id}/verify`, {
@@ -522,7 +532,7 @@ function App() {
                         }
                       >
                         Verificar transferencia
-                      </button>
+                      </Button>
                     )}
                   </article>
                 ))}
@@ -549,16 +559,16 @@ function App() {
                   ["enroute", "En camino"],
                   ["delivered", "Entregados"],
                 ].map(([s, l]) => (
-                  <button
+                  <Button
                     className={status === s ? "active" : ""}
                     key={s}
                     onClick={() => ST(s)}
                   >
                     <span>{l}</span>
                     <strong>
-                      {orders.filter((o) => !s || o.status === s).length}
+                      {scoped.filter((o) => !s || o.status === s).length}
                     </strong>
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
@@ -573,18 +583,18 @@ function App() {
               )}
               {delivery && (
                 <>
-                  <button
+                  <Button
                     className={view === "mine" ? "" : "neutral"}
                     onClick={() => V("mine")}
                   >
                     Mis entregas
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     className={view === "available" ? "" : "neutral"}
                     onClick={() => V("available")}
                   >
                     Disponibles
-                  </button>
+                  </Button>
                 </>
               )}
               {admin && (
@@ -595,21 +605,19 @@ function App() {
                     value={search}
                     onChange={(e) => Q(e.target.value)}
                   />
-                  <input
-                    type="date"
-                    aria-label="Fecha de entrega"
+                  <DateInput
+                    label="Fecha de entrega"
                     value={filterDate}
                     onChange={(e) => FD(e.target.value)}
                   />
                   {view === "history" && (
-                    <input
-                      type="date"
-                      aria-label="Hasta fecha"
+                    <DateInput
+                      label="Hasta fecha"
                       value={historyEnd}
                       onChange={(e) => HE(e.target.value)}
                     />
                   )}
-                  <select
+                  <Select
                     aria-label="Mensajero"
                     value={courier}
                     onChange={(e) => CR(e.target.value)}
@@ -622,10 +630,10 @@ function App() {
                           {u.name}
                         </option>
                       ))}
-                  </select>
+                  </Select>
                 </>
               )}
-              <select
+              <Select
                 aria-label="Estado"
                 value={status}
                 onChange={(e) => ST(e.target.value)}
@@ -636,7 +644,7 @@ function App() {
                     {l}
                   </option>
                 ))}
-              </select>
+              </Select>
               <span>{selected.length} pedidos</span>
             </div>
             <div className={prep ? "orders compact" : "orders"}>
@@ -698,69 +706,69 @@ function App() {
                     <div className="actions">
                       {admin && o.status === "pending" && (
                         <>
-                          <button
+                          <Button
                             aria-label="Aceptar pedido"
                             onClick={() => action(o, "confirm")}
                           >
                             ✓ Aceptar
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             className="danger"
                             onClick={() => M({ kind: "reject", order: o })}
                           >
                             ✕ Rechazar
-                          </button>
+                          </Button>
                         </>
                       )}
                       {(admin || prep) && o.status === "confirmed" && (
-                        <button onClick={() => action(o, "prepare")}>
+                        <Button onClick={() => action(o, "prepare")}>
                           Iniciar preparación
-                        </button>
+                        </Button>
                       )}
                       {(admin || prep) && o.status === "preparing" && (
-                        <button onClick={() => action(o, "ready")}>
+                        <Button onClick={() => action(o, "ready")}>
                           Marcar listo
-                        </button>
+                        </Button>
                       )}
                       {delivery &&
                         !o.courier_id &&
                         ["confirmed", "preparing", "ready"].includes(
                           o.status,
                         ) && (
-                          <button onClick={() => action(o, "take")}>
+                          <Button onClick={() => action(o, "take")}>
                             Tomar pedido
-                          </button>
+                          </Button>
                         )}
                       {(admin || (delivery && o.courier_id === user.id)) &&
                         o.status === "ready" && (
-                          <button onClick={() => action(o, "depart")}>
+                          <Button onClick={() => action(o, "depart")}>
                             Iniciar recorrido
-                          </button>
+                          </Button>
                         )}
                       {(admin || (delivery && o.courier_id === user.id)) &&
                         o.status === "enroute" && (
                           <>
-                            <button onClick={() => action(o, "deliver")}>
+                            <Button onClick={() => action(o, "deliver")}>
                               Confirmar entrega
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               className="neutral"
                               onClick={() => M({ kind: "failed", order: o })}
                             >
                               Entrega fallida
-                            </button>
+                            </Button>
                           </>
                         )}
                       {admin &&
                         ["confirmed", "preparing", "ready", "enroute"].includes(
                           o.status,
                         ) && (
-                          <button
+                          <Button
                             className="neutral"
                             onClick={() => M({ kind: "assign", order: o })}
                           >
                             Asignar mensajero
-                          </button>
+                          </Button>
                         )}
                       {(admin || delivery) &&
                         ![
@@ -769,32 +777,32 @@ function App() {
                           "cancelled",
                           "delivered",
                         ].includes(o.status) && (
-                          <button
+                          <Button
                             className="neutral"
                             onClick={() => M({ kind: "map", order: o })}
                           >
                             Ver recorrido en mapa
-                          </button>
+                          </Button>
                         )}
                       {client && o.status === "enroute" && (
-                        <button
+                        <Button
                           className="neutral"
                           onClick={() => M({ kind: "tracking", order: o })}
                         >
                           Seguir entrega
-                        </button>
+                        </Button>
                       )}
                       {client &&
                         !o.cancel_requested &&
                         !["delivered", "rejected", "cancelled"].includes(
                           o.status,
                         ) && (
-                          <button
+                          <Button
                             className="neutral"
                             onClick={() => action(o, "request_cancel")}
                           >
                             Solicitar cancelación
-                          </button>
+                          </Button>
                         )}
                       {admin &&
                         o.cancel_requested &&
@@ -802,18 +810,18 @@ function App() {
                           o.status,
                         ) && (
                           <>
-                            <button
+                            <Button
                               className="danger"
                               onClick={() => action(o, "cancel")}
                             >
                               Aprobar cancelación
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               className="neutral"
                               onClick={() => action(o, "deny_cancel")}
                             >
                               Rechazar cancelación
-                            </button>
+                            </Button>
                           </>
                         )}
                     </div>
@@ -835,61 +843,43 @@ function App() {
         )}
         <footer>
           Plaza San Francisco · Bucaramanga{" "}
-          <span>Datos de demostración solo en el entorno local</span>
+          <span>
+            {config?.devAuth
+              ? "Datos de demostración solo en el entorno local"
+              : "Delipiña · Pedidos y entregas"}
+          </span>
         </footer>
       </main>
-      {admin && (
-        <nav className="bottom">
-          {[
-            ["orders", "▦", "Pedidos"],
-            ["history", "◷", "Historial"],
-            ["payments", "$", "Cobros"],
-            ["menu", "☰", "Acciones"],
-          ].map(([v, icon, l]) => (
-            <button
-              className="neutral"
-              key={v}
-              onClick={() => (v === "menu" ? M("adminActions") : V(v))}
-            >
-              {icon}
-              <small>{l}</small>
-            </button>
-          ))}
-        </nav>
-      )}
       {drawer && (
-        <>
-          <div className="shade" onClick={() => D(false)} />
-          <aside className="drawer">
-            <header>
-              <h2>Notificaciones</h2>
-              <button
-                className="neutral"
-                aria-label="Cerrar notificaciones"
-                onClick={() => D(false)}
-              >
-                ✕
-              </button>
-            </header>
-            <button
+        <NoticeDrawer onClose={() => D(false)}>
+          <header>
+            <h2>Notificaciones</h2>
+            <Button
               className="neutral"
-              onClick={() =>
-                run(async () => {
-                  await api("/notifications/read", { method: "POST" });
-                  await refresh();
-                })
-              }
+              aria-label="Cerrar notificaciones"
+              onClick={() => D(false)}
             >
-              Marcar leídas
-            </button>
-            {notifications.map((n) => (
-              <article className={n.read ? "" : "unread"} key={n.id}>
-                <strong>{n.title}</strong>
-                <p>{date(n.created_at)}</p>
-              </article>
-            ))}
-          </aside>
-        </>
+              ✕
+            </Button>
+          </header>
+          <Button
+            className="neutral"
+            onClick={() =>
+              run(async () => {
+                await api("/notifications/read", { method: "POST" });
+                await refresh();
+              })
+            }
+          >
+            Marcar leídas
+          </Button>
+          {notifications.map((n) => (
+            <article className={n.read ? "" : "unread"} key={n.id}>
+              <strong>{n.title}</strong>
+              <p>{date(n.created_at)}</p>
+            </article>
+          ))}
+        </NoticeDrawer>
       )}
       {modal && (
         <Modal
@@ -955,13 +945,13 @@ function App() {
               <Field label="Correo Google" name="email" type="email" />
               <label>
                 Rol
-                <select name="role">
+                <Select name="role">
                   {Object.entries(roles).map(([k, v]) => (
                     <option key={k} value={k}>
                       {v}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <Field
                 label="Cupo autorizado COP (0 sin crédito)"
@@ -970,7 +960,7 @@ function App() {
                 defaultValue="0"
                 min="0"
               />
-              <button>Crear usuario</button>
+              <Button type="submit">Crear usuario</Button>
             </Form>
           )}
           {modal === "branch" && (
@@ -986,7 +976,7 @@ function App() {
               {admin && (
                 <label>
                   Cliente
-                  <select name="clientId">
+                  <Select name="clientId">
                     {users
                       .filter((u) => u.role === "client")
                       .map((u) => (
@@ -994,21 +984,21 @@ function App() {
                           {u.name}
                         </option>
                       ))}
-                  </select>
+                  </Select>
                 </label>
               )}
               <Field name="address" label="Dirección" />
               <label>
                 Municipio
-                <select name="city">
+                <Select name="city">
                   {["Bucaramanga", "Girón", "Floridablanca", "Piedecuesta"].map(
                     (c) => (
                       <option key={c}>{c}</option>
                     ),
                   )}
-                </select>
+                </Select>
               </label>
-              <button>Guardar sucursal</button>
+              <Button type="submit">Guardar sucursal</Button>
             </Form>
           )}
           {modal === "catalog" && (
@@ -1020,7 +1010,7 @@ function App() {
               {products.map((p) => (
                 <p key={p.id}>
                   {p.name} · {p.presentation} · {money(p.price)}{" "}
-                  <button
+                  <Button
                     className="danger"
                     onClick={() =>
                       run(async () => {
@@ -1037,7 +1027,7 @@ function App() {
                     }
                   >
                     {p.active ? "Deshabilitar" : "Habilitar"}
-                  </button>
+                  </Button>
                 </p>
               ))}
               <Form
@@ -1055,13 +1045,13 @@ function App() {
                 <Field name="presentation" label="Presentación" />
                 <label>
                   Unidad
-                  <select name="unit">
+                  <Select name="unit">
                     <option value="kg">Kilogramos (decimales)</option>
                     <option value="pack">Empaque de peso fijo (entero)</option>
-                  </select>
+                  </Select>
                 </label>
                 <Field name="price" label="Precio COP" type="number" min="0" />
-                <button>Agregar producto</button>
+                <Button type="submit">Agregar producto</Button>
               </Form>
             </>
           )}
@@ -1106,21 +1096,21 @@ function App() {
                 type="number"
                 defaultValue={settings.leadHours}
               />
-              <button>Guardar configuración</button>
+              <Button type="submit">Guardar configuración</Button>
             </Form>
           )}
           {modal === "adminActions" && (
             <div className="stack">
-              <button onClick={() => M("user")}>Crear usuario</button>
-              <button onClick={() => M("catalog")}>Catálogo</button>
-              <button onClick={() => M("settings")}>Configuración</button>
-              <button onClick={() => M({ kind: "credit" })}>
+              <Button onClick={() => M("user")}>Crear usuario</Button>
+              <Button onClick={() => M("catalog")}>Catálogo</Button>
+              <Button onClick={() => M("settings")}>Configuración</Button>
+              <Button onClick={() => M({ kind: "credit" })}>
                 Autorizar cupo
-              </button>
-              <button onClick={() => M({ kind: "price" })}>
+              </Button>
+              <Button onClick={() => M({ kind: "price" })}>
                 Precios por cliente
-              </button>
-              <button onClick={() => M("branch")}>Crear sucursal</button>
+              </Button>
+              <Button onClick={() => M("branch")}>Crear sucursal</Button>
             </div>
           )}
           {["reject", "failed"].includes(modal.kind) && (
@@ -1145,9 +1135,12 @@ function App() {
                 }
                 required={modal.kind === "failed"}
               />
-              <button className={modal.kind === "reject" ? "danger" : ""}>
+              <Button
+                type="submit"
+                className={modal.kind === "reject" ? "danger" : ""}
+              >
                 Confirmar {modal.kind === "reject" ? "rechazo" : "incidencia"}
-              </button>
+              </Button>
             </Form>
           )}
           {modal.kind === "tracking" && <Tracking orderId={modal.order.id} />}
@@ -1169,7 +1162,7 @@ function App() {
             >
               <label>
                 Cliente
-                <select name="clientId">
+                <Select name="clientId">
                   {users
                     .filter((u) => u.role === "client")
                     .map((u) => (
@@ -1178,7 +1171,7 @@ function App() {
                         {money(u.credit_used)}
                       </option>
                     ))}
-                </select>
+                </Select>
               </label>
               <Field
                 name="creditLimit"
@@ -1186,7 +1179,7 @@ function App() {
                 type="number"
                 min="0"
               />
-              <button>Guardar cupo</button>
+              <Button type="submit">Guardar cupo</Button>
             </Form>
           )}
           {modal.kind === "price" && (
@@ -1204,7 +1197,7 @@ function App() {
             >
               <label>
                 Cliente
-                <select name="clientId">
+                <Select name="clientId">
                   {users
                     .filter((u) => u.role === "client")
                     .map((u) => (
@@ -1212,17 +1205,17 @@ function App() {
                         {u.name}
                       </option>
                     ))}
-                </select>
+                </Select>
               </label>
               <label>
                 Producto
-                <select name="productId">
+                <Select name="productId">
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} · {p.presentation}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <Field
                 name="price"
@@ -1230,7 +1223,7 @@ function App() {
                 type="number"
                 min="0"
               />
-              <button>Guardar precio</button>
+              <Button type="submit">Guardar precio</Button>
             </Form>
           )}
           {modal.kind === "settlement" && (
@@ -1251,7 +1244,7 @@ function App() {
             >
               <label>
                 Mensajero
-                <select name="courierId">
+                <Select name="courierId">
                   {users
                     .filter((u) => u.role === "courier")
                     .map((u) => (
@@ -1259,7 +1252,7 @@ function App() {
                         {u.name}
                       </option>
                     ))}
-                </select>
+                </Select>
               </label>
               <Field name="day" label="Fecha del cuadre" type="date" />
               <Field
@@ -1272,7 +1265,7 @@ function App() {
                 Confirma el efectivo recibido y registra las transferencias
                 verificadas del día.
               </p>
-              <button>Confirmar cuadre</button>
+              <Button type="submit">Confirmar cuadre</Button>
             </Form>
           )}
           {modal.kind === "assign" && (
@@ -1290,7 +1283,7 @@ function App() {
             >
               <label>
                 Mensajero
-                <select name="courierId">
+                <Select name="courierId">
                   {users
                     .filter((u) => u.role === "courier")
                     .map((u) => (
@@ -1298,9 +1291,9 @@ function App() {
                         {u.name}
                       </option>
                     ))}
-                </select>
+                </Select>
               </label>
-              <button>Guardar asignación</button>
+              <Button type="submit">Guardar asignación</Button>
             </Form>
           )}
           {modal.kind === "map" && (
@@ -1375,7 +1368,8 @@ function App() {
                         throw Error("La imagen supera 1,5 MB");
                       const data = await new Promise((resolve, reject) => {
                         const r = new FileReader();
-                        r.onload = () => resolve(r.result.split(",")[1]);
+                        r.onload = () =>
+                          resolve(String(r.result).split(",")[1]);
                         r.onerror = reject;
                         r.readAsDataURL(file);
                       });
@@ -1389,37 +1383,12 @@ function App() {
                 />
               </label>
               <p>La factura se emite externamente.</p>
-              <button>Guardar número</button>
+              <Button type="submit">Guardar número</Button>
             </Form>
           )}
         </Modal>
       )}
     </>
-  );
-}
-function Modal({ title, children, onClose }) {
-  return (
-    <div className="overlay" onClick={() => onClose()}>
-      <section
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header>
-          <h2>{title}</h2>
-          <button
-            className="neutral"
-            aria-label="Cerrar"
-            onClick={() => onClose()}
-          >
-            ✕
-          </button>
-        </header>
-        {children}
-      </section>
-    </div>
   );
 }
 function Form({ onSubmit, children }) {
@@ -1432,14 +1401,6 @@ function Form({ onSubmit, children }) {
     >
       {children}
     </form>
-  );
-}
-function Field({ label, required = true, ...props }) {
-  return (
-    <label>
-      {label}
-      <input required={required} {...props} />
-    </label>
   );
 }
 function OrderForm({ admin, users, branches, products, onSubmit, user }) {
@@ -1469,7 +1430,7 @@ function OrderForm({ admin, users, branches, products, onSubmit, user }) {
       {admin && (
         <label>
           Cliente
-          <select value={c} onChange={(e) => C(e.target.value)}>
+          <Select value={c} onChange={(e) => C(e.target.value)}>
             {users
               .filter((u) => u.role === "client")
               .map((u) => (
@@ -1477,12 +1438,12 @@ function OrderForm({ admin, users, branches, products, onSubmit, user }) {
                   {u.name}
                 </option>
               ))}
-          </select>
+          </Select>
         </label>
       )}
       <label>
         Sucursal
-        <select name="branchId" required>
+        <Select name="branchId" required>
           {branches
             .filter((b) => b.client_id === c)
             .map((b) => (
@@ -1490,7 +1451,7 @@ function OrderForm({ admin, users, branches, products, onSubmit, user }) {
                 {b.address} · {b.city}
               </option>
             ))}
-        </select>
+        </Select>
       </label>
       <div className="row">
         <Field name="start" label="Entrega desde" type="datetime-local" />
@@ -1524,9 +1485,11 @@ function OrderForm({ admin, users, branches, products, onSubmit, user }) {
       </label>
       <label>
         Observaciones
-        <textarea name="notes" maxLength="1000" />
+        <textarea name="notes" maxLength={1000} />
       </label>
-      <button>Confirmar pedido{admin ? "" : " para revisión"}</button>
+      <Button type="submit">
+        Confirmar pedido{admin ? "" : " para revisión"}
+      </Button>
     </Form>
   );
 }
@@ -1549,13 +1512,13 @@ function PaymentForm({ invoices, onSubmit }) {
       <Field label="Total recibido COP" name="amount" type="number" min="1" />
       <label>
         Medio
-        <select name="method">
+        <Select name="method">
           <option value="cash">Efectivo</option>
           <option value="nequi">Nequi · pendiente de verificación</option>
           <option value="bancolombia">
             Transferencia Bancolombia · pendiente de verificación
           </option>
-        </select>
+        </Select>
       </label>
       <h3>Distribución por factura</h3>
       {invoices.map((i) => (
@@ -1570,8 +1533,12 @@ function PaymentForm({ invoices, onSubmit }) {
           defaultValue="0"
         />
       ))}
-      <button>Registrar abono</button>
+      <Button type="submit">Registrar abono</Button>
     </Form>
   );
 }
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(
+  <Providers>
+    <App />
+  </Providers>,
+);

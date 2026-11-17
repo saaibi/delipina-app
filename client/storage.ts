@@ -23,7 +23,7 @@ export async function storage() {
     "CREATE TABLE IF NOT EXISTS local_store(store TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(store,key));",
   );
   return {
-    async put(store, value, key) {
+    async put(store, value, key = undefined) {
       await db.run("INSERT OR REPLACE INTO local_store VALUES(?,?,?)", [
         store,
         key || value.key,

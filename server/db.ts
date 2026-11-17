@@ -3,7 +3,9 @@ export const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   max: process.env.PGLITE_LOCAL === "true" ? 1 : 10,
 });
-export async function tx(fn) {
+export async function tx<T>(
+  fn: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
   const c = await pool.connect();
   try {
     await c.query("BEGIN");
@@ -17,6 +19,6 @@ export async function tx(fn) {
     c.release();
   }
 }
-export const fail = (status, message) => {
+export const fail = (status: number, message: string): never => {
   throw Object.assign(new Error(message), { status });
 };

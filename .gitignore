@@ -7,3 +7,6 @@ dist/
 *.keystore
 google-services.json
 GoogleService-Info.plist
+
+dist-server/
+client/public/sw.js
