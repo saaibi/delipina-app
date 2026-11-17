@@ -1,3 +1,8 @@
+import {
+  usePushPreferences,
+  PushPermissionPrompt,
+  NotificationSettings,
+} from "./push";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
@@ -83,6 +88,7 @@ function App() {
     [pending, PN] = useState(0),
     [settings, SET] = useState(null),
     [settlements, SS] = useState([]);
+  const push = usePushPreferences(user?.id, config);
   const run = async (fn) => {
     E("");
     try {
@@ -330,6 +336,7 @@ function App() {
 
   return (
     <>
+      <PushPermissionPrompt controller={push} />
       <Navigation
         user={user}
         view={view}
@@ -382,7 +389,7 @@ function App() {
                     : view === "catalog"
                       ? "Catálogo"
                       : view === "settings"
-                        ? "Configuración"
+                        ? "Ajustes"
                         : prep
                           ? "Preparación"
                           : client
@@ -426,14 +433,15 @@ function App() {
             al reconectar y vuelven a validar horario, precios y cupo.
           </div>
         )}
-        {["users", "catalog", "settings"].includes(view) && admin ? (
+        {view === "settings" ||
+        (["users", "catalog"].includes(view) && admin) ? (
           <div className="panel">
             <h2>
               {view === "users"
                 ? "Usuarios y acceso"
                 : view === "catalog"
                   ? "Productos y precios"
-                  : "Configuración operativa"}
+                  : "Ajustes"}
             </h2>
             {view === "users" ? (
               <>
@@ -458,14 +466,23 @@ function App() {
               </>
             ) : (
               <>
-                <p>{settings?.origin}</p>
-                <p>
-                  Entregas {settings?.open}:00–{settings?.close}:00 ·
-                  Anticipación {settings?.leadHours} h
-                </p>
-                <Button onClick={() => M("settings")}>
-                  Editar configuración
-                </Button>
+                <NotificationSettings controller={push} />
+                {admin && (
+                  <>
+                    <h2>Administración</h2>
+                    <Button onClick={() => M("users")}>
+                      Usuarios y acceso
+                    </Button>
+                    <p>{settings?.origin}</p>
+                    <p>
+                      Entregas {settings?.open}:00–{settings?.close}:00 ·
+                      Anticipación {settings?.leadHours} h
+                    </p>
+                    <Button onClick={() => M("settings")}>
+                      Configuración operativa
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -889,6 +906,7 @@ function App() {
               ? {
                   order: "Crear pedido",
                   user: "Crear usuario",
+                  users: "Usuarios y acceso",
                   branch: "Crear sucursal",
                   catalog: "Catálogo",
                   settings: "Configuración",
@@ -924,6 +942,16 @@ function App() {
                 })
               }
             />
+          )}
+          {modal === "users" && admin && (
+            <>
+              <Button onClick={() => M("user")}>Crear usuario</Button>
+              {users.map((u) => (
+                <p key={u.id}>
+                  {u.name} · {u.email} · {roles[u.role]}
+                </p>
+              ))}
+            </>
           )}
           {modal === "user" && (
             <Form

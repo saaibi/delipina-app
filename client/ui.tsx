@@ -218,21 +218,26 @@ const navFor = (role: string) =>
         ["orders", "Pedidos", ReceiptLong],
         ["history", "Historial", History],
         ["payments", "Cobros", Payments],
-        ["users", "Usuarios", People],
+
         ["catalog", "Catálogo", Inventory],
-        ["settings", "Configuración", Settings],
+        ["settings", "Ajustes", Settings],
       ]
     : role === "courier"
       ? [
           ["mine", "Mis entregas", LocalShipping],
           ["available", "Disponibles", ReceiptLong],
           ["payments", "Cobros", Payments],
+          ["settings", "Ajustes", Settings],
         ]
       : role === "preparation"
-        ? [["orders", "Preparación", Restaurant]]
+        ? [
+            ["orders", "Preparación", Restaurant],
+            ["settings", "Ajustes", Settings],
+          ]
         : [
             ["orders", "Mis pedidos", ReceiptLong],
             ["payments", "Mi cartera", Payments],
+            ["settings", "Ajustes", Settings],
           ];
 export function Navigation({
   user,
@@ -245,11 +250,7 @@ export function Navigation({
   pending,
 }: any) {
   const nav = navFor(user.role);
-  const [more, setMore] = useState(false);
-  const mobileNav =
-    user.role === "admin"
-      ? [...nav.slice(0, 3), ["more", "Más", MenuIcon]]
-      : nav;
+  const mobileNav = nav;
   return (
     <>
       <AppBar position="sticky" elevation={0} sx={{ zIndex: 1201 }}>
@@ -340,13 +341,8 @@ export function Navigation({
         }}
       >
         <BottomNavigation
-          value={
-            user.role === "admin" &&
-            ["users", "catalog", "settings"].includes(view)
-              ? "more"
-              : view
-          }
-          onChange={(_, v) => (v === "more" ? setMore(true) : onNavigate(v))}
+          value={view}
+          onChange={(_, v) => onNavigate(v)}
           showLabels
           sx={{
             height: 68,
@@ -360,29 +356,11 @@ export function Navigation({
               value={id}
               label={label}
               icon={<Icon />}
-              sx={{ minWidth: 72, flexShrink: 0, fontSize: 11 }}
+              sx={{ minWidth: 64, flexShrink: 0, fontSize: 11 }}
             />
           ))}
         </BottomNavigation>
       </Paper>
-      <Drawer anchor="bottom" open={more} onClose={() => setMore(false)}>
-        <List>
-          {nav.slice(3).map(([id, label, Icon]: any) => (
-            <ListItemButton
-              key={id}
-              onClick={() => {
-                onNavigate(id);
-                setMore(false);
-              }}
-            >
-              <ListItemIcon>
-                <Icon />
-              </ListItemIcon>
-              <ListItemText primary={label} />
-            </ListItemButton>
-          ))}
-        </List>
-      </Drawer>
     </>
   );
 }
@@ -390,7 +368,6 @@ export function SecondaryActions({ role, onAction, onPush }: any) {
   const actions =
     role === "admin"
       ? [
-          ["Crear usuario", PersonAdd, () => onAction("user")],
           ["Crear sucursal", AddLocationAlt, () => onAction("branch")],
           [
             "Autorizar cupo",
@@ -398,14 +375,11 @@ export function SecondaryActions({ role, onAction, onPush }: any) {
             () => onAction({ kind: "credit" }),
           ],
           ["Precio especial", PriceChange, () => onAction({ kind: "price" })],
-          ["Activar push", NotificationsActive, onPush],
         ]
       : role === "client"
-        ? [
-            ["Crear sucursal", AddLocationAlt, () => onAction("branch")],
-            ["Activar push", NotificationsActive, onPush],
-          ]
-        : [["Activar push", NotificationsActive, onPush]];
+        ? [["Crear sucursal", AddLocationAlt, () => onAction("branch")]]
+        : [];
+  if (!actions.length) return null;
   return (
     <SpeedDial
       ariaLabel="Acciones secundarias"

@@ -46,7 +46,7 @@ Las pruebas realizan solicitudes HTTP reales contra NestJS y SQL real: permisos,
 
 `server/modules/` contiene módulos y controladores NestJS de autenticación, catálogo, clientes, pedidos, pagos, notificaciones y configuración. `server/domain.ts` conserva reglas compartidas y `db.ts` las transacciones. `client/*.tsx` y `client/*.ts` son fuentes TypeScript; `client/sw.ts` se compila y su precaché se completa con los assets de producción. `shared/contracts.ts` contiene contratos de dominio. Los proyectos nativos generan código Java/Swift de Capacitor; la aplicación compartida permanece en TypeScript.
 
-La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, selectores MUI y MUI X. Barra lateral web por rol, navegación móvil con iconos/etiquetas y SpeedDial accesible. No se usan paquetes Pro/Premium ni claves de licencia.
+La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, selectores MUI y MUI X. Barra lateral web por rol, navegación móvil con iconos/etiquetas y SpeedDial accesible. Administración tiene cinco módulos en una línea: Pedidos, Historial, Cobros, Catálogo y Ajustes. Usuarios y acceso está dentro de Ajustes. Todos los perfiles tienen Ajustes para sus notificaciones. Si el permiso push está concedido, la suscripción se activa al entrar; si falta permiso, se muestra la solicitud y se conserva el control en Ajustes. Una desactivación elegida por el usuario se respeta, y un permiso denegado no genera solicitudes repetidas. Si faltan claves del servidor se informa allí sin solicitar un permiso inútil. No se usan paquetes Pro/Premium ni claves de licencia.
 
 ## Implementado
 
@@ -68,9 +68,9 @@ La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, s
 
 ## Producción / Render Free
 
-`render.yaml` define **solo** un web service Free y PostgreSQL Free en Virginia. El servidor sirve frontend y Socket.IO en el mismo origen. La base se migra al iniciar, nunca se siembra en producción. No utiliza disco persistente del servidor para datos de negocio.
+`render.yaml` define **solo** un web service Free en Virginia y referencia la base existente `playita-db`, sin administrarla ni cambiar su configuración. Toda la aplicación usa el schema exclusivo `delipina`, sin `public` en su search_path. Las migraciones se ejecutan dentro de una transacción, con bloqueo y auditoría de la estructura externa antes/después. El pool limita Delipiña a tres conexiones. Se comparten capacidad y vencimiento físico con Playita. El servidor sirve frontend y Socket.IO en el mismo origen. La base se migra al iniciar, nunca se siembra en producción. No utiliza disco persistente del servidor para datos de negocio.
 
-Render Free suspende el servidor tras 15 minutos sin tráfico; puede tardar ~1 minuto al despertar. El disco es efímero. PostgreSQL Free **expira a los 30 días**: es almacenamiento temporal para pruebas, no gratis permanente. Exportar con `pg_dump` antes del vencimiento y decidir continuidad. No se ha contratado ningún plan pago.
+Render Free suspende el servidor tras 15 minutos sin tráfico; puede tardar ~1 minuto al despertar. El disco es efímero. La instancia compartida Free **vence el 9 de diciembre de 2026** (no se reinicia su plazo al agregar el schema): es almacenamiento temporal para pruebas, no gratis permanente. Exportar con `pg_dump` antes del vencimiento y decidir continuidad. No se ha contratado ningún plan pago.
 
 Configurar exclusivamente en Render → Environment (no en chat ni Git):
 
@@ -78,7 +78,7 @@ Configurar exclusivamente en Render → Environment (no en chat ni Git):
 - `BOOTSTRAP_ADMIN_EMAIL`: correo Google del administrador inicial. Redesplegar con esa variable: el arranque precrea el administrador únicamente si no existe ninguno. Luego retirarla. También existe `npm run bootstrap` para entornos con ejecución de comandos. No convierte automáticamente al primer visitante en administrador.
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Generar las claves localmente y guardarlas en el gestor de secretos. No incluirlas en logs, capturas o commits.
 - `APP_ORIGIN`: opcional en Render (usa `RENDER_EXTERNAL_URL`); local obligatorio.
-- `DATABASE_URL`: conexión privada proporcionada por el Blueprint; `DEV_AUTH=false`, `NODE_ENV=production`, `PGLITE_LOCAL=false` o ausente.
+- `DATABASE_URL`: conexión privada de `playita-db` referenciada por el Blueprint; `DATABASE_SCHEMA=delipina`, `PG_POOL_MAX=3`; `DEV_AUTH=false`, `NODE_ENV=production`, `PGLITE_LOCAL=false` o ausente.
 
 El despliegue puede iniciar sin Google, pero queda **cerrado al ingreso** hasta completar OAuth y precrear al administrador.
 
@@ -105,7 +105,7 @@ El despliegue puede iniciar sin Google, pero queda **cerrado al ingreso** hasta 
 
 Repositorio **privado**: https://github.com/saaibi/delipina-app .
 
-Render confirmó el espacio `Saaibi Yesid's workspace`. La creación de `delipina-db` Free fue rechazada con `cannot have more than one active free tier database`: ya existe `playita-db` de otra aplicación. No se modificó esa instancia ni se contrató ningún plan pago. No hay URL de Delipiña desplegada. El Blueprint está preparado para cuando haya una base Free disponible; no ejecutar mientras persista ese límite. Compartir una instancia mediante otra base lógica requeriría decidir expresamente esa arquitectura y su capacidad/fecha de expiración; no se hizo automáticamente.
+Render confirmó el espacio `Saaibi Yesid's workspace`. Una segunda base Free fue rechazada por el límite de una instancia gratuita. El usuario autorizó usar **un schema específico `delipina` dentro de `playita-db`**, preservando el schema de Playita. El Blueprint solo crea el web service Free y referencia la conexión privada existente; no declara ni modifica la instancia de base de datos. No se cambia el allowlist y no se habilita acceso externo. El resultado efectivo del despliegue se registra en `outputs/validacion-delipina.md` del chat y en el Dashboard, sin inventar una URL antes de estar live.
 
 Capacitor `add` y `sync` completados para Android/iOS. `assembleDebug` llegó a Gradle y falló porque **no existe Android SDK configurado** (`SDK location not found`). `xcodebuild` falló porque **la licencia de Xcode está sin aceptar**. No hay APK, IPA ni app instalada. Se conserva el proyecto y los comandos para continuar después de que el propietario instale/configure SDK y acepte las licencias correspondientes.
 

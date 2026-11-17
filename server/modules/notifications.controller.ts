@@ -78,4 +78,12 @@ export class NotificationsController {
     );
     return { ok: true };
   }
+  @Delete("push") @HttpCode(200) async deletePush(@Req() req: any) {
+    const u = auth(req);
+    await pool.query(
+      "DELETE FROM subscriptions WHERE user_id=$1 AND endpoint=$2",
+      [u.id, req.body.endpoint],
+    );
+    return { ok: true };
+  }
 }

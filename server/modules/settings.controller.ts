@@ -10,7 +10,7 @@ import {
   HttpCode,
 } from "@nestjs/common";
 import type { Response } from "express";
-import { pool, tx, fail } from "../db.js";
+import { pool, tx, fail, databaseSchema } from "../db.js";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { OAuth2Client } from "google-auth-library";
 import {
@@ -71,7 +71,17 @@ export class SettingsController {
   @Get("health")
   @HttpCode(200)
   async getHealth(@Req() req: any, @Res({ passthrough: true }) res: Response) {
-    await pool.query("SELECT 1");
-    return { ok: true };
+    const r = await pool.query("SELECT current_schema() AS schema");
+    if (r.rows[0].schema !== databaseSchema) fail(503, "Schema no disponible");
+    const audit = (
+      await pool.query(
+        "SELECT unchanged FROM schema_audits ORDER BY id DESC LIMIT 1",
+      )
+    ).rows[0];
+    return {
+      ok: true,
+      schema: databaseSchema,
+      schemaIsolationVerified: audit?.unchanged === true,
+    };
   }
 }

@@ -214,6 +214,33 @@ test("Flujo, permisos, crédito, abonos, sincronización y toma concurrente", as
     users.client.id,
   ]);
 });
+test("Migraciones aisladas conservan estructura y datos de otros schemas", async () => {
+  const { migrate } = await import("../dist-server/migrate.js");
+  const probe = "delipina_probe_" + randomUUID().replaceAll("-", "");
+  const other = "playita_probe_" + randomUUID().replaceAll("-", "");
+  await pool.query(`CREATE SCHEMA "${other}"`);
+  await pool.query(
+    `CREATE TABLE "${other}".users(id integer PRIMARY KEY,label text)`,
+  );
+  await pool.query(`INSERT INTO "${other}".users VALUES(1,'conservar')`);
+  const original = (await pool.query("SELECT count(*)::int AS n FROM users"))
+    .rows[0].n;
+  try {
+    const result = await migrate(probe);
+    assert.equal(result.externalStructureUnchanged, true);
+    assert.deepEqual(
+      (await pool.query(`SELECT * FROM "${other}".users`)).rows,
+      [{ id: 1, label: "conservar" }],
+    );
+    assert.equal(
+      (await pool.query("SELECT count(*)::int AS n FROM users")).rows[0].n,
+      original,
+    );
+  } finally {
+    await pool.query(`DROP SCHEMA IF EXISTS "${probe}" CASCADE`);
+    await pool.query(`DROP SCHEMA IF EXISTS "${other}" CASCADE`);
+  }
+});
 test("Socket exige sesión y solo transmite invalidaciones sin datos privados", async () => {
   const { createRealtime } = await import("../dist-server/realtime.js");
   const { io: connect } = await import("socket.io-client");
