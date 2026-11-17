@@ -75,7 +75,7 @@ Render Free suspende el servidor tras 15 minutos sin tráfico; puede tardar ~1 m
 Configurar exclusivamente en Render → Environment (no en chat ni Git):
 
 - `GOOGLE_CLIENT_ID`: Google Cloud, aplicación web OAuth; habilitar origen HTTPS de Render y el local si procede. Es un identificador público, no requiere client secret con este flujo GIS.
-- `BOOTSTRAP_ADMIN_EMAIL`: correo Google del administrador inicial. Ejecutar `npm run bootstrap` **una sola vez** con esa variable y luego retirarla. No convierte automáticamente al primer visitante en administrador.
+- `BOOTSTRAP_ADMIN_EMAIL`: correo Google del administrador inicial. Redesplegar con esa variable: el arranque precrea el administrador únicamente si no existe ninguno. Luego retirarla. También existe `npm run bootstrap` para entornos con ejecución de comandos. No convierte automáticamente al primer visitante en administrador.
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. Generar las claves localmente y guardarlas en el gestor de secretos. No incluirlas en logs, capturas o commits.
 - `APP_ORIGIN`: opcional en Render (usa `RENDER_EXTERNAL_URL`); local obligatorio.
 - `DATABASE_URL`: conexión privada proporcionada por el Blueprint; `DEV_AUTH=false`, `NODE_ENV=production`, `PGLITE_LOCAL=false` o ausente.

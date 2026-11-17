@@ -1,8 +1,10 @@
+import { bootstrapAdmin } from "./bootstrap.js";
 import { createApp } from "./app.js";
 import { createRealtime } from "./realtime.js";
 
 import path from "node:path";
 import express from "express";
+if (process.env.BOOTSTRAP_ADMIN_EMAIL) await bootstrapAdmin();
 const app = await createApp();
 const io = createRealtime(app.getHttpServer());
 const server = app.getHttpAdapter().getInstance();
