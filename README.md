@@ -86,7 +86,7 @@ Configurar exclusivamente en Render → Environment (no en chat ni Git):
 - `APP_ORIGIN`: opcional en Render (usa `RENDER_EXTERNAL_URL`); local obligatorio.
 - `DATABASE_URL`: conexión privada de `playita-db` referenciada por el Blueprint; `DATABASE_SCHEMA=delipina`, `PG_POOL_MAX=3`; `DEV_AUTH=false`, `NODE_ENV=production`, `PGLITE_LOCAL=false` o ausente.
 
-El despliegue puede iniciar sin Google, pero queda **cerrado al ingreso** hasta completar OAuth y precrear al administrador.
+Si se instala en otro entorno, el despliegue puede iniciar sin Google pero queda cerrado al ingreso hasta completar OAuth y precrear al administrador. En el servicio actual, OAuth web ya está conectado y se verificó el acceso del administrador inicial.
 
 ## Próximos módulos / límites explícitos
 
@@ -97,7 +97,7 @@ El despliegue puede iniciar sin Google, pero queda **cerrado al ingreso** hasta 
 - Interacciones móviles de deslizar para aceptar/revisar rechazo: pendientes; los botones accesibles actuales funcionan. No equivaler abrir a aceptar.
 - Cola offline necesita una pantalla completa de edición/resolución de conflictos. En esta base los fallos conservan el borrador y muestran el error; no se descartan silenciosamente.
 - Auditoría SQL base; panel de auditoría, paginación y búsqueda del historial por servidor pendientes para escalar.
-- Sin pruebas reales de permisos GPS de dispositivo, push en segundo plano, login Google o SQLite de dispositivo hasta disponer de configuración/dispositivo. Las claves Web Push se generan y guardan en el entorno de Render; OAuth y los canales móviles todavía requieren configuración externa.
+- Login Google web real verificado con el administrador inicial. Sin pruebas reales de permisos GPS de dispositivo, push en segundo plano ni SQLite de dispositivo hasta disponer de configuración/dispositivo. Las claves Web Push y el cliente OAuth web están guardados en Render; los canales móviles siguen pendientes.
 
 ## Fuentes verificadas (16 noviembre 2026)
 
@@ -111,7 +111,7 @@ El despliegue puede iniciar sin Google, pero queda **cerrado al ingreso** hasta 
 
 Repositorio **privado**: https://github.com/saaibi/delipina-app .
 
-Render confirmó el espacio `Saaibi Yesid's workspace`. Una segunda base Free fue rechazada por el límite de una instancia gratuita. El usuario autorizó usar **un schema específico `delipina` dentro de `playita-db`**, preservando el schema de Playita. El Blueprint solo crea el web service Free y referencia la conexión privada existente; no declara ni modifica la instancia de base de datos. No se cambia el allowlist y no se habilita acceso externo. El resultado efectivo del despliegue se registra en `outputs/validacion-delipina.md` del chat y en el Dashboard, URL del servicio: https://delipina-app-z9br.onrender.com . OAuth Google sigue pendiente de configuración externa; sin ese identificador no se habilita ingreso productivo.
+Render confirmó el espacio `Saaibi Yesid's workspace`. Una segunda base Free fue rechazada por el límite de una instancia gratuita. El usuario autorizó usar **un schema específico `delipina` dentro de `playita-db`**, preservando el schema de Playita. El Blueprint solo crea el web service Free y referencia la conexión privada existente; no declara ni modifica la instancia de base de datos. No se cambia el allowlist y no se habilita acceso externo. El resultado efectivo del despliegue se registra en `outputs/validacion-delipina.md` del chat y en el Dashboard, URL del servicio: https://delipina-app-z9br.onrender.com . Google OAuth web ya está configurado en el proyecto independiente `delipina-app-2026`, cliente `Delipiña Web`, con orígenes del servicio y `http://localhost:3000`. `GOOGLE_CLIENT_ID` está en Render y `DEV_AUTH=false`. El flujo GIS solo solicita identidad básica (openid/email/profile); no usa client secret. Google conserva estado Prueba; su excepción para identidad básica permite usuarios fuera de la lista de prueba (https://support.google.com/cloud/answer/15549945?hl=en). No se habilitó facturación.
 
 Capacitor `add` y `sync` completados para Android/iOS. `assembleDebug` llegó a Gradle y falló porque **no existe Android SDK configurado** (`SDK location not found`). `xcodebuild` falló porque **la licencia de Xcode está sin aceptar**. No hay APK, IPA ni app instalada. Se conserva el proyecto y los comandos para continuar después de que el propietario instale/configure SDK y acepte las licencias correspondientes.
 
