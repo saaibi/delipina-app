@@ -346,7 +346,7 @@ function App() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
   useEffect(() => {
-    if (user || !config?.googleClientId) return;
+    if (loading || user || !config?.googleClientId) return;
     const script = document.createElement("script");
     script.src = "https://accounts.google.com/gsi/client";
     script.onload = () => {
@@ -368,7 +368,7 @@ function App() {
     };
     document.head.append(script);
     return () => script.remove();
-  }, [config, user]);
+  }, [config, user, loading]);
   async function action(o, a, extra = {}) {
     await run(async () => {
       await api(`/orders/${o.id}/action`, {
