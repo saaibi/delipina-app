@@ -1,4 +1,4 @@
-import{notifyOrder}from"./notification-store.js";
+import { notifyOrder } from "./notification-store.js";
 import { ensureBusinessClock } from "./business-day.js";
 import express from "express";
 import cookieParser from "cookie-parser";
@@ -59,7 +59,7 @@ export const text = (v, max = 500) => {
     fail(400, "Texto inválido");
   return v.trim();
 };
-export const notify=notifyOrder;
+export const notify = notifyOrder;
 export async function broadcast() {
   // Never send order data through a role room; clients refetch authorized state.
   io?.emit("refresh");
@@ -84,18 +84,25 @@ export async function dispatchPush() {
       rows.map(async (s) => {
         const claim = await pool.query(
           "INSERT INTO push_deliveries(notification_id,endpoint,revision) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING *",
-          [s.notification_id, s.endpoint,s.revision],
+          [s.notification_id, s.endpoint, s.revision],
         );
         if (!claim.rowCount) return;
         try {
           await webpush.sendNotification(
             s.payload,
-            JSON.stringify({title:s.title,id:s.notification_id,revision:s.revision,module:s.module,targetId:s.target_id,status:s.status}),
+            JSON.stringify({
+              title: s.title,
+              id: s.notification_id,
+              revision: s.revision,
+              module: s.module,
+              targetId: s.target_id,
+              status: s.status,
+            }),
           );
         } catch (e) {
           await pool.query(
             "DELETE FROM push_deliveries WHERE notification_id=$1 AND endpoint=$2 AND revision=$3",
-            [s.notification_id, s.endpoint,s.revision],
+            [s.notification_id, s.endpoint, s.revision],
           );
           if ([404, 410].includes(e.statusCode))
             await pool.query("DELETE FROM subscriptions WHERE endpoint=$1", [
@@ -138,7 +145,12 @@ export async function applyAllocation(c, inv, amount) {
 }
 export function configureApp(app: any) {
   app.set("trust proxy", 1);
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    }),
+  );
   app.use(express.json({ limit: "2mb" }));
   app.use(cookieParser());
   app.use(async (req, res, next) => {
@@ -150,7 +162,10 @@ export function configureApp(app: any) {
         !req.path.startsWith("/api/health")
       ) {
         const changed = await ensureBusinessClock();
-        if(changed){io?.emit("refresh");void dispatchPush()}
+        if (changed) {
+          io?.emit("refresh");
+          void dispatchPush();
+        }
       }
       if (
         !["GET", "HEAD", "OPTIONS"].includes(req.method) &&

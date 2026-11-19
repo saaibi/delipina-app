@@ -46,6 +46,12 @@ test("Flujo, permisos, crédito, abonos, sincronización y toma concurrente", as
     403,
   );
   assert.equal((await request(app).get("/api/orders")).status, 401);
+  assert.equal(
+    (await request(app).get("/api/config")).headers[
+      "cross-origin-opener-policy"
+    ],
+    "same-origin-allow-popups",
+  );
   const key = randomUUID(),
     created = await call("client", "post", "/orders", body, key);
   assert.equal(created.status, 200, JSON.stringify(created.body));
