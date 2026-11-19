@@ -1,3 +1,4 @@
+import Insights from "@mui/icons-material/Insights";
 import StatusChip from "@mui/material/Chip";
 import WifiOff from "@mui/icons-material/WifiOff";
 import RestorePosition from "@mui/icons-material/RestartAlt";
@@ -132,7 +133,7 @@ export function Field({
       margin="normal"
       slotProps={{
         htmlInput: { min, max, step, maxLength, accept },
-        inputLabel: type === "file" ? { shrink: true } : undefined,
+        inputLabel: { shrink: true },
       }}
       {...props}
     />
@@ -203,16 +204,21 @@ export function Select({ children, label, ...props }: any) {
       fullWidth
       margin="normal"
       label={label || props["aria-label"]}
-      slotProps={{ select: { native: true } }}
+      slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
       {...props}
     >
       {children}
     </TextField>
   );
 }
-export function Modal({ title, children, onClose }: any) {
+export function Modal({ title, children, onClose, wide = false }: any) {
   return (
-    <Dialog open onClose={onClose} aria-labelledby="dialog-title">
+    <Dialog
+      open
+      onClose={onClose}
+      maxWidth={wide ? "md" : "sm"}
+      aria-labelledby="dialog-title"
+    >
       <DialogTitle
         id="dialog-title"
         sx={{
@@ -234,8 +240,8 @@ const navFor = (role: string) =>
   role === "admin"
     ? [
         ["orders", "Pedidos", ReceiptLong],
-        ["history", "Ventas", History],
-        ["payments", "Cobros", Payments],
+        ["analytics", "Análisis", Insights],
+        ["payments", "Créditos", Payments],
 
         ["settings", "Ajustes", Settings],
       ]
@@ -243,7 +249,7 @@ const navFor = (role: string) =>
       ? [
           ["mine", "Mis entregas", LocalShipping],
           ["available", "Disponibles", ReceiptLong],
-          ["payments", "Cobros", Payments],
+          ["payments", "Créditos", Payments],
           ["settings", "Ajustes", Settings],
         ]
       : role === "preparation"
@@ -253,7 +259,7 @@ const navFor = (role: string) =>
           ]
         : [
             ["orders", "Mis pedidos", ReceiptLong],
-            ["payments", "Mi cartera", Payments],
+            ["payments", "Mi crédito", Payments],
             ["settings", "Ajustes", Settings],
           ];
 export function Navigation({
@@ -266,18 +272,23 @@ export function Navigation({
   online,
   pending,
   business,
+  counts = {},
 }: any) {
   const nav = navFor(user.role);
   const mobileNav = nav;
   return (
     <>
       <AppBar position="sticky" elevation={0} sx={{ zIndex: 1201 }}>
-        <Toolbar sx={{ gap: 2, minHeight: 80 }}>
+        <Toolbar sx={{ gap: 2, minHeight: 80, position: "relative" }}>
           <Box
             component="img"
             src="/logo.png"
             alt="Delipiña"
-            sx={{ width: 130, height: 65, objectFit: "contain" }}
+            sx={{
+              width: { xs: 100, sm: 130 },
+              height: 65,
+              objectFit: "contain",
+            }}
           />
           <Typography
             sx={{
@@ -289,20 +300,29 @@ export function Navigation({
             {user.name}
           </Typography>
           <Box sx={{ flex: 1 }} />
-          <StatusChip
-            size="small"
-            label={
-              business
-                ? business.isOpen
-                  ? "Abierto"
-                  : "Cerrado"
-                : "Consultando"
-            }
-            color={
-              business ? (business.isOpen ? "success" : "error") : "default"
-            }
-            sx={{ fontWeight: 700 }}
-          />
+          <Box
+            sx={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%,-50%)",
+            }}
+          >
+            <StatusChip
+              size="small"
+              label={
+                business
+                  ? business.isOpen
+                    ? "Abierto"
+                    : "Cerrado"
+                  : "Consultando"
+              }
+              color={
+                business ? (business.isOpen ? "success" : "error") : "default"
+              }
+              sx={{ fontWeight: 700 }}
+            />
+          </Box>
           {!online && <WifiOff aria-label="Sin conexión" />}
           {pending > 0 && (
             <Typography variant="caption">{pending} por sincronizar</Typography>
@@ -348,12 +368,17 @@ export function Navigation({
           {nav.map(([id, label, Icon]: any) => (
             <ListItemButton
               key={id}
-              selected={view === id}
+              selected={(view === "accepted" ? "orders" : view) === id}
               onClick={() => onNavigate(id)}
               sx={{ mx: 1, my: 0.5, borderRadius: 2 }}
             >
               <ListItemIcon sx={{ minWidth: 38 }}>
-                <Icon />
+                <Badge
+                  badgeContent={counts[id === "payments" ? "credits" : id] || 0}
+                  color="secondary"
+                >
+                  <Icon />
+                </Badge>
               </ListItemIcon>
               <ListItemText primary={label} />
             </ListItemButton>
@@ -373,8 +398,7 @@ export function Navigation({
         }}
       >
         <BottomNavigation
-          value={view}
-          onChange={(_, v) => onNavigate(v)}
+          value={view === "accepted" ? "orders" : view}
           showLabels
           sx={{
             height: 68,
@@ -387,8 +411,21 @@ export function Navigation({
               key={id}
               value={id}
               label={label}
-              icon={<Icon />}
-              sx={{ minWidth: 64, flexShrink: 0, fontSize: 11 }}
+              icon={
+                <Badge
+                  badgeContent={counts[id === "payments" ? "credits" : id] || 0}
+                  color="secondary"
+                >
+                  <Icon />
+                </Badge>
+              }
+              onClick={() => onNavigate(id)}
+              sx={{
+                minWidth: 64,
+                flexShrink: 0,
+                fontSize: 11,
+                touchAction: "manipulation",
+              }}
             />
           ))}
         </BottomNavigation>
@@ -413,6 +450,17 @@ export function SecondaryActions({ role, onAction }: any) {
       Math.min(window.innerHeight - (window.innerWidth < 900 ? 140 : 68), y),
     ),
   });
+  useEffect(() => {
+    const update = () =>
+      POS((p) =>
+        p && Number.isFinite(p.x) && Number.isFinite(p.y)
+          ? clamp(p.x, p.y)
+          : null,
+      );
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
   const reset = () => {
     POS(null);
     localStorage.removeItem("delipina-speed-dial");
@@ -531,22 +579,41 @@ export function NoticeDrawer({ onClose, children }: any) {
 export function suggestedDelivery(settings: any, business: any) {
   let start = dayjs()
     .tz("America/Bogota")
-    .add(settings?.leadHours || 2, "hour")
+    .add(settings?.leadHours ?? 2, "hour")
     .add(1, "minute")
     .second(0)
     .millisecond(0);
-  const open = settings?.open ?? 6,
-    close = settings?.close ?? 18;
-  const today = dayjs().tz("America/Bogota").format("YYYY-MM-DD");
-  if (start.hour() < open) start = start.hour(open).minute(0);
-  if (
-    start.add(1, "hour").hour() > close ||
-    start.hour() >= close ||
-    (business?.closedAt && start.format("YYYY-MM-DD") === today)
-  )
-    start = start.add(1, "day").hour(open).minute(0);
-  return {
-    start: start.toISOString(),
-    end: start.add(1, "hour").toISOString(),
-  };
+  for (let i = 0; i < 15; i++) {
+    const weekday = start.day() || 7;
+    const d = settings?.weeklySchedule?.[weekday] || {
+      enabled: true,
+      open: "06:00",
+      close: "18:00",
+    };
+    if (!d.enabled) {
+      start = start.add(1, "day").startOf("day");
+      continue;
+    }
+    const open = start
+      .startOf("day")
+      .hour(Number(d.open.split(":")[0]))
+      .minute(Number(d.open.split(":")[1]));
+    const close = start
+      .startOf("day")
+      .hour(Number(d.close.split(":")[0]))
+      .minute(Number(d.close.split(":")[1]));
+    if (start.isBefore(open)) start = open;
+    if (
+      start.add(1, "hour").isAfter(close) ||
+      (business?.closedAt && start.format("YYYY-MM-DD") === business.day)
+    ) {
+      start = start.add(1, "day").startOf("day");
+      continue;
+    }
+    return {
+      start: start.toISOString(),
+      end: start.add(1, "hour").toISOString(),
+    };
+  }
+  return { start: "", end: "" };
 }

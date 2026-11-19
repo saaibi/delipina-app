@@ -1,0 +1,12 @@
+ALTER TABLE business_days ADD COLUMN cutoff_at timestamptz;
+ALTER TABLE business_days ADD COLUMN automatic boolean NOT NULL DEFAULT false;
+ALTER TABLE business_days ADD COLUMN processed_at timestamptz;
+ALTER TABLE orders ADD COLUMN sale_day date;
+ALTER TABLE payments ADD COLUMN business_day date;
+ALTER TABLE payments ADD COLUMN verified_day date;
+ALTER TABLE payments ADD COLUMN verified_at timestamptz;
+ALTER TABLE audit ADD COLUMN next_status text;
+UPDATE orders SET sale_day=(delivered_at AT TIME ZONE 'America/Bogota')::date WHERE delivered_at IS NOT NULL;
+UPDATE payments SET business_day=(created_at AT TIME ZONE 'America/Bogota')::date,verified_day=CASE WHEN verified THEN (created_at AT TIME ZONE 'America/Bogota')::date END,verified_at=CASE WHEN method='cash' THEN created_at END;
+UPDATE audit SET next_status=CASE action WHEN 'confirm' THEN 'confirmed' WHEN 'reject' THEN 'rejected' WHEN 'prepare' THEN 'preparing' WHEN 'ready' THEN 'ready' WHEN 'depart' THEN 'enroute' WHEN 'deliver' THEN 'delivered' WHEN 'cancel' THEN 'cancelled' END;
+UPDATE audit a SET next_status=CASE WHEN EXISTS(SELECT 1 FROM audit x WHERE x.order_id=a.order_id AND x.action='confirm') THEN 'pending' WHEN u.role='admin' THEN 'confirmed' ELSE 'pending' END FROM users u WHERE a.actor_id=u.id AND a.action='created';

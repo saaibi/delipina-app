@@ -1,3 +1,4 @@
+import { imagePayload } from "../images.js";
 import {
   Controller,
   Get,
@@ -39,7 +40,7 @@ export class CatalogController {
     const u = auth(req);
     return (
       await pool.query(
-        "SELECT p.*,COALESCE(s.price,p.price) AS price FROM products p LEFT JOIN prices s ON s.product_id=p.id AND s.client_id=$1 WHERE p.active OR $2",
+        "SELECT p.*,EXISTS(SELECT 1 FROM product_photos f WHERE f.product_id=p.id) AS has_image,COALESCE(s.price,p.price) AS price FROM products p LEFT JOIN prices s ON s.product_id=p.id AND s.client_id=$1 WHERE p.active OR $2",
         [
           u.role === "admin" && typeof req.query.clientId === "string"
             ? req.query.clientId
@@ -107,5 +108,36 @@ export class CatalogController {
       [b.clientId, b.productId, cents(b.price)],
     );
     return { ok: true };
+  }
+  @Post("products/:id/photo") @HttpCode(200) async uploadPhoto(
+    @Req() req: any,
+  ) {
+    auth(req, ["admin"]);
+    const { data, mime } = imagePayload(req.body.data);
+    await tx(async (c) => {
+      await c.query(
+        "INSERT INTO product_photos VALUES($1,$2,$3) ON CONFLICT(product_id) DO UPDATE SET mime=excluded.mime,data=excluded.data",
+        [req.params.id, mime, data],
+      );
+      await c.query("UPDATE products SET image_updated_at=now() WHERE id=$1", [
+        req.params.id,
+      ]);
+    });
+    await broadcast();
+    return { ok: true };
+  }
+  @Get("products/:id/photo") async photo(
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const u = auth(req);
+    const r = (
+      await pool.query(
+        "SELECT f.* FROM product_photos f JOIN products p ON p.id=f.product_id WHERE f.product_id=$1 AND (p.active OR $2)",
+        [req.params.id, u.role === "admin"],
+      )
+    ).rows[0];
+    if (!r) fail(404, "Sin imagen");
+    res.set("Cache-Control", "private, no-store").type(r.mime).send(r.data);
   }
 }

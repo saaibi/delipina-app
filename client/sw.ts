@@ -5,7 +5,14 @@ sw.addEventListener("install", (e) =>
   e.waitUntil(
     caches
       .open(CACHE)
-      .then((c) => c.addAll(["/", "/logo.png","/presentaciones-delipina.png", ...PRECACHE_ASSETS])),
+      .then((c) =>
+        c.addAll([
+          "/",
+          "/logo.png",
+          "/presentaciones-delipina.png",
+          ...PRECACHE_ASSETS,
+        ]),
+      ),
   ),
 );
 sw.addEventListener("activate", (e) =>
@@ -39,16 +46,49 @@ sw.addEventListener("fetch", (e) => {
 });
 sw.addEventListener("push", (e) => {
   const d = e.data?.json() || {};
+  const query = new URLSearchParams({
+    notice: d.id || "",
+    revision: String(d.revision || 1),
+    module: d.module || "orders",
+  });
+  if (d.targetId)
+    query.set(d.module === "credits" ? "credit" : "order", d.targetId);
   e.waitUntil(
     sw.registration.showNotification(d.title || "Delipiña", {
-      body: "Abre la aplicación para consultar el pedido.",
+      body: "Toca para consultar el detalle.",
       icon: "/logo.png",
       tag: d.id || "delipina-update",
-      data: { url: "/" },
+      data: { url: "/?" + query, id: d.id, revision: d.revision },
     }),
   );
 });
 sw.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  e.waitUntil(sw.clients.openWindow("/"));
+  e.waitUntil(
+    (async () => {
+      const d = e.notification.data || {};
+      if (d.id)
+        await fetch(
+          "/api/notifications/" + encodeURIComponent(d.id) + "/read",
+          {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ revision: d.revision }),
+          },
+        ).catch(() => {});
+      const url = new URL(d.url || "/", sw.location.origin).href;
+      const windows = await sw.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      const existing = windows.find(
+        (w) => new URL(w.url).origin === sw.location.origin,
+      ) as WindowClient | undefined;
+      if (existing) {
+        await existing.navigate(url);
+        await existing.focus();
+      } else await sw.clients.openWindow(url);
+    })(),
+  );
 });

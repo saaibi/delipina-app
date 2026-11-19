@@ -1,3 +1,5 @@
+import{notifyOrder}from"./notification-store.js";
+import { ensureBusinessClock } from "./business-day.js";
 import express from "express";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
@@ -57,18 +59,7 @@ export const text = (v, max = 500) => {
     fail(400, "Texto inválido");
   return v.trim();
 };
-export async function notify(c, order, title, roles) {
-  await c.query(
-    "INSERT INTO notifications(id,user_id,title,order_id) SELECT gen_random_uuid(),id,$2,$3 FROM users WHERE active AND (role=ANY($1::text[]) OR (id=$4 AND $5))",
-    [
-      roles.filter((r) => r !== "client"),
-      title,
-      order.id,
-      order.client_id,
-      roles.includes("client"),
-    ],
-  );
-}
+export const notify=notifyOrder;
 export async function broadcast() {
   // Never send order data through a role room; clients refetch authorized state.
   io?.emit("refresh");
@@ -86,25 +77,25 @@ export async function dispatchPush() {
     );
     const rows = (
       await pool.query(
-        "SELECT s.*,n.title,n.id AS notification_id FROM subscriptions s JOIN notifications n ON n.user_id=s.user_id WHERE n.created_at>now()-interval '1 day' AND NOT EXISTS(SELECT 1 FROM push_deliveries d WHERE d.notification_id=n.id AND d.endpoint=s.endpoint)",
+        "SELECT s.*,n.title,n.id AS notification_id,n.revision,n.module,n.target_id,n.status FROM subscriptions s JOIN users u ON u.id=s.user_id JOIN notifications n ON n.user_id=s.user_id WHERE u.active AND NOT n.read AND n.updated_at>now()-interval '1 day' AND NOT EXISTS(SELECT 1 FROM push_deliveries d WHERE d.notification_id=n.id AND d.endpoint=s.endpoint AND d.revision=n.revision)",
       )
     ).rows;
     await Promise.allSettled(
       rows.map(async (s) => {
         const claim = await pool.query(
-          "INSERT INTO push_deliveries(notification_id,endpoint) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING *",
-          [s.notification_id, s.endpoint],
+          "INSERT INTO push_deliveries(notification_id,endpoint,revision) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING *",
+          [s.notification_id, s.endpoint,s.revision],
         );
         if (!claim.rowCount) return;
         try {
           await webpush.sendNotification(
             s.payload,
-            JSON.stringify({ title: s.title, id: s.notification_id }),
+            JSON.stringify({title:s.title,id:s.notification_id,revision:s.revision,module:s.module,targetId:s.target_id,status:s.status}),
           );
         } catch (e) {
           await pool.query(
-            "DELETE FROM push_deliveries WHERE notification_id=$1 AND endpoint=$2",
-            [s.notification_id, s.endpoint],
+            "DELETE FROM push_deliveries WHERE notification_id=$1 AND endpoint=$2 AND revision=$3",
+            [s.notification_id, s.endpoint,s.revision],
           );
           if ([404, 410].includes(e.statusCode))
             await pool.query("DELETE FROM subscriptions WHERE endpoint=$1", [
@@ -153,6 +144,14 @@ export function configureApp(app: any) {
   app.use(async (req, res, next) => {
     try {
       req.user = await session(req.cookies.session);
+      if (
+        req.user &&
+        req.path.startsWith("/api/") &&
+        !req.path.startsWith("/api/health")
+      ) {
+        const changed = await ensureBusinessClock();
+        if(changed){io?.emit("refresh");void dispatchPush()}
+      }
       if (
         !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
         req.get("origin") !== process.env.APP_ORIGIN

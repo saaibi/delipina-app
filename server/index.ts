@@ -1,3 +1,5 @@
+import { broadcast } from "./domain.js";
+import { ensureBusinessClock } from "./business-day.js";
 import { bootstrapAdmin } from "./bootstrap.js";
 import { createApp } from "./app.js";
 import { createRealtime } from "./realtime.js";
@@ -30,3 +32,14 @@ if (process.env.NODE_ENV === "production") {
 }
 await app.listen(Number(process.env.PORT || 3000), "0.0.0.0");
 console.log(`Delipiña NestJS http://localhost:${process.env.PORT || 3000}`);
+
+const businessClock = setInterval(() => {
+  ensureBusinessClock()
+    .then((changed) => {
+      if (changed) void broadcast();
+    })
+    .catch(() =>
+      console.error("No se pudo completar el cierre automático de jornada"),
+    );
+}, 30000);
+businessClock.unref();

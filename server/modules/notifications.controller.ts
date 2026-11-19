@@ -1,3 +1,4 @@
+import { noticeVisibility } from "../notification-store.js";
 import {
   Controller,
   Get,
@@ -39,10 +40,43 @@ export class NotificationsController {
     const u = auth(req);
     return (
       await pool.query(
-        "SELECT * FROM notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100",
-        [u.id],
+        `SELECT n.* FROM notifications n LEFT JOIN orders o ON o.id=n.order_id WHERE ${noticeVisibility()} ORDER BY n.updated_at DESC LIMIT 100`,
+        [u.id, u.role],
       )
     ).rows;
+  }
+  @Get("notifications/counts") @HttpCode(200) async counts(@Req() req: any) {
+    const u = auth(req);
+    return (
+      await pool.query(
+        `SELECT n.module,count(*)::int AS count FROM notifications n LEFT JOIN orders o ON o.id=n.order_id WHERE ${noticeVisibility()} AND NOT n.read GROUP BY n.module`,
+        [u.id, u.role],
+      )
+    ).rows;
+  }
+  @Post("notifications/:id/read") @HttpCode(200) async readOne(
+    @Req() req: any,
+  ) {
+    const u = auth(req);
+    const revision = req.body.revision;
+    if (
+      revision !== undefined &&
+      (!Number.isSafeInteger(revision) || revision < 1)
+    )
+      fail(400, "Revisión inválida");
+    const r = await pool.query(
+      "UPDATE notifications SET read=true WHERE id=$1 AND user_id=$2 AND ($3::int IS NULL OR revision<=$3) RETURNING id,read,revision",
+      [req.params.id, u.id, revision ?? null],
+    );
+    if (!r.rowCount) {
+      const exists = await pool.query(
+        "SELECT id FROM notifications WHERE id=$1 AND user_id=$2",
+        [req.params.id, u.id],
+      );
+      if (!exists.rowCount) fail(404, "Aviso no disponible");
+      return { read: false };
+    }
+    return r.rows[0];
   }
   @Post("notifications/read")
   @HttpCode(200)

@@ -150,8 +150,10 @@ export class CustomersController {
         "UPDATE users SET name=$2,email=$3,role=$4,credit_limit=$5,active=$6,google_sub=CASE WHEN email<>$3 THEN NULL ELSE google_sub END,deleted_at=CASE WHEN $7 THEN now() WHEN $8 THEN NULL ELSE deleted_at END WHERE id=$1",
         [u.id, name, email, role, limit, active, deleting, !!b.restore],
       );
-      if (!active || changedIdentity)
+      if (!active || changedIdentity) {
         await c.query("DELETE FROM sessions WHERE user_id=$1", [u.id]);
+        await c.query("DELETE FROM subscriptions WHERE user_id=$1", [u.id]);
+      }
       await c.query("INSERT INTO audit(actor_id,action) VALUES($1,$2)", [
         admin.id,
         "user:" + u.id + ":" + (deleting ? "deleted" : "edited"),

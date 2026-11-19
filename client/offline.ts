@@ -89,3 +89,5 @@ export async function sync() {
 export async function queued() {
   return (await (await db).getAll("queue")).filter((i) => i.uid === uid);
 }
+
+export async function cachedProductImage(id:string,version:string){const key=uid+'/product-image/'+id+'/'+version;try{const r=await fetch('/api/products/'+id+'/photo');if(!r.ok)throw Error('Imagen no disponible');const blob=await r.blob();const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob)});await(await db).put('cache',data,key);return data}catch(e){const stored=await(await db).get('cache',key);if(stored)return stored;throw e}}

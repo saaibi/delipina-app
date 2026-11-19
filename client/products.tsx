@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { cachedProductImage } from "./offline";
 import CheckCircle from "@mui/icons-material/CheckCircle";
 import Add from "@mui/icons-material/Add";
 import Remove from "@mui/icons-material/Remove";
@@ -30,7 +31,31 @@ export function productImageKey(p: any) {
   );
 }
 export function ProductPhoto({ product, small = false }: any) {
+  const [custom, C] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    C(null);
+    if (product.has_image)
+      cachedProductImage(product.id, product.image_updated_at || "1")
+        .then((data) => {
+          if (active) C(data);
+        })
+        .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [product.id, product.has_image, product.image_updated_at]);
   const crop = crops[productImageKey(product)];
+  if (custom)
+    return (
+      <img
+        className={
+          small ? "product-photo small custom" : "product-photo custom"
+        }
+        src={custom}
+        alt={"Presentación " + product.name}
+      />
+    );
   return (
     <div
       role="img"
@@ -80,7 +105,9 @@ export function ProductChoices({
                 aria-label={"Seleccionar " + p.name + " · " + p.presentation}
                 onClick={() => onQuantity(p.id, selected ? "" : 1)}
               >
-                <ProductPhoto product={p} />
+                <div className="product-photo-frame">
+                  <ProductPhoto product={p} />
+                </div>
                 <div className="product-choice-copy">
                   <strong>{p.name}</strong>
                   <span>{p.presentation}</span>
@@ -100,13 +127,14 @@ export function ProductChoices({
                 </IconButton>
                 <Field
                   required={false}
-                  label={p.unit === "kg" ? "Kilogramos" : "Empaques"}
+                  label={p.unit === "kg" ? "kg" : "uds."}
                   type="number"
                   min="0"
                   step={p.unit === "kg" ? ".001" : "1"}
                   value={quantities[p.id] || ""}
                   onChange={(e) => onQuantity(p.id, e.target.value)}
-                  sx={{ my: 1 }}
+                  size="small"
+                  sx={{ my: 0.5 }}
                 />
                 <IconButton
                   aria-label={"Agregar cantidad de " + p.name}

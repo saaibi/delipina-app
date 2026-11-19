@@ -1,0 +1,17 @@
+ALTER TABLE notifications ADD COLUMN event_key text;
+ALTER TABLE notifications ADD COLUMN module text NOT NULL DEFAULT 'orders';
+ALTER TABLE notifications ADD COLUMN target_id text;
+ALTER TABLE notifications ADD COLUMN status text;
+ALTER TABLE notifications ADD COLUMN updated_at timestamptz NOT NULL DEFAULT clock_timestamp();
+ALTER TABLE notifications ADD COLUMN revision integer NOT NULL DEFAULT 1;
+WITH ranked AS(SELECT id,row_number() OVER(PARTITION BY user_id,order_id ORDER BY created_at DESC,id DESC) AS rank FROM notifications WHERE order_id IS NOT NULL) DELETE FROM push_deliveries d USING ranked r WHERE d.notification_id=r.id AND r.rank>1;
+WITH ranked AS(SELECT id,row_number() OVER(PARTITION BY user_id,order_id ORDER BY created_at DESC,id DESC) AS rank FROM notifications WHERE order_id IS NOT NULL) DELETE FROM notifications n USING ranked r WHERE n.id=r.id AND r.rank>1;
+UPDATE notifications SET event_key=CASE WHEN order_id IS NOT NULL THEN 'order:'||order_id::text ELSE 'legacy:'||id::text END,target_id=order_id::text;
+UPDATE notifications n SET status=o.status FROM orders o WHERE n.order_id=o.id;
+ALTER TABLE notifications ALTER COLUMN event_key SET NOT NULL;
+CREATE UNIQUE INDEX notifications_event_user ON notifications(user_id,event_key);
+ALTER TABLE push_deliveries ADD COLUMN revision integer NOT NULL DEFAULT 1;
+ALTER TABLE push_deliveries DROP CONSTRAINT push_deliveries_pkey;
+ALTER TABLE push_deliveries ADD PRIMARY KEY(notification_id,endpoint,revision);
+ALTER TABLE audit ALTER COLUMN created_at SET DEFAULT clock_timestamp();
+ALTER TABLE orders ALTER COLUMN created_at SET DEFAULT clock_timestamp();

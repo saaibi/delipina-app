@@ -67,7 +67,10 @@ La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, s
 - PWA con caché de aplicación y datos por usuario, cola IndexedDB y claves idempotentes. Solo creación de pedidos se encola offline; cobros, asignaciones y cambios de estado requieren conexión. En modo offline no se garantiza precio/cupo/horario hasta validar en servidor. Logout borra caché y cola local.
 - Android/iOS Capacitor generados, adaptador SQLite nativo para la misma caché/cola. **Proyecto preparado, no APK compilado, no app instalada.**
 - Selección visual de presentaciones con las fotos proporcionadas por el usuario (recorte CSS, sin redibujar los productos), cantidades directas y referencia visual configurable en catálogo.
-- Jornadas por fecha de Colombia: badge Abierto/Cerrado según horario/cierre, cierre administrativo con resumen histórico, validación transaccional que impide registrar nuevos movimientos en un día cerrado y nueva jornada al cambiar el día. Los pedidos anticipados corresponden a su fecha de entrega y no se borran al cerrar hoy; la cartera continúa entre jornadas. El cierre exige resolver los pedidos del día y verificar sus transferencias.
+- Jornadas por fecha de Colombia con horarios por día y anticipación general en Ajustes. El cierre automático conserva resumen al corte, cartera, pedidos pendientes y futuros. Render Free puede dormir: el corte lógico se respeta y se materializa al despertar o recibir una consulta.
+- Pedidos y ventas unificados, tarjetas compactas con detalle en modal y vista de todos los aceptados. Créditos por cliente con abonos generales y distribución automática a facturas antiguas; transferencias pendientes reservan saldo.
+- Productos genéricos con imágenes propias guardadas en PostgreSQL; usuarios y catálogo son secciones de Ajustes. Análisis con Google Charts y datos reales.
+- Un aviso por pedido y destinatario, actualizado por estado; lectura por revisión al abrir y contador en Pedidos. Push web usa la misma etiqueta y abre el pedido. Deslizar hacia abajo al inicio actualiza datos; doble toque en el módulo vuelve arriba.
 
 ## Producción / Render Free
 
@@ -89,7 +92,7 @@ El despliegue puede iniciar sin Google, pero queda **cerrado al ingreso** hasta 
 
 - Google Routes/Places embebidos y ETA de tráfico: **no conectados**, sin key ni habilitación de servicio/costo. Solo enlace Maps. No crear un proyecto facturable automáticamente.
 - Agrupación óptima de recorridos, tiempos de preparación, salida sugerida y toma atómica de grupos: pendientes; no agrupar solo por municipio ni inventar trayectos.
-- Reprogramación desde interfaz, edición de direcciones/catálogo completo, reversión/rechazo de transferencias y reapertura de cuadres: pendientes. No reemplazar movimientos históricos para corregirlos.
+- Edición de direcciones, reversión/rechazo de transferencias y reapertura de cuadres: pendientes. No reemplazar movimientos históricos para corregirlos.
 - Notificaciones móviles por FCM/APNs y Google OAuth nativo: plugins presentes, configuración/canales nativos pendientes. El login web GIS no debe usarse como login Google embebido de producción en WebView. Abrir con navegador de sistema e implementar retorno OAuth nativo antes de distribuir.
 - Interacciones móviles de deslizar para aceptar/revisar rechazo: pendientes; los botones accesibles actuales funcionan. No equivaler abrir a aceptar.
 - Cola offline necesita una pantalla completa de edición/resolución de conflictos. En esta base los fallos conservan el borrador y muestran el error; no se descartan silenciosamente.
@@ -104,11 +107,11 @@ El despliegue puede iniciar sin Google, pero queda **cerrado al ingreso** hasta 
 - [PGlite Socket](https://pglite.dev/docs/pglite-socket).
 - [Capacitor SQLite](https://github.com/capacitor-community/sqlite), [Push móvil](https://capacitorjs.com/docs/apis/push-notifications).
 
-## Resultado de publicación y compilaciones (16 noviembre 2026)
+## Resultado de publicación y compilaciones (19 noviembre 2026)
 
 Repositorio **privado**: https://github.com/saaibi/delipina-app .
 
-Render confirmó el espacio `Saaibi Yesid's workspace`. Una segunda base Free fue rechazada por el límite de una instancia gratuita. El usuario autorizó usar **un schema específico `delipina` dentro de `playita-db`**, preservando el schema de Playita. El Blueprint solo crea el web service Free y referencia la conexión privada existente; no declara ni modifica la instancia de base de datos. No se cambia el allowlist y no se habilita acceso externo. El resultado efectivo del despliegue se registra en `outputs/validacion-delipina.md` del chat y en el Dashboard, sin inventar una URL antes de estar live.
+Render confirmó el espacio `Saaibi Yesid's workspace`. Una segunda base Free fue rechazada por el límite de una instancia gratuita. El usuario autorizó usar **un schema específico `delipina` dentro de `playita-db`**, preservando el schema de Playita. El Blueprint solo crea el web service Free y referencia la conexión privada existente; no declara ni modifica la instancia de base de datos. No se cambia el allowlist y no se habilita acceso externo. El resultado efectivo del despliegue se registra en `outputs/validacion-delipina.md` del chat y en el Dashboard, URL del servicio: https://delipina-app-z9br.onrender.com . OAuth Google sigue pendiente de configuración externa; sin ese identificador no se habilita ingreso productivo.
 
 Capacitor `add` y `sync` completados para Android/iOS. `assembleDebug` llegó a Gradle y falló porque **no existe Android SDK configurado** (`SDK location not found`). `xcodebuild` falló porque **la licencia de Xcode está sin aceptar**. No hay APK, IPA ni app instalada. Se conserva el proyecto y los comandos para continuar después de que el propietario instale/configure SDK y acepte las licencias correspondientes.
 

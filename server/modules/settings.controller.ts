@@ -1,4 +1,10 @@
 import {
+  validateSchedule,
+  weeklySchedule,
+  businessDate,
+  ensureBusinessClock,
+} from "../business-day.js";
+import {
   Controller,
   Get,
   Post,
@@ -37,8 +43,9 @@ export class SettingsController {
     @Res({ passthrough: true }) res: Response,
   ) {
     auth(req);
-    return (await pool.query("SELECT data FROM settings WHERE id=1")).rows[0]
-      .data;
+    const cfg = (await pool.query("SELECT data FROM settings WHERE id=1"))
+      .rows[0].data;
+    return { ...cfg, weeklySchedule: weeklySchedule(cfg) };
   }
   @Put("settings")
   @HttpCode(200)
@@ -48,24 +55,31 @@ export class SettingsController {
   ) {
     auth(req, ["admin"]);
     const b = req.body;
-    if (
-      !Number.isInteger(b.open) ||
-      !Number.isInteger(b.close) ||
-      b.open < 0 ||
-      b.close > 24 ||
-      b.open >= b.close ||
-      !Number.isFinite(b.leadHours) ||
-      b.leadHours < 0
-    )
-      fail(400, "Horario inválido");
-    await pool.query("UPDATE settings SET data=$1 WHERE id=1", [
-      {
+    const week = validateSchedule(b),
+      cfg = {
         origin: text(b.origin),
-        open: b.open,
-        close: b.close,
         leadHours: b.leadHours,
-      },
-    ]);
+        weeklySchedule: week,
+      };
+    await tx(async (c) => {
+      await c.query("UPDATE settings SET data=$1 WHERE id=1", [cfg]);
+      const today = await businessDate(c);
+      const days = (
+        await c.query(
+          "SELECT to_char(day,'YYYY-MM-DD') AS day,EXTRACT(ISODOW FROM day)::int AS weekday FROM business_days WHERE closed_at IS NULL AND day>=$1",
+          [today],
+        )
+      ).rows;
+      for (const d of days) {
+        const schedule = week[d.weekday];
+        await c.query(
+          "UPDATE business_days SET cutoff_at=GREATEST(($1::date+$2::time) AT TIME ZONE 'America/Bogota',now()) WHERE day=$1",
+          [d.day, schedule.enabled ? schedule.close : "00:00"],
+        );
+      }
+    });
+    await ensureBusinessClock();
+    await broadcast();
     return { ok: true };
   }
   @Get("health")

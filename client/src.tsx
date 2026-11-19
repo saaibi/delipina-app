@@ -1,3 +1,12 @@
+import { SettingsView } from "./settings";
+import { ProductEditor } from "./product-editor";
+import { CreditsView, CreditDetails, GeneralPaymentForm } from "./credits";
+import { AnalyticsView } from "./analytics";
+import { OrderCards, OrderDetails } from "./orders";
+import { NotificationList } from "./notifications";
+import { usePullRefresh, PullIndicator, scrollModuleTop } from "./interactions";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
 import { ProductChoices, productImages } from "./products";
 import { DayClosings } from "./business";
 import { suggestedDelivery } from "./ui";
@@ -76,6 +85,8 @@ function App() {
     [invoices, I] = useState([]),
     [payments, PAY] = useState([]),
     [notifications, N] = useState([]),
+    [noticeCounts, NC] = useState([]),
+    [accounts, AC] = useState([]),
     [modal, setModal] = useState(null),
     [drawer, D] = useState(false),
     [view, V] = useState("orders"),
@@ -107,6 +118,8 @@ function App() {
     I([]);
     PAY([]);
     N([]);
+    NC([]);
+    AC([]);
     SS([]);
     CL([]);
     BD(null);
@@ -127,6 +140,73 @@ function App() {
     E("");
     setModal(value);
   };
+  const lastTap = useRef({ id: "", at: 0 });
+  function navigateModule(id: string) {
+    const current = view === "accepted" ? "orders" : view;
+    const now = Date.now();
+    if (current === id) {
+      if (lastTap.current.id === id && now - lastTap.current.at < 400)
+        scrollModuleTop();
+      lastTap.current = { id, at: now };
+      return;
+    }
+    lastTap.current = { id, at: now };
+    V(id);
+    ST("");
+    if (id === "orders") {
+      FD(business?.day || "");
+      HE("");
+    }
+    scrollModuleTop();
+  }
+  const pull = usePullRefresh(
+    async () => {
+      await run(() => refresh());
+    },
+    !user || !!modal || drawer,
+  );
+  async function openNotice(n: any) {
+    await run(async () => {
+      await api("/notifications/" + n.id + "/read", {
+        method: "POST",
+        body: n.revision ? { revision: n.revision } : {},
+      });
+      D(false);
+      if (n.module === "orders") {
+        V("orders");
+        FD("");
+        ST("");
+        const order =
+          orders.find((o) => o.id === n.target_id) ||
+          (await api("/orders/" + n.target_id));
+        M({ kind: "orderDetail", order });
+      } else if (n.module === "credits") {
+        V("payments");
+        const all = accounts.length ? accounts : await api("/credit-accounts");
+        const client = all.find((a) => a.id === n.target_id);
+        if (client) M({ kind: "creditDetail", client });
+      } else if (n.module === "analytics") V("analytics");
+      await refresh();
+    });
+  }
+  useEffect(() => {
+    if (!user) return;
+    const q = new URLSearchParams(window.location.search);
+    const order = q.get("order"),
+      credit = q.get("credit"),
+      id = q.get("notice");
+    if (id && (order || credit || q.get("module") === "analytics"))
+      void openNotice({
+        id,
+        target_id: order || credit,
+        module: order ? "orders" : credit ? "credits" : "analytics",
+        revision: q.get("revision") ? Number(q.get("revision")) : undefined,
+      });
+    else if (order)
+      void run(async () => {
+        M({ kind: "orderDetail", order: await api("/orders/" + order) });
+      });
+  }, [user?.id]);
   const push = usePushPreferences(user?.id, config);
   useEffect(() => {
     if (!user) return;
@@ -167,9 +247,22 @@ function App() {
     setOfflineUser(u.id);
     await saveIdentity(u);
     const tasks = [
-      cached("/orders").then(guard(O)),
+      cached("/orders").then((value) => {
+        guard(O)(value);
+        if (epoch === authEpoch.current && subject.current === u.id)
+          setModal((prev) =>
+            prev?.kind === "orderDetail"
+              ? {
+                  ...prev,
+                  order:
+                    value.find((o) => o.id === prev.order.id) || prev.order,
+                }
+              : prev,
+          );
+      }),
       cached("/products").then(guard(P)),
       cached("/notifications").then(guard(N)),
+      cached("/notifications/counts").then(guard(NC)),
       cached("/settings").then(guard(SET)),
       cached("/business-day").then(guard(BD)),
       queued().then((q) => guard(PN)(q.length)),
@@ -182,13 +275,17 @@ function App() {
         cached("/business-days").then(guard(CL)),
       );
     if (u.role !== "preparation")
-      tasks.push(cached("/invoices").then(guard(I)));
+      tasks.push(
+        cached("/invoices").then(guard(I)),
+        cached("/credit-accounts").then(guard(AC)),
+      );
     if (["admin", "courier"].includes(u.role))
       tasks.push(
         cached("/payments").then(guard(PAY)),
         cached("/settlements").then(guard(SS)),
       );
     await Promise.all(tasks);
+    window.dispatchEvent(new Event("delipina:refresh"));
   }
   useEffect(() => {
     (async () => {
@@ -304,6 +401,118 @@ function App() {
       });
       await refresh();
     });
+  const actionsFor = (o: any) => (
+    <div className="actions">
+      {admin && o.status === "pending" && (
+        <>
+          <Button
+            aria-label="Aceptar pedido"
+            onClick={() => action(o, "confirm")}
+          >
+            ✓ Aceptar
+          </Button>
+          <Button
+            className="danger"
+            onClick={() => M({ kind: "reject", order: o })}
+          >
+            ✕ Rechazar
+          </Button>
+        </>
+      )}
+      {(admin || prep) && o.status === "confirmed" && (
+        <Button onClick={() => action(o, "prepare")}>
+          Iniciar preparación
+        </Button>
+      )}
+      {(admin || prep) && o.status === "preparing" && (
+        <Button onClick={() => action(o, "ready")}>Marcar listo</Button>
+      )}
+      {delivery &&
+        !o.courier_id &&
+        ["confirmed", "preparing", "ready"].includes(o.status) && (
+          <Button onClick={() => action(o, "take")}>Tomar pedido</Button>
+        )}
+      {(admin || (delivery && o.courier_id === user.id)) &&
+        o.status === "ready" && (
+          <Button onClick={() => action(o, "depart")}>Iniciar recorrido</Button>
+        )}
+      {(admin || (delivery && o.courier_id === user.id)) &&
+        o.status === "enroute" && (
+          <>
+            <Button onClick={() => action(o, "deliver")}>
+              Confirmar entrega
+            </Button>
+            <Button
+              className="neutral"
+              onClick={() => M({ kind: "failed", order: o })}
+            >
+              Entrega fallida
+            </Button>
+          </>
+        )}
+      {admin &&
+        ["confirmed", "preparing", "ready", "enroute"].includes(o.status) && (
+          <Button
+            className="neutral"
+            onClick={() => M({ kind: "assign", order: o })}
+          >
+            Asignar mensajero
+          </Button>
+        )}
+      {(admin || delivery) &&
+        !["pending", "rejected", "cancelled", "delivered"].includes(
+          o.status,
+        ) && (
+          <Button
+            className="neutral"
+            onClick={() => M({ kind: "map", order: o })}
+          >
+            Ver recorrido en mapa
+          </Button>
+        )}
+      {client && o.status === "enroute" && (
+        <Button
+          className="neutral"
+          onClick={() => M({ kind: "tracking", order: o })}
+        >
+          Seguir entrega
+        </Button>
+      )}
+      {client &&
+        !o.cancel_requested &&
+        !["delivered", "rejected", "cancelled"].includes(o.status) && (
+          <Button
+            className="neutral"
+            onClick={() => action(o, "request_cancel")}
+          >
+            Solicitar cancelación
+          </Button>
+        )}
+      {admin &&
+        o.cancel_requested &&
+        !["delivered", "rejected", "cancelled"].includes(o.status) && (
+          <>
+            <Button className="danger" onClick={() => action(o, "cancel")}>
+              Aprobar cancelación
+            </Button>
+            <Button
+              className="neutral"
+              onClick={() => action(o, "deny_cancel")}
+            >
+              Rechazar cancelación
+            </Button>
+          </>
+        )}
+      {admin && !["delivered", "cancelled", "rejected"].includes(o.status) && (
+        <Button
+          className="neutral"
+          onClick={() => M({ kind: "reschedule", order: o })}
+        >
+          Reprogramar
+        </Button>
+      )}
+    </div>
+  );
   if (loading)
     return (
       <div className="splash">
@@ -384,11 +593,13 @@ function App() {
     );
   const scoped = orders.filter(
     (o) =>
+      (view !== "accepted" ||
+        !["pending", "cancelled", "rejected"].includes(o.status)) &&
       (!search ||
         o.client_name?.toLowerCase().includes(search.toLowerCase())) &&
       (!admin ||
         !filterDate ||
-        (view === "history"
+        (view === "accepted"
           ? new Date(o.window_start).toLocaleDateString("en-CA", {
               timeZone: "America/Bogota",
             }) >= filterDate
@@ -397,7 +608,7 @@ function App() {
               timeZone: "America/Bogota",
             }) === filterDate)) &&
       (!admin ||
-        view !== "history" ||
+        view !== "accepted" ||
         !historyEnd ||
         new Date(o.window_start).toLocaleDateString("en-CA", {
           timeZone: "America/Bogota",
@@ -428,6 +639,7 @@ function App() {
 
   return (
     <>
+      <PullIndicator controller={pull} />
       <PushPermissionPrompt controller={push} />
       <Navigation
         user={user}
@@ -435,12 +647,12 @@ function App() {
         online={online}
         pending={pending}
         business={business}
-        unread={notifications.filter((n) => !n.read).length}
+        unread={noticeCounts.reduce((sum, n) => sum + n.count, 0)}
+        counts={Object.fromEntries(
+          noticeCounts.map((n) => [n.module, n.count]),
+        )}
         onNotice={() => D(!drawer)}
-        onNavigate={(v) => {
-          V(v);
-          ST("");
-        }}
+        onNavigate={navigateModule}
         onLogout={() =>
           run(async () => {
             await api("/logout", { method: "POST" });
@@ -457,22 +669,24 @@ function App() {
             <small>DELIPIÑA / OPERACIÓN</small>
             <h1>
               {view === "payments"
-                ? "Cartera y cobros"
-                : view === "history"
-                  ? "Ventas"
-                  : view === "users"
-                    ? "Usuarios"
-                    : view === "catalog"
-                      ? "Catálogo"
-                      : view === "settings"
-                        ? "Ajustes"
-                        : prep
-                          ? "Preparación"
-                          : client
-                            ? "Mis pedidos"
-                            : delivery
-                              ? "Mis entregas"
-                              : "Pedidos del día"}
+                ? "Créditos de clientes"
+                : view === "analytics"
+                  ? "Inteligencia de negocio"
+                  : view === "accepted"
+                    ? "Pedidos aceptados"
+                    : view === "users"
+                      ? "Usuarios"
+                      : view === "catalog"
+                        ? "Catálogo"
+                        : view === "settings"
+                          ? "Ajustes"
+                          : prep
+                            ? "Preparación"
+                            : client
+                              ? "Mis pedidos"
+                              : delivery
+                                ? "Mis entregas"
+                                : "Pedidos del día"}
             </h1>
             <p>
               {prep
@@ -482,12 +696,16 @@ function App() {
                   : "Cada pedido, en su momento."}
             </p>
           </div>
-          {(admin || client) && view === "orders" && (
+          {(admin || client) && ["orders", "accepted"].includes(view) && (
             <Button onClick={() => M("order")}>＋ Crear pedido</Button>
           )}
-          {admin && view === "history" && (
-            <Button onClick={() => M("closeDay")}>Cerrar jornada</Button>
-          )}
+          <Button
+            className="neutral"
+            aria-label="Actualizar módulo"
+            onClick={() => pull.refresh()}
+          >
+            ↻
+          </Button>
           {prep && (
             <Button className="neutral" onClick={() => F(!full)}>
               {full ? "Minimizar" : "Maximizar"}
@@ -512,140 +730,50 @@ function App() {
             al reconectar y vuelven a validar horario, precios y cupo.
           </div>
         )}
-        {view === "settings" ||
-        (["users", "catalog"].includes(view) && admin) ? (
-          <div className="panel">
-            <h2>
-              {view === "users"
-                ? "Usuarios y acceso"
-                : view === "catalog"
-                  ? "Productos y precios"
-                  : "Ajustes"}
-            </h2>
-            {view === "users" ? (
-              <>
-                <Button onClick={() => M("user")}>Crear usuario</Button>
-                {users.map((u) => (
-                  <p key={u.id}>
-                    {u.name} · {u.email} · {roles[u.role]} ·{" "}
-                    {u.active ? "Activo" : "Deshabilitado"}
-                  </p>
-                ))}
-              </>
-            ) : view === "catalog" ? (
-              <>
-                <Button onClick={() => M("catalog")}>
-                  Administrar catálogo
-                </Button>
-                <ManagementTable
-                  kind="catalog"
-                  rows={products}
-                  onEdit={editProduct}
-                  onRemove={toggleProduct}
-                  onRestore={toggleProduct}
-                />
-              </>
-            ) : (
-              <>
-                <NotificationSettings controller={push} />
-                {admin && (
-                  <>
-                    <h2>Administración</h2>
-                    <Button
-                      className="neutral"
-                      onClick={() => M("catalogList")}
-                    >
-                      Catálogo de productos
-                    </Button>
-                    <Button onClick={() => M("users")}>
-                      Usuarios y acceso
-                    </Button>
-                    <p>{settings?.origin}</p>
-                    <p>
-                      Entregas {settings?.open}:00–{settings?.close}:00 ·
-                      Anticipación {settings?.leadHours} h
-                    </p>
-                    <Button onClick={() => M("settings")}>
-                      Configuración operativa
-                    </Button>
-                  </>
-                )}
-              </>
-            )}
-          </div>
+        {view === "settings" ? (
+          <SettingsView
+            {...{ user, push, settings, users, products, branches }}
+            onAction={M}
+            onEditUser={editUser}
+            onRemoveUser={deleteUser}
+            onRestoreUser={restoreUser}
+            onEditProduct={editProduct}
+            onToggleProduct={toggleProduct}
+            onRefresh={() => run(() => refresh())}
+          />
+        ) : view === "analytics" && admin ? (
+          <AnalyticsView money={money} labels={labels} closings={closings} />
         ) : view === "payments" ? (
           <>
-            <div className="panel">
-              <h2>Facturas externas registradas</h2>
-              {invoices.length === 0 && <p>No hay facturas registradas.</p>}
-              {invoices.map((i) => (
-                <article className="invoice" key={i.id}>
-                  <div>
-                    <strong>{i.client_name}</strong>
-                    <p>
-                      {i.number || "Número externo por vincular"} · Saldo{" "}
-                      {money(i.balance)}
-                    </p>
-                  </div>
-                  {(admin || delivery) && Number(i.balance) > 0 && (
-                    <Button
-                      onClick={() =>
-                        M({ kind: "payment", clientId: i.client_id })
-                      }
-                    >
-                      Registrar abono
-                    </Button>
-                  )}
-                  {admin && (
-                    <Button
-                      className="neutral"
-                      onClick={() => M({ kind: "invoice", invoice: i })}
-                    >
-                      Vincular factura
-                    </Button>
-                  )}
-                </article>
-              ))}
-            </div>
-            {!client && (
+            <CreditsView
+              accounts={accounts}
+              user={user}
+              payments={payments}
+              money={money}
+              onReview={(client) => M({ kind: "creditDetail", client })}
+              onPay={(client) => M({ kind: "payment", client })}
+              onVerify={(p) =>
+                run(async () => {
+                  await api("/payments/" + p.id + "/verify", {
+                    method: "POST",
+                  });
+                  await refresh();
+                })
+              }
+            />
+            {admin && (
               <div className="panel">
-                <h2>Movimientos recibidos</h2>
-                {admin && (
-                  <Button onClick={() => M({ kind: "settlement" })}>
-                    Confirmar cuadre diario
-                  </Button>
-                )}
-                {payments.map((p) => (
-                  <article className="invoice" key={p.id}>
-                    <div>
-                      {money(p.amount)} · {p.method} · {p.receiver}
-                      <p>
-                        {date(p.created_at)} ·{" "}
-                        {p.verified ? "Verificado" : "Pendiente de verificar"}
-                      </p>
-                    </div>
-                    {admin && !p.verified && (
-                      <Button
-                        onClick={() =>
-                          run(async () => {
-                            await api(`/payments/${p.id}/verify`, {
-                              method: "POST",
-                            });
-                            await refresh();
-                          })
-                        }
-                      >
-                        Verificar transferencia
-                      </Button>
-                    )}
-                  </article>
-                ))}
-                <h3>Cuadres confirmados</h3>
-                {settlements.map((s) => (
-                  <p key={s.id}>
-                    {s.day.slice(0, 10)} · {s.courier_name} · efectivo recibido{" "}
-                    {money(s.received_cash)} · esperado {money(s.expected_cash)}{" "}
-                    · transferencias verificadas {money(s.verified_transfers)}
+                <h2>Cuadre de mensajeros</h2>
+                <Button
+                  className="neutral"
+                  onClick={() => M({ kind: "settlement" })}
+                >
+                  Confirmar cuadre diario
+                </Button>
+                {settlements.map((r) => (
+                  <p key={r.id}>
+                    {r.day.slice(0, 10)} · {r.courier_name} · recibido{" "}
+                    {money(r.received_cash)} · esperado {money(r.expected_cash)}
                   </p>
                 ))}
               </div>
@@ -653,6 +781,21 @@ function App() {
           </>
         ) : (
           <>
+            {admin && (
+              <Tabs
+                value={view === "accepted" ? "accepted" : "orders"}
+                onChange={(_, value) => {
+                  V(value);
+                  ST("");
+                  FD(value === "accepted" ? "" : business?.day || "");
+                  HE("");
+                }}
+                aria-label="Vista de pedidos"
+              >
+                <Tab label="Operación del día" value="orders" />
+                <Tab label="Todos los aceptados" value="accepted" />
+              </Tabs>
+            )}
             {!client && !prep && (
               <div className="stats">
                 {[
@@ -715,7 +858,7 @@ function App() {
                     value={filterDate}
                     onChange={(e) => FD(e.target.value)}
                   />
-                  {view === "history" && (
+                  {view === "accepted" && (
                     <DateInput
                       label="Hasta fecha"
                       value={historyEnd}
@@ -752,191 +895,16 @@ function App() {
               </Select>
               <span>{selected.length} pedidos</span>
             </div>
-            <div className={prep ? "orders compact" : "orders"}>
-              {selected.map((o) => {
-                const [color, urg] = urgency(o);
-                return (
-                  <article className="order" key={o.id}>
-                    <div className="orderhead">
-                      <span className={"status " + o.status}>
-                        {labels[o.status]}
-                      </span>
-                      <small>#{o.id.slice(0, 6)}</small>
-                      <span className={"urgency " + color}>
-                        {!["delivered", "cancelled", "rejected"].includes(
-                          o.status,
-                        ) && urg}
-                      </span>
-                    </div>
-                    <h2>
-                      {prep ? "Pedido #" + o.id.slice(0, 6) : o.client_name}
-                    </h2>
-                    {!prep && (
-                      <p className="address">
-                        {o.address} · {o.city}
-                      </p>
-                    )}
-                    <div className="window">
-                      ◷ {date(o.window_start)} —{" "}
-                      {new Date(o.window_end).toLocaleTimeString("es-CO", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                    <ul className="items">
-                      {o.items?.map((i, j) => (
-                        <li key={j}>
-                          <strong>{Number(i.quantity)}</strong>
-                          <span>{i.name}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {o.notes && <p className="notes">{o.notes}</p>}
-                    {!prep && (
-                      <div className="total">
-                        <span>
-                          {o.credit ? "A crédito" : "Pago contra entrega"}
-                        </span>
-                        <strong>{money(o.total)}</strong>
-                      </div>
-                    )}
-                    {o.cancel_requested && (
-                      <p className="alert">
-                        Cancelación solicitada · pendiente de decisión
-                      </p>
-                    )}
-                    {o.reason && (
-                      <p className="notes">Observación: {o.reason}</p>
-                    )}
-                    <div className="actions">
-                      {admin && o.status === "pending" && (
-                        <>
-                          <Button
-                            aria-label="Aceptar pedido"
-                            onClick={() => action(o, "confirm")}
-                          >
-                            ✓ Aceptar
-                          </Button>
-                          <Button
-                            className="danger"
-                            onClick={() => M({ kind: "reject", order: o })}
-                          >
-                            ✕ Rechazar
-                          </Button>
-                        </>
-                      )}
-                      {(admin || prep) && o.status === "confirmed" && (
-                        <Button onClick={() => action(o, "prepare")}>
-                          Iniciar preparación
-                        </Button>
-                      )}
-                      {(admin || prep) && o.status === "preparing" && (
-                        <Button onClick={() => action(o, "ready")}>
-                          Marcar listo
-                        </Button>
-                      )}
-                      {delivery &&
-                        !o.courier_id &&
-                        ["confirmed", "preparing", "ready"].includes(
-                          o.status,
-                        ) && (
-                          <Button onClick={() => action(o, "take")}>
-                            Tomar pedido
-                          </Button>
-                        )}
-                      {(admin || (delivery && o.courier_id === user.id)) &&
-                        o.status === "ready" && (
-                          <Button onClick={() => action(o, "depart")}>
-                            Iniciar recorrido
-                          </Button>
-                        )}
-                      {(admin || (delivery && o.courier_id === user.id)) &&
-                        o.status === "enroute" && (
-                          <>
-                            <Button onClick={() => action(o, "deliver")}>
-                              Confirmar entrega
-                            </Button>
-                            <Button
-                              className="neutral"
-                              onClick={() => M({ kind: "failed", order: o })}
-                            >
-                              Entrega fallida
-                            </Button>
-                          </>
-                        )}
-                      {admin &&
-                        ["confirmed", "preparing", "ready", "enroute"].includes(
-                          o.status,
-                        ) && (
-                          <Button
-                            className="neutral"
-                            onClick={() => M({ kind: "assign", order: o })}
-                          >
-                            Asignar mensajero
-                          </Button>
-                        )}
-                      {(admin || delivery) &&
-                        ![
-                          "pending",
-                          "rejected",
-                          "cancelled",
-                          "delivered",
-                        ].includes(o.status) && (
-                          <Button
-                            className="neutral"
-                            onClick={() => M({ kind: "map", order: o })}
-                          >
-                            Ver recorrido en mapa
-                          </Button>
-                        )}
-                      {client && o.status === "enroute" && (
-                        <Button
-                          className="neutral"
-                          onClick={() => M({ kind: "tracking", order: o })}
-                        >
-                          Seguir entrega
-                        </Button>
-                      )}
-                      {client &&
-                        !o.cancel_requested &&
-                        !["delivered", "rejected", "cancelled"].includes(
-                          o.status,
-                        ) && (
-                          <Button
-                            className="neutral"
-                            onClick={() => action(o, "request_cancel")}
-                          >
-                            Solicitar cancelación
-                          </Button>
-                        )}
-                      {admin &&
-                        o.cancel_requested &&
-                        !["delivered", "rejected", "cancelled"].includes(
-                          o.status,
-                        ) && (
-                          <>
-                            <Button
-                              className="danger"
-                              onClick={() => action(o, "cancel")}
-                            >
-                              Aprobar cancelación
-                            </Button>
-                            <Button
-                              className="neutral"
-                              onClick={() => action(o, "deny_cancel")}
-                            >
-                              Rechazar cancelación
-                            </Button>
-                          </>
-                        )}
-                    </div>
-                    {o.delivered_at && (
-                      <small>Entrega registrada: {date(o.delivered_at)}</small>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
+            <OrderCards
+              orders={selected}
+              userRole={user.role}
+              actionsFor={actionsFor}
+              urgency={urgency}
+              labels={labels}
+              money={money}
+              date={date}
+              onSelect={(o) => M({ kind: "orderDetail", order: o })}
+            />
             {!selected.length && (
               <div className="empty">
                 <span>✧</span>
@@ -945,9 +913,6 @@ function App() {
               </div>
             )}
           </>
-        )}
-        {admin && view === "history" && (
-          <DayClosings rows={closings} money={money} />
         )}
         <footer>
           Plaza San Francisco · Bucaramanga{" "}
@@ -981,16 +946,22 @@ function App() {
           >
             Marcar leídas
           </Button>
-          {notifications.map((n) => (
-            <article className={n.read ? "" : "unread"} key={n.id}>
-              <strong>{n.title}</strong>
-              <p>{date(n.created_at)}</p>
-            </article>
-          ))}
+          <NotificationList
+            rows={notifications}
+            onSelect={openNotice}
+            labels={labels}
+            date={date}
+          />
         </NoticeDrawer>
       )}
       {modal && (
         <Modal
+          wide={
+            modal === "users" ||
+            modal === "catalogList" ||
+            modal === "order" ||
+            modal.kind === "creditDetail"
+          }
           onClose={() => M(null)}
           title={
             typeof modal === "string"
@@ -1019,6 +990,9 @@ function App() {
                   editUser: "Editar usuario",
                   deleteUser: "Eliminar usuario",
                   editProduct: "Editar producto",
+                  orderDetail: "Detalle del pedido",
+                  creditDetail: "Pedidos y saldo del cliente",
+                  reschedule: "Reprogramar entrega",
                 }[modal.kind]
           }
         >
@@ -1116,7 +1090,7 @@ function App() {
                       restore: !!modal.user.deleted_at && b.active === "on",
                     },
                   });
-                  M("users");
+                  M(null);
                   await refresh();
                 })
               }
@@ -1175,7 +1149,7 @@ function App() {
                 onClick={() =>
                   run(async () => {
                     await api("/users/" + modal.user.id, { method: "DELETE" });
-                    M("users");
+                    M(null);
                     await refresh();
                   })
                 }
@@ -1185,73 +1159,13 @@ function App() {
             </>
           )}
           {modal.kind === "editProduct" && (
-            <Form
-              onSubmit={(b) =>
-                run(async () => {
-                  await api("/products/" + modal.product.id, {
-                    method: "PATCH",
-                    body: {
-                      ...b,
-                      price: Math.round(Number(b.price) * 100),
-                      active: b.active === "on",
-                    },
-                  });
-                  M("catalogList");
-                  await refresh();
-                })
-              }
-            >
-              <Field
-                name="name"
-                label="Producto / corte"
-                defaultValue={modal.product.name}
-              />
-              <Field
-                name="presentation"
-                label="Presentación"
-                defaultValue={modal.product.presentation}
-              />
-              <Select
-                name="unit"
-                label="Venta por"
-                defaultValue={modal.product.unit}
-              >
-                <option value="kg">Kilogramos (decimales)</option>
-                <option value="pack">Empaque de peso fijo (entero)</option>
-              </Select>
-              <Field
-                name="price"
-                label="Precio COP"
-                type="number"
-                min="0"
-                defaultValue={Number(modal.product.price) / 100}
-              />
-              <label className="check">
-                <input
-                  type="checkbox"
-                  name="active"
-                  defaultChecked={modal.product.active}
-                />{" "}
-                Producto disponible
-              </label>
-              <Select
-                name="image_key"
-                label="Imagen de la presentación"
-                defaultValue={modal.product.image_key || ""}
-              >
-                <option value="">Sin imagen específica</option>
-                {productImages.map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </Select>{" "}
-              <p>
-                Los pedidos ya registrados conservan sus precios y
-                presentaciones.
-              </p>
-              <Button type="submit">Guardar producto</Button>
-            </Form>
+            <ProductEditor
+              product={modal.product}
+              onSaved={async () => {
+                M(null);
+                await refresh();
+              }}
+            />
           )}
           {modal === "user" && (
             <Form
@@ -1321,91 +1235,12 @@ function App() {
             </Form>
           )}
           {modal === "catalog" && (
-            <>
-              {config?.devAuth && (
-                <p>
-                  Precios locales ficticios. Configura los valores comerciales
-                  antes de operar.
-                </p>
-              )}
-              <Form
-                onSubmit={(b) =>
-                  run(async () => {
-                    await api("/products", {
-                      method: "POST",
-                      body: { ...b, price: Math.round(Number(b.price) * 100) },
-                    });
-                    M("catalogList");
-                    await refresh();
-                  })
-                }
-              >
-                <Field name="name" label="Producto / corte" />
-                <Field name="presentation" label="Presentación" />
-                <Select label="Unidad" name="unit">
-                  <option value="kg">Kilogramos (decimales)</option>
-                  <option value="pack">Empaque de peso fijo (entero)</option>
-                </Select>
-                <Select
-                  name="image_key"
-                  label="Imagen de la presentación"
-                  defaultValue=""
-                >
-                  <option value="">Sin imagen específica</option>
-                  {productImages.map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-                <Field name="price" label="Precio COP" type="number" min="0" />
-                <Button type="submit">Agregar producto</Button>
-              </Form>
-            </>
-          )}
-          {modal === "settings" && settings && (
-            <Form
-              onSubmit={(b) =>
-                run(async () => {
-                  await api("/settings", {
-                    method: "PUT",
-                    body: {
-                      ...b,
-                      open: Number(b.open),
-                      close: Number(b.close),
-                      leadHours: Number(b.leadHours),
-                    },
-                  });
-                  M(null);
-                  await refresh();
-                })
-              }
-            >
-              <Field
-                name="origin"
-                label="Origen"
-                defaultValue={settings.origin}
-              />
-              <Field
-                name="open"
-                label="Hora apertura"
-                type="number"
-                defaultValue={settings.open}
-              />
-              <Field
-                name="close"
-                label="Hora cierre"
-                type="number"
-                defaultValue={settings.close}
-              />
-              <Field
-                name="leadHours"
-                label="Anticipación (horas)"
-                type="number"
-                defaultValue={settings.leadHours}
-              />
-              <Button type="submit">Guardar configuración</Button>
-            </Form>
+            <ProductEditor
+              onSaved={async () => {
+                M(null);
+                await refresh();
+              }}
+            />
           )}
           {modal === "adminActions" && (
             <div className="stack">
@@ -1617,22 +1452,66 @@ function App() {
             </>
           )}
           {modal.kind === "payment" && (
-            <PaymentForm
-              invoices={invoices.filter(
-                (i) => i.client_id === modal.clientId && Number(i.balance) > 0,
+            <GeneralPaymentForm
+              client={modal.client}
+              business={business}
+              money={money}
+              onSaved={async (r) => {
+                M(null);
+                S("Abono registrado en jornada " + r.businessDay);
+                await refresh();
+              }}
+            />
+          )}
+          {modal.kind === "creditDetail" && (
+            <CreditDetails
+              client={
+                accounts.find((a) => a.id === modal.client.id) || modal.client
+              }
+              money={money}
+              canPay={admin || delivery}
+              onPay={(client) => M({ kind: "payment", client })}
+            />
+          )}
+          {modal.kind === "orderDetail" && (
+            <OrderDetails
+              order={orders.find((o) => o.id === modal.order.id) || modal.order}
+              userRole={user.role}
+              actions={actionsFor(
+                orders.find((o) => o.id === modal.order.id) || modal.order,
               )}
+              labels={labels}
+              money={money}
+              date={date}
+            />
+          )}
+          {modal.kind === "reschedule" && (
+            <Form
               onSubmit={(b) =>
                 run(async () => {
-                  await api("/payments", {
+                  await api("/orders/" + modal.order.id + "/action", {
                     method: "POST",
-                    headers: { "Idempotency-Key": crypto.randomUUID() },
-                    body: { ...b, clientId: modal.clientId },
+                    body: { action: "reschedule", start: b.start, end: b.end },
                   });
                   M(null);
                   await refresh();
                 })
               }
-            />
+            >
+              <Field
+                name="start"
+                label="Nueva entrega desde"
+                type="datetime-local"
+                defaultValue={suggestedDelivery(settings, business).start}
+              />
+              <Field
+                name="end"
+                label="Hasta"
+                type="datetime-local"
+                defaultValue={suggestedDelivery(settings, business).end}
+              />
+              <Button type="submit">Guardar reprogramación</Button>
+            </Form>
           )}
           {modal.kind === "invoice" && (
             <Form
@@ -1711,6 +1590,20 @@ function OrderForm({
     ),
     [quant, Q] = useState({});
   const [suggested] = useState(() => suggestedDelivery(settings, business));
+  const [priced, PR] = useState(products);
+  useEffect(() => {
+    let valid = true;
+    if (admin && c)
+      cached("/products?clientId=" + c)
+        .then((p) => {
+          if (valid) PR(p);
+        })
+        .catch(() => {});
+    else PR(products);
+    return () => {
+      valid = false;
+    };
+  }, [c, products]);
   return (
     <Form
       onSubmit={(b) =>
@@ -1768,7 +1661,7 @@ function OrderForm({
         Hora de Colombia · mínimo 2 horas de anticipación según configuración.
       </p>
       <ProductChoices
-        products={products}
+        products={priced}
         quantities={quant}
         onQuantity={(id, value) => Q({ ...quant, [id]: value })}
         money={money}
@@ -1789,47 +1682,6 @@ function OrderForm({
       <Button type="submit">
         Confirmar pedido{admin ? "" : " para revisión"}
       </Button>
-    </Form>
-  );
-}
-function PaymentForm({ invoices, onSubmit }) {
-  return (
-    <Form
-      onSubmit={(b) =>
-        onSubmit({
-          method: b.method,
-          amount: Math.round(Number(b.amount) * 100),
-          allocations: invoices
-            .filter((i) => Number(b[i.id]) > 0)
-            .map((i) => ({
-              invoiceId: i.id,
-              amount: Math.round(Number(b[i.id]) * 100),
-            })),
-        })
-      }
-    >
-      <Field label="Total recibido COP" name="amount" type="number" min="1" />
-      <Select label="Medio" name="method">
-        <option value="cash">Efectivo</option>
-        <option value="nequi">Nequi · pendiente de verificación</option>
-        <option value="bancolombia">
-          Transferencia Bancolombia · pendiente de verificación
-        </option>
-      </Select>
-      <h3>Distribución por factura</h3>
-      {invoices.map((i) => (
-        <Field
-          key={i.id}
-          name={i.id}
-          label={
-            (i.number || i.id.slice(0, 6)) + " · saldo " + money(i.balance)
-          }
-          type="number"
-          min="0"
-          defaultValue="0"
-        />
-      ))}
-      <Button type="submit">Registrar abono</Button>
     </Form>
   );
 }

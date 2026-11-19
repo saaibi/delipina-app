@@ -316,44 +316,222 @@ test("Catálogo editable conserva referencia visual y permisos", async () => {
   assert.equal(updated.body.image_key, "picada");
   assert.equal(updated.body.active, false);
 });
-test("Cierre diario conserva historia y permite pedidos para una jornada futura", async () => {
-  const day = (await call("admin", "get", "/business-day")).body.day;
-  assert.match(day, /^\d{4}-\d{2}-\d{2}$/);
+test("Cierre automático conserva historia, saldos y pedidos futuros", async () => {
+  const current = (await call("admin", "get", "/business-day")).body;
+  const day = (
+    await pool.query("SELECT to_char(current_date-1,'YYYY-MM-DD') AS day")
+  ).rows[0].day;
+  const oldBalance = (
+    await pool.query("SELECT sum(balance) AS n FROM invoices")
+  ).rows[0].n;
+  await pool.query(
+    "INSERT INTO business_days(day,cutoff_at) VALUES($1,now()-interval '1 hour') ON CONFLICT(day) DO UPDATE SET cutoff_at=excluded.cutoff_at,closed_at=NULL",
+    [day],
+  );
+  const closed = await call("admin", "get", "/business-days");
+  assert.equal(closed.status, 200);
+  const row = closed.body.find((r) => r.day === day);
+  assert.equal(row.automatic, true);
+  assert.ok(row.closed_at);
+  const repeat = await call("admin", "get", "/business-days");
+  assert.deepEqual(repeat.body.find((r) => r.day === day).summary, row.summary);
   assert.equal(
-    (await call("client", "post", "/business-day/close", { day })).status,
+    (await pool.query("SELECT sum(balance) AS n FROM invoices")).rows[0].n,
+    oldBalance,
+  );
+  assert.equal(
+    (await call("client", "post", "/orders", body, randomUUID())).status,
+    200,
+  );
+  assert.equal(
+    (await call("client", "post", "/business-day/close", { day: current.day }))
+      .status,
     403,
   );
-  const oldBalance = (
-    await pool.query("SELECT COALESCE(sum(balance),0) AS n FROM invoices")
-  ).rows[0].n;
+});
+test("Avisos actualizan el mismo pedido y respetan lectura por revisión y propietario", async () => {
+  const created = await call("client", "post", "/orders", body, randomUUID());
+  assert.equal(created.status, 200);
+  const notices = await call("admin", "get", "/notifications");
+  const n = notices.body.find((n) => n.order_id === created.body.id);
+  assert.ok(n);
+  assert.equal(
+    (
+      await call("admin", "post", "/notifications/" + n.id + "/read", {
+        revision: n.revision,
+      })
+    ).body.read,
+    true,
+  );
+  assert.equal(
+    (await call("client", "post", "/notifications/" + n.id + "/read", {}))
+      .status,
+    404,
+  );
+  assert.equal(
+    (
+      await call("admin", "post", "/orders/" + created.body.id + "/action", {
+        action: "confirm",
+      })
+    ).status,
+    200,
+  );
+  const updates = (await call("admin", "get", "/notifications")).body.filter(
+    (n) => n.order_id === created.body.id,
+  );
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].id, n.id);
+  assert.equal(updates[0].status, "confirmed");
+  assert.equal(updates[0].read, false);
+  assert.equal(
+    (
+      await call("admin", "post", "/notifications/" + n.id + "/read", {
+        revision: n.revision,
+      })
+    ).body.read,
+    false,
+  );
+  const counts = (await call("admin", "get", "/notifications/counts")).body;
+  assert.ok(counts.find((n) => n.module === "orders").count > 0);
+  assert.equal(
+    (await call("client", "get", "/orders/" + created.body.id)).status,
+    200,
+  );
+  assert.equal((await call("client", "get", "/analytics")).status, 403);
+  assert.equal((await call("admin", "get", "/analytics")).status, 200);
+});
+test("Abono general distribuye a facturas antiguas y conserva idempotencia", async () => {
+  const balance = Number(
+    (
+      await pool.query(
+        "SELECT sum(balance) AS n FROM invoices WHERE client_id=$1",
+        [users.client.id],
+      )
+    ).rows[0].n,
+  );
+  assert.ok(balance > 0);
+  const key = randomUUID(),
+    payload = { clientId: users.client.id, method: "cash", amount: 1 };
+  const paid = await call("admin", "post", "/payments", payload, key);
+  assert.equal(paid.status, 200, JSON.stringify(paid.body));
+  assert.equal(paid.body.appliedOrders, 1);
+  const replay = await call("admin", "post", "/payments", payload, key);
+  assert.equal(replay.body.id, paid.body.id);
+  assert.equal(
+    Number(
+      (
+        await pool.query(
+          "SELECT sum(balance) AS n FROM invoices WHERE client_id=$1",
+          [users.client.id],
+        )
+      ).rows[0].n,
+    ),
+    balance - 1,
+  );
+  const over = await call(
+    "admin",
+    "post",
+    "/payments",
+    { ...payload, amount: balance + 1 },
+    randomUUID(),
+  );
+  assert.equal(over.status, 409);
+});
+test("Horario semanal y anticipación se validan en el servidor", async () => {
+  const previous = (await call("admin", "get", "/settings")).body;
+  const week = Object.fromEntries(
+    Array.from({ length: 7 }, (_, i) => [
+      i + 1,
+      { enabled: true, open: "06:00", close: "18:00" },
+    ]),
+  );
+  const weekday = Number(
+    (
+      await pool.query(
+        "SELECT EXTRACT(ISODOW FROM $1::timestamptz AT TIME ZONE 'America/Bogota') AS n",
+        [body.start],
+      )
+    ).rows[0].n,
+  );
   try {
-    const closed = await call("admin", "post", "/business-day/close", { day });
-    assert.equal(closed.status, 200, JSON.stringify(closed.body));
+    week[weekday] = { enabled: false, open: "06:00", close: "18:00" };
     assert.equal(
-      (await call("admin", "get", "/business-day")).body.reason,
-      "daily_close",
+      (
+        await call("admin", "put", "/settings", {
+          ...previous,
+          weeklySchedule: week,
+        })
+      ).status,
+      200,
     );
-    const future = await call("client", "post", "/orders", body, randomUUID());
-    assert.equal(future.status, 200);
-    const rejectedPayment = await call(
-      "courier",
-      "post",
-      "/payments",
-      { clientId: users.client.id, method: "cash", amount: 1, allocations: [] },
-      randomUUID(),
-    );
-    assert.equal(rejectedPayment.status, 409);
     assert.equal(
-      (await pool.query("SELECT COALESCE(sum(balance),0) AS n FROM invoices"))
-        .rows[0].n,
-      oldBalance,
+      (await call("client", "post", "/orders", body, randomUUID())).status,
+      400,
+    );
+    week[weekday].enabled = true;
+    assert.equal(
+      (
+        await call("admin", "put", "/settings", {
+          ...previous,
+          leadHours: 200,
+          weeklySchedule: week,
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await call("client", "post", "/orders", body, randomUUID())).status,
+      400,
     );
   } finally {
-    await pool.query(
-      "UPDATE business_days SET closed_at=NULL,closed_by=NULL,summary=NULL WHERE day=$1",
-      [day],
-    );
+    await call("admin", "put", "/settings", previous);
   }
+});
+test("Fotos de productos genéricos se guardan con permisos y tipo de imagen", async () => {
+  const product = await call("admin", "post", "/products", {
+    name: "Panela",
+    presentation: "500 g",
+    unit: "pack",
+    price: 300000,
+  });
+  assert.equal(product.status, 200);
+  const data =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jSXkAAAAASUVORK5CYII=";
+  assert.equal(
+    (
+      await call("client", "post", "/products/" + product.body.id + "/photo", {
+        data,
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call("admin", "post", "/products/" + product.body.id + "/photo", {
+        data: "text",
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await call("admin", "post", "/products/" + product.body.id + "/photo", {
+        data,
+      })
+    ).status,
+    200,
+  );
+  const image = await call(
+    "client",
+    "get",
+    "/products/" + product.body.id + "/photo",
+  );
+  assert.equal(image.status, 200);
+  assert.match(image.headers["content-type"], /image\/png/);
+  const listed = (await call("client", "get", "/products")).body.find(
+    (p) => p.id === product.body.id,
+  );
+  assert.equal(listed.has_image, true);
 });
 test("Socket exige sesión y solo transmite invalidaciones sin datos privados", async () => {
   const { createRealtime } = await import("../dist-server/realtime.js");

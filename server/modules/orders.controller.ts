@@ -1,4 +1,8 @@
-import { assertBusinessDateOpen } from "../business-day.js";
+import {
+  assertBusinessDateOpen,
+  validateDeliveryWindow,
+  operatingDate,
+} from "../business-day.js";
 import {
   Controller,
   Get,
@@ -60,6 +64,14 @@ export class OrdersController {
       return o;
     });
   }
+  @Get("orders/:id")
+  @HttpCode(200)
+  async getOrder(@Req() req: any, @Res({ passthrough: true }) res: Response) {
+    const orders = await this.getOrders(req, res);
+    const order = orders.find((o) => o.id === req.params.id);
+    if (!order) fail(404, "Pedido no disponible");
+    return order;
+  }
   @Post("orders")
   @HttpCode(200)
   async postOrders(@Req() req: any, @Res({ passthrough: true }) res: Response) {
@@ -96,32 +108,7 @@ export class OrdersController {
         ])
       ).rows[0];
       if (!branch) fail(400, "Sucursal inválida");
-      const cfg = (await c.query("SELECT data FROM settings WHERE id=1"))
-        .rows[0].data;
-      const start = new Date(b.start),
-        end = new Date(b.end);
-      const hour = (d) =>
-        Number(
-          new Intl.DateTimeFormat("en-GB", {
-            timeZone: "America/Bogota",
-            hour: "2-digit",
-            hourCycle: "h23",
-          }).format(d),
-        ) +
-        d.getUTCMinutes() / 60;
-      const day = (d) =>
-        d.toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
-      if (
-        !Number.isFinite(+start) ||
-        !Number.isFinite(+end) ||
-        +start < Date.now() + cfg.leadHours * 3600000 ||
-        end <= start ||
-        day(start) !== day(end) ||
-        hour(start) < cfg.open ||
-        hour(end) > cfg.close
-      )
-        fail(400, "Rango fuera del horario o anticipación");
-      await assertBusinessDateOpen(c, day(start));
+      const { start, end } = await validateDeliveryWindow(c, b.start, b.end);
       if (!Array.isArray(b.items) || !b.items.length || b.items.length > 100)
         fail(400, "Agrega productos");
       let total = 0;
@@ -185,8 +172,8 @@ export class OrdersController {
         ]);
       if (status === "confirmed") await createInvoice(c, o);
       await c.query(
-        "INSERT INTO audit(order_id,actor_id,action) VALUES($1,$2,$3)",
-        [o.id, u.id, "created"],
+        "INSERT INTO audit(order_id,actor_id,action,next_status) VALUES($1,$2,$3,$4)",
+        [o.id, u.id, "created", status],
       );
       await notify(c, o, "Nuevo pedido", ["admin", "courier", "preparation"]);
       await c.query("INSERT INTO idempotency VALUES($1,$2,$3,$4)", [
@@ -243,6 +230,20 @@ export class OrdersController {
         await c.query("UPDATE orders SET courier_id=$2 WHERE id=$1", [
           o.id,
           b.courierId,
+        ]);
+      } else if (b.action === "reschedule") {
+        if (!admin || ["delivered", "cancelled", "rejected"].includes(status))
+          fail(403, "No se puede reprogramar");
+        const next = await validateDeliveryWindow(c, b.start, b.end);
+        status = o.status === "pending" ? "pending" : "confirmed";
+        await c.query(
+          "UPDATE orders SET window_start=$2,window_end=$3,status=$4,courier_id=NULL,reason=NULL WHERE id=$1",
+          [o.id, next.start, next.end, status],
+        );
+        await notify(c, o, "Pedido reprogramado", [
+          "client",
+          "courier",
+          "preparation",
         ]);
       } else if (b.action === "request_cancel") {
         if (
@@ -343,8 +344,13 @@ export class OrdersController {
             );
           await c.query("DELETE FROM invoices WHERE order_id=$1", [o.id]);
         }
+        if (status === "delivered")
+          await c.query("UPDATE orders SET sale_day=$2 WHERE id=$1", [
+            o.id,
+            await operatingDate(c),
+          ]);
         await c.query(
-          "UPDATE orders SET status=$2,reason=$3,delivered_by=CASE WHEN $2='delivered' THEN courier_id ELSE delivered_by END,delivered_at=CASE WHEN $2='delivered' THEN now() ELSE delivered_at END WHERE id=$1",
+          "UPDATE orders SET status=$2,reason=$3,delivered_by=CASE WHEN $2='delivered' THEN courier_id ELSE delivered_by END,delivered_at=CASE WHEN $2='delivered' THEN clock_timestamp() ELSE delivered_at END WHERE id=$1",
           [o.id, status, b.reason || null],
         );
         await notify(
@@ -357,8 +363,8 @@ export class OrdersController {
         );
       }
       await c.query(
-        "INSERT INTO audit(order_id,actor_id,action) VALUES($1,$2,$3)",
-        [o.id, u.id, b.action],
+        "INSERT INTO audit(order_id,actor_id,action,next_status) VALUES($1,$2,$3,$4)",
+        [o.id, u.id, b.action, status],
       );
       return { ok: true };
     });

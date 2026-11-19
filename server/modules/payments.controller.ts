@@ -1,4 +1,5 @@
-import { assertBusinessDateOpen } from "../business-day.js";
+import { notifyEvent } from "../notification-store.js";
+import { assertBusinessDateOpen, operatingDate } from "../business-day.js";
 import {
   Controller,
   Get,
@@ -82,33 +83,63 @@ export class PaymentsController {
         if (prev.request_hash !== hash) fail(409, "Clave reutilizada");
         return prev.response;
       }
-      await assertBusinessDateOpen(c);
+      let receiptDay: string;
       if (
         !["cash", "nequi", "bancolombia"].includes(b.method) ||
-        !Array.isArray(b.allocations) ||
+        !cents(b.amount)
+      )
+        fail(400, "Medio o importe inválido");
+      const owner = (
+        await c.query(
+          "SELECT id FROM users WHERE id=$1 AND role='client' FOR UPDATE",
+          [b.clientId],
+        )
+      ).rows[0];
+      if (!owner) fail(400, "Cliente inválido");
+      receiptDay = await operatingDate(c);
+      if (!Array.isArray(b.allocations)) {
+        const invoices = (
+          await c.query(
+            "SELECT i.*,COALESCE((SELECT sum(a.amount) FROM allocations a JOIN payments p ON p.id=a.payment_id WHERE a.invoice_id=i.id AND NOT p.verified),0) AS pending FROM invoices i JOIN orders o ON o.id=i.order_id WHERE i.client_id=$1 AND i.balance>0 ORDER BY o.created_at,i.id FOR UPDATE OF i",
+            [b.clientId],
+          )
+        ).rows;
+        let remaining = b.amount;
+        b.allocations = [];
+        for (const inv of invoices) {
+          const amount = Math.min(
+            remaining,
+            Number(inv.balance) - Number(inv.pending),
+          );
+          if (amount > 0) {
+            b.allocations.push({ invoiceId: inv.id, amount });
+            remaining -= amount;
+          }
+          if (!remaining) break;
+        }
+        if (remaining > 0)
+          fail(409, "El abono supera el saldo disponible del cliente");
+      }
+      if (
         !b.allocations.length ||
         new Set(b.allocations.map((a) => a.invoiceId)).size !==
-          b.allocations.length
-      )
-        fail(400, "Distribución inválida");
-      cents(b.amount);
-      if (
-        b.amount <= 0 ||
-        b.allocations.reduce((s, a) => s + cents(a.amount), 0) !== b.amount
+          b.allocations.length ||
+        b.allocations.reduce((sum, a) => sum + cents(a.amount), 0) !== b.amount
       )
         fail(400, "El abono debe coincidir con lo recibido");
-      await c.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [
-        b.clientId,
-      ]);
       const id = randomUUID();
-      await c.query("INSERT INTO payments VALUES($1,$2,$3,$4,$5,$6,now())", [
-        id,
-        b.clientId,
-        u.id,
-        b.method,
-        b.amount,
-        b.method === "cash",
-      ]);
+      await c.query(
+        "INSERT INTO payments(id,client_id,receiver_id,method,amount,verified,created_at,business_day,verified_at,verified_day) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp(),$7,CASE WHEN $6 THEN clock_timestamp() END,CASE WHEN $6 THEN $7::date END)",
+        [
+          id,
+          b.clientId,
+          u.id,
+          b.method,
+          b.amount,
+          b.method === "cash",
+          receiptDay,
+        ],
+      );
       for (const a of [...b.allocations].sort((a, b) =>
         a.invoiceId.localeCompare(b.invoiceId),
       )) {
@@ -135,7 +166,21 @@ export class PaymentsController {
         ]);
         if (b.method === "cash") await applyAllocation(c, inv, a.amount);
       }
-      const r = { id };
+      await notifyEvent(c, ["admin"], [b.clientId, u.id], {
+        key: "payment:" + id,
+        module: "credits",
+        targetId: b.clientId,
+        title:
+          b.method === "cash"
+            ? "Abono recibido"
+            : "Transferencia pendiente de verificación",
+        status: b.method === "cash" ? "verified" : "pending",
+      });
+      const r = {
+        id,
+        businessDay: receiptDay,
+        appliedOrders: b.allocations.length,
+      };
       await c.query("INSERT INTO idempotency VALUES($1,$2,$3,$4)", [
         u.id,
         key,
@@ -230,7 +275,17 @@ export class PaymentsController {
           fail(409, "Saldo insuficiente");
         await applyAllocation(c, inv, a.amount);
       }
-      await c.query("UPDATE payments SET verified=true WHERE id=$1", [p.id]);
+      await c.query(
+        "UPDATE payments SET verified=true,verified_at=clock_timestamp(),verified_day=$2 WHERE id=$1",
+        [p.id, await operatingDate(c)],
+      );
+      await notifyEvent(c, ["admin"], [p.client_id, p.receiver_id], {
+        key: "payment:" + p.id,
+        module: "credits",
+        targetId: p.client_id,
+        title: "Transferencia verificada · abono aplicado",
+        status: "verified",
+      });
     });
     await broadcast();
     return { ok: true };
@@ -265,7 +320,7 @@ export class PaymentsController {
       ]);
       const sums = (
         await c.query(
-          "SELECT COALESCE(sum(amount) FILTER(WHERE method='cash'),0) AS cash,COALESCE(sum(amount) FILTER(WHERE method<>'cash' AND verified),0) AS transfers FROM payments WHERE receiver_id=$1 AND (created_at AT TIME ZONE 'America/Bogota')::date=$2",
+          "SELECT COALESCE(sum(amount) FILTER(WHERE method='cash' AND business_day=$2),0) AS cash,COALESCE(sum(amount) FILTER(WHERE method<>'cash' AND verified AND verified_day=$2),0) AS transfers FROM payments WHERE receiver_id=$1",
           [b.courierId, b.day],
         )
       ).rows[0];

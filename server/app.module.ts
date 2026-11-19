@@ -1,3 +1,5 @@
+import { CreditsModule } from "./modules/credits.module.js";
+import { AnalyticsModule } from "./modules/analytics.module.js";
 import { BusinessDayModule } from "./modules/business-day.module.js";
 import { Module } from "@nestjs/common";
 import { AuthModule } from "./modules/auth.module.js";
@@ -9,6 +11,8 @@ import { PaymentsModule } from "./modules/payments.module.js";
 import { NotificationsModule } from "./modules/notifications.module.js";
 @Module({
   imports: [
+    CreditsModule,
+    AnalyticsModule,
     BusinessDayModule,
     AuthModule,
     CatalogModule,
