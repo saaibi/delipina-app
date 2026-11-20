@@ -2,7 +2,6 @@ import dayjs from "dayjs";
 import React, { useEffect, useState } from "react";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
-import Checkbox from "@mui/material/Checkbox";
 import Alert from "@mui/material/Alert";
 import { Field, Select, Button, Modal } from "./ui";
 import { ProductChoices } from "./products";
@@ -61,7 +60,7 @@ export function RecurrenceEditor({
                   <FormControlLabel
                     key={day}
                     control={
-                      <Checkbox
+                      <Switch
                         checked={v.weekdays.includes(i + 1)}
                         onChange={(_, v2) =>
                           set({

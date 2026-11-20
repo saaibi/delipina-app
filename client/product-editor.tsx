@@ -1,11 +1,10 @@
 import { FeedbackSnackbar } from "./feedback";
 import React, { useEffect, useState, useRef } from "react";
 import Alert from "@mui/material/Alert";
-import Checkbox from "@mui/material/Checkbox";
+import Switch from "@mui/material/Switch";
 import IconButton from "@mui/material/IconButton";
 import DeleteOutline from "@mui/icons-material/DeleteOutlined";
 import { Select } from "./ui";
-import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { Button, Field } from "./ui";
 import { api } from "./offline";
@@ -205,7 +204,7 @@ export function ProductEditor({ product, onSaved }: any) {
                     <FormControlLabel
                       className="fraction-option"
                       control={
-                        <Checkbox
+                        <Switch
                           size="small"
                           checked={
                             v.fractional ??
@@ -247,7 +246,7 @@ export function ProductEditor({ product, onSaved }: any) {
                       })
                     }
                   >
-                    <DeleteOutline />
+                    <DeleteOutline color="error" />
                   </IconButton>
                 </div>
               ))}

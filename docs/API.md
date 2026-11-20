@@ -85,3 +85,7 @@ Proveedor gratuito: OSRM/FOSSGIS Table API, configurable por `OSRM_BASE_URL` (so
 La búsqueda devuelve `precision` (`number` cuando coinciden calle y placa, `approximate` en otro caso) y `numberMatch`. No estima placas ausentes ni selecciona coordenadas automáticamente. Caché versionada y respuestas obsoletas descartadas en cliente.
 
 La anticipación mínima del día de entrega se valida para clientes y administración. El límite de recepción es cierre menos anticipación; las sugerencias de interfaz no sustituyen la validación del servidor. `GET /geocode` admite `city` y filtra los resultados por el municipio informado por el proveedor. Las respuestas siguen distinguiendo coincidencias de calle/placa y aproximaciones.
+
+`GET /credit-accounts/:id/orders?page=0&pageSize=10` devuelve `{rows,total,page,pageSize}`. Página cero inicial, tamaño 1–100, orden estable por fecha e ID. Aplica el mismo alcance por cliente/mensajero a filas y total. Sin parámetros conserva la respuesta de lista para compatibilidad.
+
+`GET /delivery-route-requests?day=YYYY-MM-DD` filtra las solicitudes por jornada y agrega `client_name` a las paradas. El filtro de fecha en Pedidos y Planta corresponde a `operation_day`.

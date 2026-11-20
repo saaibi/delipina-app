@@ -3,7 +3,8 @@ export function numberedAddress(value: string) {
   const normalized = value
     .trim()
     .replace(/\b(?:carrea|cra\.?|cr\.?|kra\.?)\s+/gi, "Carrera ")
-    .replace(/\b(?:cll\.?|cl\.?)\s+/gi, "Calle ")
+    .replace(/\b(?:cll\.?|cl\.?)(?=\s*\d)\s*/gi, "Calle ")
+    .replace(/\b(calle|carrera|diagonal|transversal)(?=\d)/gi, "$1 ")
     .replace(/[–—]/g, "-")
     .replace(/\s+/g, " ");
   const m = normalized.match(

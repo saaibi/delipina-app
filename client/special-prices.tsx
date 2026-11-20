@@ -47,6 +47,7 @@ export function ClientPriceCatalog({
       api("/products?clientId=" + encodeURIComponent(client))
         .then((data) => {
           if (!active) return;
+          data = data.filter((p) => p.active);
           R(data);
           V(
             Object.fromEntries(

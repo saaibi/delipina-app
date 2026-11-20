@@ -1,3 +1,5 @@
+import Switch from "@mui/material/Switch";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import { FeedbackSnackbar } from "./feedback";
 import { comparePlantOrders } from "../shared/plant-priority";
 import { deliveryClosing, deliveryDay } from "../shared/delivery-window";
@@ -118,6 +120,7 @@ function App() {
     [notice, S] = useState(""),
     [clockTick, CLOCK] = useState(0),
     [status, ST] = useState(""),
+    [dayFilter, DAY] = useState(""),
     [search, Q] = useState(""),
     [courier, CR] = useState(""),
     [full, F] = useState(false),
@@ -649,13 +652,14 @@ function App() {
   const currentDay =
     business?.day ||
     new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
+  const selectedDay = dayFilter || currentDay;
   const scoped = orders.filter(
     (o) =>
       (o.operation_day
         ? String(o.operation_day).slice(0, 10)
         : new Date(o.window_start).toLocaleDateString("en-CA", {
             timeZone: "America/Bogota",
-          })) === currentDay &&
+          })) === selectedDay &&
       ((prep && full) ||
         !search ||
         o.client_name?.toLowerCase().includes(search.toLowerCase())) &&
@@ -863,12 +867,6 @@ function App() {
                   <Tab value="available" label="Disponibles" />
                 </Tabs>
               )}
-              {!(prep && full) && (
-                <p className="current-day">
-                  Jornada: {currentDay.split("-").reverse().join("/")} · Solo
-                  pedidos de esta jornada
-                </p>
-              )}
               {!client && !prep && (
                 <div className="stats">
                   {[
@@ -894,6 +892,15 @@ function App() {
               )}
               {!(prep && full) && (
                 <div className="toolbar">
+                  {(prep || view === "orders") && (
+                    <Field
+                      label="Fecha de pedidos"
+                      type="date"
+                      value={selectedDay}
+                      onChange={(e) => DAY(e.target.value)}
+                      sx={{ m: 0, minWidth: 170, flex: 1 }}
+                    />
+                  )}
                   {delivery && (
                     <GPS
                       active={orders.some(
@@ -968,7 +975,7 @@ function App() {
                 />
               )}
               {admin && view === "orders" && (
-                <RouteRequests onRefresh={refresh} />
+                <RouteRequests onRefresh={refresh} day={selectedDay} />
               )}
               <OrderCards
                 orders={selected}
@@ -1213,14 +1220,12 @@ function App() {
                 min="0"
                 defaultValue={Number(modal.user.credit_limit) / 100}
               />
-              <label className="check">
-                <input
-                  type="checkbox"
-                  name="active"
-                  defaultChecked={modal.user.active}
-                />{" "}
-                Acceso activo
-              </label>
+              <FormControlLabel
+                control={
+                  <Switch name="active" defaultChecked={modal.user.active} />
+                }
+                label="Acceso activo"
+              />
               <p>
                 Si cambias el correo o el rol, se revocan sus sesiones. El nuevo
                 correo deberá verificarse con Google.
@@ -1755,9 +1760,10 @@ function OrderForm({
         onChange={RC}
         baseDay={orderStart ? deliveryDay(orderStart) : undefined}
       />
-      <label className="check">
-        <input name="credit" type="checkbox" /> Solicitar crédito autorizado
-      </label>
+      <FormControlLabel
+        control={<Switch name="credit" />}
+        label="Solicitar crédito autorizado"
+      />
       <label>
         <Field
           name="notes"

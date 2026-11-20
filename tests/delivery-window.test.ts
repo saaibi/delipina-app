@@ -76,3 +76,5 @@ test("Planta prioriza trabajo aceptado urgente y después respeta llegada", () =
   assert.equal(orderUrgency(make("x", "confirmed", 10, 0), now), "soon");
   assert.equal(orderUrgency(make("x", "delivered", -5, 0), now), null);
 });
+import {parseMapPoint} from '../shared/map-point.js';
+test('Coordenadas pegadas requieren latitud y longitud válidas y no interpretan enlaces como un punto',()=>{assert.deepEqual(parseMapPoint('7.075, -73.168'),{lat:7.075,lng:-73.168});for(const bad of ['100, -73','7','7,','https://maps.google.com/?q=7,-73','7,-181'])assert.equal(parseMapPoint(bad),null);});

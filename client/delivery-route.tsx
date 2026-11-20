@@ -5,7 +5,7 @@ import MapOutlined from "@mui/icons-material/MapOutlined";
 import Chip from "@mui/material/Chip";
 import React, { useEffect, useState } from "react";
 import Alert from "@mui/material/Alert";
-import Checkbox from "@mui/material/Checkbox";
+import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { Button, Modal } from "./ui";
 import { api } from "./offline";
@@ -246,7 +246,7 @@ export function DeliveryRoute({
                   }
                   key={o.id}
                 >
-                  <Checkbox
+                  <Switch
                     checked={ids.includes(o.id)}
                     disabled={!ids.includes(o.id) && ids.length === 5}
                     onChange={(_, v) =>
@@ -288,57 +288,66 @@ export function DeliveryRoute({
     </section>
   );
 }
-export function RouteRequests({ onRefresh }: any) {
+export function RouteRequests({ onRefresh, day }: any) {
   const [rows, R] = useState([]),
     [error, E] = useState("");
-  const load = () => api("/delivery-route-requests").then(R);
+  const load = () =>
+    api("/delivery-route-requests" + (day ? "?day=" + day : "")).then(R);
   useEffect(() => {
     load().catch((e) => E(e.message));
     const f = () => load().catch(() => {});
     window.addEventListener("delipina:refresh", f);
     return () => window.removeEventListener("delipina:refresh", f);
-  }, []);
+  }, [day]);
   if (!rows.length && !error) return null;
   return (
     <section className="panel">
       <h2>Solicitudes de recorridos</h2>
       {error && <Alert severity="error">{error}</Alert>}
-      {rows.map((r) => (
-        <article key={r.id} className="panel">
-          <strong>
-            {r.courier_name} · {r.order_ids.length} pedidos
-          </strong>
-          <ul>
-            {r.stops?.map((o) => (
-              <li key={o.id}>
-                {o.address} · {o.city}
-              </li>
-            ))}
-          </ul>
-          <div className="actions">
-            {[true, false].map((approve) => (
-              <Button
-                key={String(approve)}
-                className={approve ? "" : "neutral"}
-                onClick={async () => {
-                  try {
-                    await api("/delivery-routes/" + r.id + "/decision", {
-                      method: "POST",
-                      body: { approve },
-                    });
-                    await load();
-                    await onRefresh?.();
-                  } catch (e) {
-                    E(e.message);
-                  }
-                }}
-              >
-                {approve ? "Aprobar y asignar" : "Rechazar"}
-              </Button>
-            ))}
-          </div>
-        </article>
-      ))}
+      <div className="route-request-grid">
+        {rows.map((r) => (
+          <article key={r.id} className="panel route-request-card">
+            <strong>
+              {r.courier_name} · {r.order_ids.length} pedidos
+            </strong>
+            <ul className="route-request-stops">
+              {r.stops?.map((o) => (
+                <li key={o.id}>
+                  <div className="route-request-copy">
+                    <strong>{o.client_name || "Cliente"}</strong>
+                    <small>
+                      {o.address} · {o.city}
+                    </small>
+                  </div>
+                  <StatusChip status={o.status} />
+                </li>
+              ))}
+            </ul>
+            <div className="actions">
+              {[true, false].map((approve) => (
+                <Button
+                  key={String(approve)}
+                  className={approve ? "" : "neutral"}
+                  onClick={async () => {
+                    try {
+                      await api("/delivery-routes/" + r.id + "/decision", {
+                        method: "POST",
+                        body: { approve },
+                      });
+                      await load();
+                      await onRefresh?.();
+                    } catch (e) {
+                      E(e.message);
+                    }
+                  }}
+                >
+                  {approve ? "Aprobar y asignar" : "Rechazar"}
+                </Button>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }

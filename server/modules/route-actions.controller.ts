@@ -69,10 +69,12 @@ export class RouteActionsController {
   }
   @Get("delivery-route-requests") @HttpCode(200) async list(@Req() req: any) {
     const u = auth(req, ["admin", "courier"]);
+    if (req.query.day && !/^\d{4}-\d{2}-\d{2}$/.test(req.query.day))
+      fail(400, "Fecha inválida");
     return (
       await pool.query(
-        "SELECT r.*,u.name courier_name,(SELECT json_agg(json_build_object('id',o.id,'status',o.status,'address',b.address,'city',b.city)) FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.id=ANY(r.order_ids)) stops FROM delivery_runs r JOIN users u ON u.id=r.courier_id WHERE r.status='requested' AND ($1 OR r.courier_id=$2) ORDER BY r.created_at",
-        [u.role === "admin", u.id],
+        "SELECT r.*,u.name courier_name,(SELECT json_agg(json_build_object('id',o.id,'status',o.status,'client_name',(SELECT name FROM users WHERE id=o.client_id),'address',b.address,'city',b.city)) FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.id=ANY(r.order_ids)) stops FROM delivery_runs r JOIN users u ON u.id=r.courier_id WHERE r.status='requested' AND ($1 OR r.courier_id=$2) AND ($3::date IS NULL OR r.day=$3::date) ORDER BY r.created_at",
+        [u.role === "admin", u.id, req.query.day || null],
       )
     ).rows;
   }

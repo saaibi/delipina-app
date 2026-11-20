@@ -934,3 +934,10 @@ test('Cliente y administración deben sumar las horas de anticipación al inicio
   for(const role of ['client','admin']) { assert.equal((await call(role,'post','/orders',early,randomUUID())).status,400);assert.equal((await call(role,'post','/orders',{...early,start:key+'T10:05:00-05:00'},randomUUID())).status,200); }
  } finally {Date.now=oldNow;await call('admin','put','/settings',previous);}
 });
+test('Pedidos y saldo: paginación del servidor conserva alcance y no repite filas',async()=>{
+ const all=(await call('admin','get','/credit-accounts/'+users.client.id+'/orders')).body;assert.ok(all.length>2);
+ const first=await call('admin','get','/credit-accounts/'+users.client.id+'/orders?page=0&pageSize=2');const second=await call('admin','get','/credit-accounts/'+users.client.id+'/orders?page=1&pageSize=2');assert.equal(first.status,200);assert.equal(first.body.total,all.length);assert.equal(first.body.rows.length,2);assert.ok(!first.body.rows.some(a=>second.body.rows.some(b=>a.id===b.id)));
+ assert.equal((await call('owner','get','/credit-accounts/'+users.client.id+'/orders?page=0')).status,404);
+ assert.equal((await call('admin','get','/credit-accounts/'+users.client.id+'/orders?page=-1')).status,400);
+ const courier=(await call('courier','get','/credit-accounts/'+users.client.id+'/orders?page=0&pageSize=100')).body;assert.equal(courier.total,(await call('courier','get','/credit-accounts/'+users.client.id+'/orders')).body.length);
+});

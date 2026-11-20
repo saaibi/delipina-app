@@ -1720,3 +1720,14 @@ footer {
 @media(max-width:600px) {.heading-actions {gap:6px;} .heading-actions .MuiButton-root {font-size:11px;padding:10px 12px;}}
 
 .plant-order .orderhead {align-items:center;flex-wrap:wrap;} .courier-time {flex-wrap:wrap;}
+
+.MuiTabs-root .MuiTab-root.Mui-selected {background-color:#e6eee1!important;color:#143e2b!important;}
+.MuiTabs-root .MuiTabs-indicator {background-color:#143e2b!important;}
+.MuiSvgIcon-root[data-testid="DeleteOutlinedIcon"],.MuiSvgIcon-root[data-testid="DeleteOutlineIcon"],.MuiSvgIcon-root[data-testid="DeleteIcon"] {color:#a53c35!important;}
+.route-request-grid {align-items:start;display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px;}
+.route-request-card {padding:14px;margin:0;}
+.route-request-stops {list-style:none;padding:0;margin:10px 0;}
+.route-request-stops li {display:flex;align-items:center;gap:8px;padding:8px 0;margin:0;border-bottom:1px solid #e4e9df;}
+.route-request-stops .route-request-copy {display:grid;gap:3px;flex:1;min-width:0;font-size:12px;}
+.route-request-stops small {font-size:11px;color:#68775f;overflow-wrap:anywhere;}
+.route-request-card .actions {margin-top:10px;}

@@ -192,3 +192,10 @@ Planta coloca primero pedidos aceptados/en preparación, prioriza atrasados o pr
 Los avisos generales, de horarios y del catálogo usan Snackbar arriba a la derecha, con cierre a los cinco segundos. Las pestañas seleccionadas usan el color primario. La cabecera no añade margen inferior.
 
 Al crear una sucursal se elige primero el municipio. La búsqueda descarta coincidencias ubicadas por el proveedor en otro municipio y exige confirmar manualmente las ubicaciones aproximadas; no inventa coordenadas para placas ausentes.
+
+### Fechas, cartera y controles
+Pedidos y Planta permiten elegir la fecha de la jornada; inicia en la jornada actual. Las solicitudes de recorridos se consultan para esa fecha y muestran cliente, dirección y chip de estado en tarjetas compactas. Los chips de urgencia incluyen reloj. Se conserva la selección de pestaña en móvil y las acciones de papelera son rojas. Los controles binarios usan Switch de Material UI.
+
+Pedidos y saldo del cliente pagina en servidor con 10, 25 o 50 registros por página, manteniendo el alcance del cliente y del mensajero. Los precios especiales muestran únicamente presentaciones/unidades activas del catálogo: variantes desactivadas conservan el historial, pero no aparecen como ofertas actuales.
+
+Se comprobó el 20/11/2026 la consulta pública «Cl. 43 #26-106, POBLADO, Girón, Santander»: Photon devolvió comercios próximos y placa 26-06, no la 26-106. El aviso de aproximación refleja esa falta de datos. La sucursal permite abrir la búsqueda completa en la app de mapas y pegar latitud/longitud validadas para fijar el punto. No se habilitaron APIs de Google con facturación ni se sustituyó la placa por una coincidencia cercana.

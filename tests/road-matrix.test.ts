@@ -158,3 +158,4 @@ test('Búsqueda de sucursal descarta resultados de otro municipio',async()=>{
  await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
  try {const found=await geocode('Calle 45 #18-32, Bucaramanga, Colombia','http://127.0.0.1:'+(server.address() as any).port,false,'Bucaramanga');assert.equal(found.length,1);assert.equal(found[0].numberMatch,true);assert.ok(found[0].label.includes('Bucaramanga'));}finally{await new Promise<void>(r=>server.close(()=>r()));}
 });
+test('Dirección colombiana con abreviatura y barrio conserva placa completa',()=>{const p=numberedAddress('Cl. 43 #26-106, POBLADO, Girón, Santander');assert.equal(p?.street,'Calle 43');assert.equal(p?.house,'26-106');assert.equal(numberedAddress('Cl.43 #26-106')?.street,'Calle 43');});

@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import Alert from "@mui/material/Alert";
-import { Button } from "./ui";
+import { Button, Field } from "./ui";
+import { parseMapPoint } from "../shared/map-point";
 import { numberedAddress } from "../server/address-query";
 import { api } from "./offline";
 export function LocationPicker({ address, city, point, onChange }: any) {
@@ -13,7 +14,8 @@ export function LocationPicker({ address, city, point, onChange }: any) {
     version = useRef(0),
     [results, R] = useState([]),
     [error, E] = useState(""),
-    [busy, B] = useState(false);
+    [busy, B] = useState(false),
+    [coordinates, COORD] = useState("");
   callback.current = onChange;
   useEffect(() => {
     if (!host.current) return;
@@ -122,6 +124,23 @@ export function LocationPicker({ address, city, point, onChange }: any) {
       >
         {busy ? "Buscando…" : "Buscar dirección en el mapa"}
       </Button>
+      {address && city && (
+        <Button
+          className="neutral"
+          component="a"
+          target="_blank"
+          rel="noreferrer"
+          href={
+            "https://www.google.com/maps/search/?" +
+            new URLSearchParams({
+              api: "1",
+              query: address + ", " + city + ", Colombia",
+            })
+          }
+        >
+          Buscar dirección en mapas
+        </Button>
+      )}
       <small className="address-search-hint">
         Escribe la dirección completa, por ejemplo Calle 45 #18-32. Buscaremos
         al terminar la numeración; también puedes buscar manualmente.
@@ -146,6 +165,36 @@ export function LocationPicker({ address, city, point, onChange }: any) {
           </Button>
         ))}
       </div>
+      <details className="map-coordinate-entry">
+        <summary>Usar coordenadas de una app de mapas</summary>
+        <p>
+          En la app de mapas selecciona el punto del negocio y copia su latitud
+          y longitud. Pégalas aquí en ese orden.
+        </p>
+        <Field
+          label="Latitud, longitud"
+          required={false}
+          value={coordinates}
+          placeholder="Ej. 7.075, -73.168"
+          onChange={(e) => COORD(e.target.value)}
+        />
+        <Button
+          className="neutral"
+          disabled={!parseMapPoint(coordinates)}
+          onClick={() => {
+            const value = parseMapPoint(coordinates);
+            if (value) {
+              version.current++;
+              R([]);
+              E("");
+              B(false);
+              onChange(value);
+            }
+          }}
+        >
+          Usar punto
+        </Button>
+      </details>
       <div
         ref={host}
         className="branch-map"

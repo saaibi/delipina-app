@@ -1,3 +1,4 @@
+import AccessTime from "@mui/icons-material/AccessTime";
 import React from "react";
 import Chip from "@mui/material/Chip";
 import { orderUrgency } from "../shared/plant-priority";
@@ -39,7 +40,12 @@ export function TimingChip({ order }: any) {
     onTime: ["A tiempo", "#e7f3df", "#3b6726"],
   }[urgency];
   return (
-    <Chip size="small" label={label} sx={{ ...style, bgcolor: bg, color }} />
+    <Chip
+      icon={<AccessTime sx={{ fontSize: 15, color: "inherit!important" }} />}
+      size="small"
+      label={label}
+      sx={{ ...style, bgcolor: bg, color }}
+    />
   );
 }
 export function AssignmentChip({ order }: any) {

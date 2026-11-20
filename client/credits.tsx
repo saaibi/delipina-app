@@ -1,3 +1,4 @@
+import TablePagination from "@mui/material/TablePagination";
 import { attachment } from "./photos";
 import React, { useEffect, useRef, useState } from "react";
 import Table from "@mui/material/Table";
@@ -162,12 +163,30 @@ export function CreditsView({
 }
 export function CreditDetails({ client, money, onPay, canPay }: any) {
   const [orders, O] = useState([]),
+    [total, T] = useState(0),
+    [page, PAGE] = useState(0),
+    [size, SIZE] = useState(10),
     [error, E] = useState("");
   useEffect(() => {
-    cached("/credit-accounts/" + client.id + "/orders")
-      .then(O)
-      .catch((e) => E(e.message));
+    PAGE(0);
   }, [client.id]);
+  useEffect(() => {
+    let live = true;
+    E("");
+    cached(`/credit-accounts/${client.id}/orders?page=${page}&pageSize=${size}`)
+      .then((data) => {
+        if (live) {
+          O(data.rows);
+          T(data.total);
+        }
+      })
+      .catch((e) => {
+        if (live) E(e.message);
+      });
+    return () => {
+      live = false;
+    };
+  }, [client.id, page, size]);
   return (
     <>
       {error && <Alert severity="error">{error}</Alert>}
@@ -218,6 +237,25 @@ export function CreditDetails({ client, money, onPay, canPay }: any) {
           </TableBody>
         </Table>
       </TableContainer>
+      <TablePagination
+        component="div"
+        count={total}
+        page={page}
+        rowsPerPage={size}
+        rowsPerPageOptions={[10, 25, 50]}
+        onPageChange={(_, n) => PAGE(n)}
+        onRowsPerPageChange={(e) => {
+          SIZE(Number(e.target.value));
+          PAGE(0);
+        }}
+        labelRowsPerPage="Pedidos por página"
+        labelDisplayedRows={({ from, to, count }) =>
+          `${from}–${to} de ${count}`
+        }
+        getItemAriaLabel={(type) =>
+          type === "next" ? "Página siguiente" : "Página anterior"
+        }
+      />
     </>
   );
 }

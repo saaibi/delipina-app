@@ -25,11 +25,37 @@ export class CreditsController {
     const u = auth(req, ["admin", "courier", "client"]);
     if (isCustomer(u) && customerId(u) !== req.params.id)
       fail(404, "Cliente no disponible");
-    return (
+    const paged =
+      req.query.page !== undefined || req.query.pageSize !== undefined;
+    const page = Number(req.query.page ?? 0),
+      pageSize = Number(req.query.pageSize ?? 10);
+    if (
+      !Number.isInteger(page) ||
+      page < 0 ||
+      page > 1000000 ||
+      !Number.isInteger(pageSize) ||
+      pageSize < 1 ||
+      pageSize > 100
+    )
+      fail(400, "Paginación inválida");
+    const params = [req.params.id, u.role, u.id];
+    const where =
+      "i.client_id=$1 AND ($2<>'courier' OR o.courier_id=$3 OR o.delivered_by=$3)";
+    const rows = (
       await pool.query(
-        `SELECT i.id AS invoice_id,i.number,i.balance,o.id,o.total,o.status,o.created_at,o.window_start,(SELECT json_agg(json_build_object('name',name,'quantity',quantity)) FROM items WHERE order_id=o.id) AS items FROM invoices i JOIN orders o ON o.id=i.order_id WHERE i.client_id=$1 AND ($2<>'courier' OR o.courier_id=$3 OR o.delivered_by=$3) ORDER BY o.created_at DESC`,
-        [req.params.id, u.role, u.id],
+        `SELECT i.id AS invoice_id,i.number,i.balance,o.id,o.total,o.status,o.created_at,o.window_start,(SELECT json_agg(json_build_object('name',name,'quantity',quantity)) FROM items WHERE order_id=o.id) AS items FROM invoices i JOIN orders o ON o.id=i.order_id WHERE ${where} ORDER BY o.created_at DESC,o.id${paged ? " LIMIT $4 OFFSET $5" : ""}`,
+        paged ? [...params, pageSize, page * pageSize] : params,
       )
     ).rows;
+    if (!paged) return rows;
+    const total = Number(
+      (
+        await pool.query(
+          `SELECT count(*) AS n FROM invoices i JOIN orders o ON o.id=i.order_id WHERE ${where}`,
+          params,
+        )
+      ).rows[0].n,
+    );
+    return { rows, total, page, pageSize };
   }
 }

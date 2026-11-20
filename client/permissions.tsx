@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import Checkbox from "@mui/material/Checkbox";
+import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { Select } from "./ui";
 import { moduleLabels } from "./access";
@@ -41,7 +41,7 @@ export function RoleFields({
             <FormControlLabel
               key={id}
               control={
-                <Checkbox
+                <Switch
                   name={"module_" + id}
                   defaultChecked={permissions.includes(id)}
                 />
@@ -50,9 +50,9 @@ export function RoleFields({
             />
           ))}
           <small>
-            Pedidos permite crear solicitudes; Planta permite preparar. Cartera
-            y análisis son de consulta. La gestión de accesos y la confirmación
-            de cobros siguen en administración.
+            Pedidos permite crear, aceptar y rechazar solicitudes; Planta
+            permite preparar. Cartera y análisis son de consulta. La gestión de
+            accesos y la confirmación de cobros siguen en administración.
           </small>
         </fieldset>
       )}
