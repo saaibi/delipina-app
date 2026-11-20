@@ -953,7 +953,7 @@ function App() {
                   }
                 />
               )}
-              {admin && <RouteRequests onRefresh={refresh} />}
+              {admin && view === "orders" && <RouteRequests onRefresh={refresh} />}
               <OrderCards
                 orders={selected}
                 userRole={prep ? "preparation" : user.role}

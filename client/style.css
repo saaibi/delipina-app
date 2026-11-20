@@ -1565,10 +1565,16 @@ footer {
 }
 
 .plant-order-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-  align-items: start;
+  display: block;
+  columns: 280px;
+  column-gap: 12px;
+}
+.plant-order-grid > .plant-order {
+  display: inline-block;
+  width: 100%;
+  break-inside: avoid;
+  margin: 0 0 12px;
+  vertical-align: top;
 }
 .plant-order {
   padding: 13px;
@@ -1626,7 +1632,7 @@ footer {
 }
 @media (max-width: 600px) {
   .plant-order-grid {
-    grid-template-columns: 1fr;
+    columns: 1;
   }
 }
 .frequency-grid {
