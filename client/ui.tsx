@@ -1,3 +1,4 @@
+import ClickAwayListener from "@mui/material/ClickAwayListener";
 import { has, customer, portfolio } from "./access";
 import Insights from "@mui/icons-material/Insights";
 import StatusChip from "@mui/material/Chip";
@@ -481,6 +482,7 @@ export function Navigation({
   );
 }
 export function SecondaryActions({ role, user, onAction }: any) {
+  const [open, OPEN] = useState(false);
   const [position, POS] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("delipina-speed-dial") || "null");
@@ -535,80 +537,93 @@ export function SecondaryActions({ role, user, onAction }: any) {
   if (!actions.length) return null;
   actions.push(["Restablecer posición", RestorePosition, reset]);
   return (
-    <Box
-      sx={{
-        position: "fixed",
-        ...(position
-          ? { left: position.x, top: position.y }
-          : { bottom: { xs: 90, md: 28 }, right: 24 }),
-        zIndex: 1199,
-        touchAction: "none",
-      }}
-      onPointerDown={(e) => {
-        if (!(e.target as HTMLElement).closest(".MuiSpeedDial-fab")) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        drag.current = {
-          px: e.clientX,
-          py: e.clientY,
-          x: rect.x,
-          y: rect.y,
-          moved: false,
-        };
-      }}
-      onPointerMove={(e) => {
-        const d = drag.current;
-        if (!d) return;
-        if (Math.hypot(e.clientX - d.px, e.clientY - d.py) > 7) d.moved = true;
-        if (d.moved) {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          e.preventDefault();
-          const next = clamp(d.x + e.clientX - d.px, d.y + e.clientY - d.py);
-          POS(next);
-          localStorage.setItem("delipina-speed-dial", JSON.stringify(next));
-        }
-      }}
-      onPointerUp={() => {
-        if (drag.current?.moved) suppress.current = true;
-        drag.current = null;
-      }}
-      onPointerCancel={() => {
-        drag.current = null;
-      }}
-      onClickCapture={(e) => {
-        if (suppress.current) {
-          e.preventDefault();
-          e.stopPropagation();
-          suppress.current = false;
-        }
-      }}
-    >
-      <SpeedDial
-        ariaLabel="Acciones secundarias. Puedes arrastrar el botón para moverlo"
-        icon={<SpeedDialIcon />}
+    <ClickAwayListener onClickAway={() => OPEN(false)}>
+      <Box
         sx={{
-          position: "relative",
-          height: 56,
-          "& .MuiSpeedDialAction-fab": { margin: 0 },
-          "& .MuiSpeedDial-actions": {
-            position: "absolute",
-            bottom: "76px !important",
-            margin: "0 !important",
-            pb: 0,
-            gap: 1,
-          },
+          position: "fixed",
+          ...(position
+            ? { left: position.x, top: position.y }
+            : { bottom: { xs: 90, md: 28 }, right: 24 }),
+          zIndex: 1199,
+          touchAction: "none",
+        }}
+        onPointerDown={(e) => {
+          if (!(e.target as HTMLElement).closest(".MuiSpeedDial-fab")) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          drag.current = {
+            px: e.clientX,
+            py: e.clientY,
+            x: rect.x,
+            y: rect.y,
+            moved: false,
+          };
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current;
+          if (!d) return;
+          if (Math.hypot(e.clientX - d.px, e.clientY - d.py) > 7)
+            d.moved = true;
+          if (d.moved) {
+            OPEN(false);
+            e.currentTarget.setPointerCapture(e.pointerId);
+            e.preventDefault();
+            const next = clamp(d.x + e.clientX - d.px, d.y + e.clientY - d.py);
+            POS(next);
+            localStorage.setItem("delipina-speed-dial", JSON.stringify(next));
+          }
+        }}
+        onPointerUp={() => {
+          if (drag.current?.moved) suppress.current = true;
+          drag.current = null;
+        }}
+        onPointerCancel={() => {
+          drag.current = null;
+        }}
+        onClickCapture={(e) => {
+          if (suppress.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            suppress.current = false;
+          }
         }}
       >
-        {actions.map(([name, Icon, handler]: any) => (
-          <SpeedDialAction
-            key={name}
-            icon={<Icon />}
-            slotProps={{ tooltip: { title: name } }}
-            onClick={handler}
-            aria-label={name}
-          />
-        ))}
-      </SpeedDial>
-    </Box>
+        <SpeedDial
+          ariaLabel="Acciones secundarias. Puedes arrastrar el botón para moverlo"
+          open={open}
+          onOpen={() => OPEN(true)}
+          onClose={(_, reason) => {
+            if (reason === "toggle" || reason === "escapeKeyDown") OPEN(false);
+          }}
+          icon={<SpeedDialIcon />}
+          sx={{
+            position: "relative",
+            height: 56,
+            "& .MuiSpeedDialAction-fab": { margin: 0 },
+            "& .MuiSpeedDial-actions": {
+              position: "absolute",
+              bottom: "56px !important",
+              margin: "0 !important",
+              // Keep the pointer inside the menu while crossing the visual gap.
+              pb: "20px",
+              gap: 1,
+            },
+          }}
+        >
+          {actions.map(([name, Icon, handler]: any) => (
+            <SpeedDialAction
+              key={name}
+              icon={<Icon />}
+              slotProps={{ tooltip: { title: name } }}
+              onClick={() => {
+                OPEN(false);
+                handler();
+              }}
+              aria-label={name}
+            />
+          ))}
+        </SpeedDial>
+      </Box>
+    </ClickAwayListener>
   );
 }
 
