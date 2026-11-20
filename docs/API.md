@@ -27,7 +27,7 @@ Mismo origen. Cookie `session` HttpOnly. Escrituras requieren `Origin=APP_ORIGIN
 | GET /api/payments                                    | Admin todos; courier propios                                                                                                                                                                               |
 | POST /api/payments/:id/verify                        | Admin; verificación idempotente                                                                                                                                                                            |
 | GET /api/settlements                                 | Admin todos; courier propios                                                                                                                                                                               |
-| POST /api/settlements                                | Admin `{courierId,day,receivedCash}`; único por día y mensajero                                                                                                                                            |
+| POST /api/settlements                                | Courier `{day,receivedCash}` envía; admin `{courierId,day,confirm:true}` confirma; único por día y mensajero                                                                                                                                            |
 | GET /api/notifications; POST /api/notifications/read | Solo usuario actual                                                                                                                                                                                        |
 | POST /api/push                                       | Suscripción Web Push del usuario actual; proveedor HTTPS permitido                                                                                                                                         |
 | POST, DELETE /api/location                           | Courier con reparto activo; `{lat,lng}`, redondeado en servidor                                                                                                                                            |
@@ -39,3 +39,24 @@ Socket.IO exige la misma sesión. Evento `refresh` sin datos privados; consulta 
 Idempotencia: clave y hash de solicitud por usuario persistidos en la misma transacción; mismo cuerpo devuelve el mismo resultado, cuerpo distinto con misma clave da 409. Falla antes de commit no consume clave. El servidor recalcula los precios a partir del catálogo, nunca acepta un total enviado por cliente.
 
 Jornadas: GET `/api/business-day` devuelve día de Colombia y estado operativo; GET `/api/business-days` lista cierres administrativos; POST `/api/business-day/close` recibe `{day}` y exige administración, pedidos resueltos y transferencias verificadas. No reinicia la cartera. Pedidos futuros se conservan.
+
+
+Ampliación de operación:
+
+| Ruta | Contrato |
+| --- | --- |
+| GET /api/product-groups; GET /api/product-groups/:id | Admin; grupos de producto y variantes |
+| POST /api/product-groups; PUT /api/product-groups/:id | Admin; `{name,active?,presentations:[{label,image?,units:[{id?,unit,price}]}]}`; atómico, variantes omitidas se desactivan |
+| PATCH /api/product-groups/:id | Admin; disponibilidad del producto |
+| GET, POST /api/client-members; PATCH /api/client-members/:id | Titular cliente o admin; `{clientId? ,name,email,canViewPortfolio?}`; edición de nombre, activo y cartera. El cliente titular se obtiene de sesión; no acepta reasociar un usuario existente |
+| GET /api/schedules | Cliente y gestores del mismo cliente; admin todos; personalizado con Pedidos solo propias |
+| PATCH /api/schedules/:id | Titular/admin/creador autorizado; `{active?,frequency?,intervalDays?,weekdays?,endDay?,nextDay?,startTime?,endTime?,items?}` |
+| GET /api/settlement-days | Admin o courier propio; días con actividad y estado de envío/confirmación |
+| GET /api/audit?page=0&pageSize=25&q= | Admin o personalizado autorizado; `{rows,total,page,pageSize}`, máximo 100 por página |
+| GET /api/business-days?page=0&pageSize=25 | Admin o personalizado autorizado; paginado, recepción y cierre contable separados |
+
+POST `/api/orders` acepta `paymentMethod:cash|online|credit` y `recurrence:{enabled,frequency:days|weekly,intervalDays,weekdays,endDay?}`. Cliente y gestores comparten cuenta, sucursales y precios; sin permiso de Cartera no acceden a sus rutas. El servidor ajusta al siguiente día habilitado si venció cierre menos anticipación. Las repeticiones usan clave de idempotencia por regla y fecha y generan pedidos pendientes, no pagos.
+
+Rol `custom`: `permissions:[orders,plant,portfolio,analytics,audit,days]` con lista explícita de módulos; por defecto Pedidos y Planta. El servidor comprueba cada operación y revoca sesiones al cambiar permisos. El mensajero solo consulta y abona facturas de sus pedidos. No hay efectivo fuera de Bucaramanga, Girón, Floridablanca y Piedecuesta.
+
+El cierre contable exige todos los cuadres confirmados, entregas resueltas y transferencias verificadas. La hora de cierre solo termina la recepción. Pasarela pendiente de cuenta de comercio: no existe endpoint que simule aprobación de un proveedor.

@@ -95,6 +95,8 @@ export class PaymentsController {
         !cents(b.amount)
       )
         fail(400, "Medio o importe inválido");
+      // Serialize receipts with submission/confirmation for this courier.
+      if (u.role === "courier") await c.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [u.id]);
       const owner = (
         await c.query(
           "SELECT id FROM users WHERE id=$1 AND role='client' FOR UPDATE",
