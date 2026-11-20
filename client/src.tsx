@@ -112,13 +112,8 @@ function App() {
     [notice, S] = useState(""),
     [status, ST] = useState(""),
     [search, Q] = useState(""),
-    [filterDate, FD] = useState(
-      new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" }),
-    ),
-    [historyEnd, HE] = useState(""),
     [courier, CR] = useState(""),
     [full, F] = useState(false),
-    [plantAccepted, PA] = useState(false),
     [online, ON] = useState(navigator.onLine),
     [pending, PN] = useState(0),
     [settings, SET] = useState(null),
@@ -161,9 +156,7 @@ function App() {
   };
   const lastTap = useRef({ id: "", at: 0 });
   function navigateModule(id: string) {
-    const current = ["accepted", "recurrences"].includes(view)
-      ? "orders"
-      : view;
+    const current = view === "recurrences" ? "orders" : view;
     const now = Date.now();
     if (current === id) {
       if (lastTap.current.id === id && now - lastTap.current.at < 400)
@@ -174,10 +167,6 @@ function App() {
     lastTap.current = { id, at: now };
     V(id);
     ST("");
-    if (id === "orders") {
-      FD(business?.day || "");
-      HE("");
-    }
     scrollModuleTop();
   }
   const pull = usePullRefresh(
@@ -195,7 +184,6 @@ function App() {
       D(false);
       if (n.module === "orders") {
         V("orders");
-        FD("");
         ST("");
         const order =
           orders.find((o) => o.id === n.target_id) ||
@@ -255,9 +243,6 @@ function App() {
               : "orders",
       );
   }, [user?.id]);
-  useEffect(() => {
-    if (business?.day && view === "orders") FD(business.day);
-  }, [business?.day]);
   const run = async (fn) => {
     E("");
     try {
@@ -634,29 +619,18 @@ function App() {
         {error && <p role="alert">{error}</p>}
       </main>
     );
-  const showingAccepted = view === "accepted" || (prep && plantAccepted);
+  const currentDay =
+    business?.day ||
+    new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
   const scoped = orders.filter(
     (o) =>
-      (!showingAccepted ||
-        !["pending", "cancelled", "rejected"].includes(o.status)) &&
+      (o.operation_day
+        ? String(o.operation_day).slice(0, 10)
+        : new Date(o.window_start).toLocaleDateString("en-CA", {
+            timeZone: "America/Bogota",
+          })) === currentDay &&
       (!search ||
         o.client_name?.toLowerCase().includes(search.toLowerCase())) &&
-      (!admin ||
-        !filterDate ||
-        (showingAccepted
-          ? new Date(o.window_start).toLocaleDateString("en-CA", {
-              timeZone: "America/Bogota",
-            }) >= filterDate
-          : o.status === "pending" ||
-            new Date(o.window_start).toLocaleDateString("en-CA", {
-              timeZone: "America/Bogota",
-            }) === filterDate)) &&
-      (!admin ||
-        !showingAccepted ||
-        !historyEnd ||
-        new Date(o.window_start).toLocaleDateString("en-CA", {
-          timeZone: "America/Bogota",
-        }) <= historyEnd) &&
       (!courier || o.courier_id === courier) &&
       (view !== "deliveries" ||
         (deliveryFilter === "mine" ? o.courier_id === user.id : !o.courier_id)),
@@ -727,23 +701,21 @@ function App() {
                         ? "Jornadas"
                         : view === "analytics"
                           ? "Inteligencia de negocio"
-                          : view === "accepted"
-                            ? "Pedidos aceptados"
-                            : view === "users"
-                              ? "Usuarios"
-                              : view === "catalog"
-                                ? "Catálogo"
-                                : view === "settings"
-                                  ? "Ajustes"
-                                  : prep
-                                    ? plantAdmin
-                                      ? "Pedidos de planta"
-                                      : "Planta"
-                                    : client
-                                      ? "Mis pedidos"
-                                      : delivery
-                                        ? "Entregas"
-                                        : "Pedidos del día"}
+                          : view === "users"
+                            ? "Usuarios"
+                            : view === "catalog"
+                              ? "Catálogo"
+                              : view === "settings"
+                                ? "Ajustes"
+                                : prep
+                                  ? plantAdmin
+                                    ? "Pedidos de planta"
+                                    : "Planta"
+                                  : client
+                                    ? "Mis pedidos"
+                                    : delivery
+                                      ? "Entregas"
+                                      : "Pedidos del día"}
               </h1>
               <p>
                 {prep
@@ -753,10 +725,9 @@ function App() {
                     : "Cada pedido, en su momento."}
               </p>
             </div>
-            {(admin || plantAdmin || client) &&
-              ["orders", "accepted"].includes(view) && (
-                <Button onClick={() => M("order")}>＋ Crear pedido</Button>
-              )}
+            {(admin || plantAdmin || client) && view === "orders" && (
+              <Button onClick={() => M("order")}>＋ Crear pedido</Button>
+            )}
             <Button
               className="neutral"
               aria-label="Actualizar módulo"
@@ -789,7 +760,7 @@ function App() {
             </div>
           )}
           {(client || has(user, "orders")) &&
-            ["orders", "accepted", "recurrences"].includes(view) && (
+            ["orders", "recurrences"].includes(view) && (
               <Tabs
                 value={view === "recurrences" ? "recurrences" : "orders"}
                 onChange={(_, v) => V(v)}
@@ -850,22 +821,10 @@ function App() {
                   <Tab value="available" label="Disponibles" />
                 </Tabs>
               )}
-              {(admin || prep) && (
-                <Tabs
-                  value={showingAccepted ? "accepted" : "orders"}
-                  onChange={(_, value) => {
-                    if (prep) PA(value === "accepted");
-                    else V(value);
-                    ST("");
-                    FD(value === "accepted" ? "" : business?.day || "");
-                    HE("");
-                  }}
-                  aria-label="Vista de pedidos"
-                >
-                  <Tab label="Operación del día" value="orders" />
-                  <Tab label="Todos los aceptados" value="accepted" />
-                </Tabs>
-              )}
+              <p className="current-day">
+                Jornada: {currentDay.split("-").reverse().join("/")} · Solo
+                pedidos de esta jornada
+              </p>
               {!client && !prep && (
                 <div className="stats">
                   {[
@@ -907,18 +866,6 @@ function App() {
                       onChange={(e) => Q(e.target.value)}
                       sx={{ m: 0, minWidth: 170, flex: 1 }}
                     />
-                    <DateInput
-                      label="Fecha de entrega"
-                      value={filterDate}
-                      onChange={(e) => FD(e.target.value)}
-                    />
-                    {showingAccepted && (
-                      <DateInput
-                        label="Hasta fecha"
-                        value={historyEnd}
-                        onChange={(e) => HE(e.target.value)}
-                      />
-                    )}
                     <Select
                       aria-label="Mensajero"
                       value={courier}

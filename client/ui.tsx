@@ -415,11 +415,7 @@ export function Navigation({
           {nav.map(([id, label, Icon]: any) => (
             <ListItemButton
               key={id}
-              selected={
-                (["accepted", "recurrences"].includes(view)
-                  ? "orders"
-                  : view) === id
-              }
+              selected={(view === "recurrences" ? "orders" : view) === id}
               onClick={() => onNavigate(id)}
               sx={{ mx: 1, my: 0.5, borderRadius: 2 }}
             >
@@ -449,7 +445,7 @@ export function Navigation({
         }}
       >
         <BottomNavigation
-          value={["accepted", "recurrences"].includes(view) ? "orders" : view}
+          value={view === "recurrences" ? "orders" : view}
           showLabels
           sx={{
             height: 68,
