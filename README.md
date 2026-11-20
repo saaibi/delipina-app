@@ -150,3 +150,15 @@ Cada día del horario tiene su propia anticipación. Los valores anteriores se u
 - Análisis abre en 1 Año y permite períodos editables o rango. Trazabilidad y jornadas usan paginación en servidor.
 - Pagos en línea: pendiente crear cuenta de comercio y configurar credenciales y confirmaciones del proveedor. No se habilita un cobro real ni se aprueba un pago sin verificación. Fuera del área metropolitana no se ofrece efectivo.
 - Maps: enlaces de ruta y ubicación GPS aproximada; no se han habilitado APIs de rutas con facturación ni estimaciones de llegada.
+
+
+### Rutas y vista previa
+`npm run build` y `node --import tsx scripts/local-preview.ts` levantan una base local aislada y persistente en `../work/preview-db`, interfaz en http://localhost:3006 y datos ficticios. No usa la base de producción. Cierra el proceso con Ctrl+C.
+
+Entregas permite seleccionar pedidos asignados listos o en camino, ordenar paradas y abrir Google Maps en tramos de cuatro destinos (tres paradas intermedias, compatible con navegador móvil). El orden lo define el mensajero; no hay optimización de ruta ni API de pago.
+
+El seguimiento muestra OpenStreetMap mediante su visor embebido, con atribución incluida y GPS aproximado obtenido de la aplicación. No usa Google Maps de pago, no conserva un historial de recorrido ni calcula ETA. La app debe mantenerse activa y con permiso de ubicación; los teléfonos pueden suspender el GPS en segundo plano. La disponibilidad del visor público es de mejor esfuerzo.
+
+Ajustes / Datos demo para rutas crea un lote idempotente para un cliente existente: nueve sucursales y pedidos claramente marcados. No envía notificaciones, genera facturas ni reservas de crédito; queda fuera de análisis y cierre contable. Los identificadores se guardan en `demo_batches` para su futura limpieza específica. El destino fuera de zona usa pago online. No ejecuta cobros.
+
+Favicon, Apple Touch Icon, iconos PWA y lanzadores iOS/Android usan el logo existente con márgenes para evitar recortes. La sincronización Capacitor no equivale a un binario firmado.

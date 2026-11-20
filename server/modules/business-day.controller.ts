@@ -61,7 +61,7 @@ export class BusinessDayController {
     const where = "WHERE intake_closed_at IS NOT NULL OR closed_at IS NOT NULL";
     const rows = (
       await pool.query(
-        `SELECT to_char(day,'YYYY-MM-DD') AS day,intake_closed_at,closed_at,processed_at,automatic,summary,(SELECT count(*)::int FROM (SELECT DISTINCT COALESCE(o.delivered_by,o.courier_id) id FROM orders o WHERE o.operation_day=d.day AND COALESCE(o.delivered_by,o.courier_id) IS NOT NULL UNION SELECT p.receiver_id FROM payments p WHERE p.business_day=d.day) actors JOIN users u ON u.id=actors.id AND u.role='courier' WHERE NOT EXISTS(SELECT 1 FROM settlements s WHERE s.day=d.day AND s.courier_id=actors.id AND s.status='confirmed')) pending_settlements FROM business_days d ${where} ORDER BY day DESC LIMIT $1 OFFSET $2`,
+        `SELECT to_char(day,'YYYY-MM-DD') AS day,intake_closed_at,closed_at,processed_at,automatic,summary,(SELECT count(*)::int FROM (SELECT DISTINCT COALESCE(o.delivered_by,o.courier_id) id FROM orders o WHERE o.demo_batch_id IS NULL AND o.operation_day=d.day AND COALESCE(o.delivered_by,o.courier_id) IS NOT NULL UNION SELECT p.receiver_id FROM payments p WHERE p.business_day=d.day) actors JOIN users u ON u.id=actors.id AND u.role='courier' WHERE NOT EXISTS(SELECT 1 FROM settlements s WHERE s.day=d.day AND s.courier_id=actors.id AND s.status='confirmed')) pending_settlements FROM business_days d ${where} ORDER BY day DESC LIMIT $1 OFFSET $2`,
         [pageSize, page * pageSize],
       )
     ).rows;

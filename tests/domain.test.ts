@@ -844,3 +844,12 @@ after(async () => {
   await nest.close();
   await pool.end();
 });
+test('Lote demo es exclusivo de admin, no duplica ni crea facturas y no cuenta como venta',async()=>{
+ const denied=await call('client','post','/demo-data',{email:'owner@demo.test'});assert.equal(denied.status,403);
+ const beforeDemo=(await call('admin','get','/analytics?from=2000-01-01&to=2100-01-01')).body.totals;
+ const made=await call('admin','post','/demo-data',{email:'owner@demo.test',courierId:users.courier.id});assert.equal(made.status,200,JSON.stringify(made.body));assert.equal(made.body.branch_ids.length,9);assert.equal(made.body.order_ids.length,9);assert.deepEqual((await call('admin','get','/analytics?from=2000-01-01&to=2100-01-01')).body.totals,beforeDemo);
+ const repeat=await call('admin','post','/demo-data',{email:'owner@demo.test'});assert.equal(repeat.body.id,made.body.id);
+ assert.equal((await pool.query('SELECT count(*)::int n FROM invoices WHERE order_id=ANY($1::uuid[])',[made.body.order_ids])).rows[0].n,0);
+ const outside=(await pool.query("SELECT o.payment_method,b.city FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.demo_batch_id=$1 AND b.city='Bogotá'",[made.body.id])).rows[0];assert.equal(outside.payment_method,'online');
+ assert.equal((await call('client','get','/orders/'+made.body.order_ids[0])).status,404);
+});

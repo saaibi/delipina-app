@@ -324,7 +324,7 @@ export class PaymentsController {
     const u = auth(req, ["admin", "courier"]);
     return (
       await pool.query(
-        `SELECT to_char(d.day,'YYYY-MM-DD') AS day,courier.id courier_id,courier.name courier_name,s.id,s.status,s.received_cash,s.expected_cash,s.verified_transfers,(SELECT COALESCE(sum(p.amount),0) FROM payments p WHERE p.receiver_id=courier.id AND p.business_day=d.day AND p.method='cash') AS current_cash FROM business_days d JOIN (SELECT DISTINCT operation_day AS day,COALESCE(delivered_by,courier_id) id FROM orders WHERE COALESCE(delivered_by,courier_id) IS NOT NULL UNION SELECT business_day,receiver_id FROM payments) activity ON activity.day=d.day JOIN users courier ON courier.id=activity.id AND courier.role='courier' LEFT JOIN settlements s ON s.day=d.day AND s.courier_id=courier.id WHERE d.closed_at IS NULL AND ($1 OR courier.id=$2) ORDER BY d.day,courier.name`,
+        `SELECT to_char(d.day,'YYYY-MM-DD') AS day,courier.id courier_id,courier.name courier_name,s.id,s.status,s.received_cash,s.expected_cash,s.verified_transfers,(SELECT COALESCE(sum(p.amount),0) FROM payments p WHERE p.receiver_id=courier.id AND p.business_day=d.day AND p.method='cash') AS current_cash FROM business_days d JOIN (SELECT DISTINCT operation_day AS day,COALESCE(delivered_by,courier_id) id FROM orders WHERE demo_batch_id IS NULL AND COALESCE(delivered_by,courier_id) IS NOT NULL UNION SELECT business_day,receiver_id FROM payments) activity ON activity.day=d.day JOIN users courier ON courier.id=activity.id AND courier.role='courier' LEFT JOIN settlements s ON s.day=d.day AND s.courier_id=courier.id WHERE d.closed_at IS NULL AND ($1 OR courier.id=$2) ORDER BY d.day,courier.name`,
         [u.role === "admin", u.id],
       )
     ).rows;
@@ -381,7 +381,7 @@ export class PaymentsController {
       ).rows[0];
       const outstanding = (
         await c.query(
-          "SELECT count(*)::int n FROM orders WHERE operation_day=$1 AND courier_id=$2 AND status NOT IN ('delivered','cancelled','rejected')",
+          "SELECT count(*)::int n FROM orders WHERE demo_batch_id IS NULL AND operation_day=$1 AND courier_id=$2 AND status NOT IN ('delivered','cancelled','rejected')",
           [b.day, courierId],
         )
       ).rows[0].n;

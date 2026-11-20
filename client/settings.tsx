@@ -1,3 +1,4 @@
+import { DemoData } from "./demo-data";
 import { MembersEditor } from "./members";
 import { ServerTable } from "./server-table";
 import { has } from "./access";
@@ -248,6 +249,11 @@ export function SettingsView({
       {has(user, "days") && (
         <Section title="Jornadas y cierre contable">
           <ServerTable kind="days" />
+        </Section>
+      )}
+      {admin && (
+        <Section title="Datos demo para rutas">
+          <DemoData users={users} onRefresh={onRefresh} />
         </Section>
       )}
       {admin && (

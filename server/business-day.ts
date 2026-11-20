@@ -205,13 +205,13 @@ export async function validateDeliveryWindow(
 export async function daySummary(c: PoolClient, day: string, cutoff: Date) {
   const ops = (
     await c.query(
-      "SELECT count(*)::int AS orders,count(*) FILTER(WHERE COALESCE(a.next_status,o.status) NOT IN ('delivered','cancelled','rejected'))::int AS unresolved,COALESCE(sum(o.total) FILTER(WHERE COALESCE(a.next_status,o.status) NOT IN ('pending','cancelled','rejected')),0) AS accepted_total FROM orders o LEFT JOIN LATERAL(SELECT next_status FROM audit WHERE order_id=o.id AND next_status IS NOT NULL AND created_at<=$2 ORDER BY id DESC LIMIT 1)a ON true WHERE (o.window_start AT TIME ZONE 'America/Bogota')::date=$1 AND o.created_at<=$2",
+      "SELECT count(*)::int AS orders,count(*) FILTER(WHERE COALESCE(a.next_status,o.status) NOT IN ('delivered','cancelled','rejected'))::int AS unresolved,COALESCE(sum(o.total) FILTER(WHERE COALESCE(a.next_status,o.status) NOT IN ('pending','cancelled','rejected')),0) AS accepted_total FROM orders o LEFT JOIN LATERAL(SELECT next_status FROM audit WHERE order_id=o.id AND next_status IS NOT NULL AND created_at<=$2 ORDER BY id DESC LIMIT 1)a ON true WHERE o.demo_batch_id IS NULL AND (o.window_start AT TIME ZONE 'America/Bogota')::date=$1 AND o.created_at<=$2",
       [day, cutoff],
     )
   ).rows[0];
   const sales = (
     await c.query(
-      "SELECT count(*)::int AS delivered,COALESCE(sum(total),0) AS delivered_total FROM orders WHERE sale_day=$1 AND delivered_at<=$2",
+      "SELECT count(*)::int AS delivered,COALESCE(sum(total),0) AS delivered_total FROM orders WHERE demo_batch_id IS NULL AND sale_day=$1 AND delivered_at<=$2",
       [day, cutoff],
     )
   ).rows[0];
@@ -278,13 +278,13 @@ export async function ensureBusinessClock() {
     for (const { day } of accounting) {
       const pending = (
         await c.query(
-          `SELECT count(*)::int n FROM (SELECT DISTINCT COALESCE(o.delivered_by,o.courier_id) id FROM orders o WHERE o.operation_day=$1 AND COALESCE(o.delivered_by,o.courier_id) IS NOT NULL UNION SELECT receiver_id FROM payments WHERE business_day=$1) couriers JOIN users u ON u.id=couriers.id AND u.role='courier' WHERE NOT EXISTS(SELECT 1 FROM settlements s WHERE s.courier_id=couriers.id AND s.day=$1 AND s.status='confirmed')`,
+          `SELECT count(*)::int n FROM (SELECT DISTINCT COALESCE(o.delivered_by,o.courier_id) id FROM orders o WHERE o.demo_batch_id IS NULL AND o.operation_day=$1 AND COALESCE(o.delivered_by,o.courier_id) IS NOT NULL UNION SELECT receiver_id FROM payments WHERE business_day=$1) couriers JOIN users u ON u.id=couriers.id AND u.role='courier' WHERE NOT EXISTS(SELECT 1 FROM settlements s WHERE s.courier_id=couriers.id AND s.day=$1 AND s.status='confirmed')`,
           [day],
         )
       ).rows[0].n;
       const unresolved = (
         await c.query(
-          "SELECT count(*)::int n FROM orders WHERE operation_day=$1 AND status NOT IN ('delivered','cancelled','rejected')",
+          "SELECT count(*)::int n FROM orders WHERE demo_batch_id IS NULL AND operation_day=$1 AND status NOT IN ('delivered','cancelled','rejected')",
           [day],
         )
       ).rows[0].n;
@@ -325,7 +325,7 @@ export async function accountingDate(c: PoolClient, receiver?: string) {
   const today = await businessDate(c);
   const row = (
     await c.query(
-      "SELECT to_char(d.day,'YYYY-MM-DD') AS day FROM business_days d WHERE d.closed_at IS NULL AND d.day<=$1 AND ($2::uuid IS NULL OR EXISTS(SELECT 1 FROM orders o WHERE o.operation_day=d.day AND (o.courier_id=$2 OR o.delivered_by=$2)) OR EXISTS(SELECT 1 FROM payments p WHERE p.business_day=d.day AND p.receiver_id=$2)) ORDER BY d.day LIMIT 1",
+      "SELECT to_char(d.day,'YYYY-MM-DD') AS day FROM business_days d WHERE d.closed_at IS NULL AND d.day<=$1 AND ($2::uuid IS NULL OR EXISTS(SELECT 1 FROM orders o WHERE o.demo_batch_id IS NULL AND o.operation_day=d.day AND (o.courier_id=$2 OR o.delivered_by=$2)) OR EXISTS(SELECT 1 FROM payments p WHERE p.business_day=d.day AND p.receiver_id=$2)) ORDER BY d.day LIMIT 1",
       [today, receiver || null],
     )
   ).rows[0];

@@ -29,6 +29,9 @@ export function OrderCards({
             }
             key={o.id}
           >
+            {o.demo_batch_id && (
+              <small className="demo-warning">DEMO · sin cobro real</small>
+            )}
             {userRole === "preparation" ? (
               <>
                 <div className="orderhead">

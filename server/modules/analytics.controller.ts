@@ -20,7 +20,7 @@ export class AnalyticsController {
       fail(400, "Rango de fechas inválido");
     const values = [from, to];
     const where =
-      "(o.window_start AT TIME ZONE 'America/Bogota')::date BETWEEN $1 AND $2";
+      "o.demo_batch_id IS NULL AND (o.window_start AT TIME ZONE 'America/Bogota')::date BETWEEN $1 AND $2";
     const accepted = "o.status NOT IN ('pending','cancelled','rejected')";
     const [totals, daily, status, products, couriers, accounts] =
       await Promise.all([

@@ -83,6 +83,13 @@ export function Tracking({ orderId }) {
                 Última actualización:{" "}
                 {new Date(data.location.updated_at).toLocaleTimeString("es-CO")}
               </p>
+              <iframe
+                title="Mapa de ubicación aproximada del reparto"
+                className="tracking-map"
+                loading="lazy"
+                referrerPolicy="strict-origin-when-cross-origin"
+                src={`https://www.openstreetmap.org/export/embed.html?${new URLSearchParams({ bbox: [Number(data.location.lng) - 0.015, Number(data.location.lat) - 0.01, Number(data.location.lng) + 0.015, Number(data.location.lat) + 0.01].join(","), layer: "mapnik", marker: `${data.location.lat},${data.location.lng}` })}`}
+              />
               <a
                 className="button"
                 rel="noreferrer"
@@ -94,8 +101,9 @@ export function Tracking({ orderId }) {
             </>
           )}
           <p>
-            ETA pendiente de conectar Google Routes. Tu rango de entrega
-            permanece visible en el pedido.
+            El mapa se actualiza aproximadamente cada 30 segundos mientras el
+            mensajero comparte GPS. En segundo plano el teléfono puede
+            suspenderlo. Tu rango de entrega permanece visible en el pedido.
           </p>
         </>
       )}

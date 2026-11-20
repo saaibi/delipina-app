@@ -1,3 +1,4 @@
+import { createDemoData } from "../demo-data.js";
 import {
   Controller,
   Get,
@@ -27,6 +28,17 @@ function page(q: any) {
 }
 @Controller("api")
 export class OperationsController {
+  @Post("demo-data") @HttpCode(200) async demo(@Req() req: any) {
+    const actor = auth(req, ["admin"]);
+    const result = await createDemoData(
+      actor,
+      text(req.body.email, 200),
+      req.body.courierId || undefined,
+    );
+    await broadcast();
+    return result;
+  }
+
   @Get("audit") @HttpCode(200) async audit(@Req() req: any) {
     const u = auth(req);
     if (!hasModule(u, "audit")) fail(403, "Sin permiso de trazabilidad");
@@ -230,7 +242,12 @@ export class OperationsController {
         const label = text(p.label, 100);
         if (!Array.isArray(p.units) || !p.units.length)
           fail(400, "Cada presentación necesita una medida");
-        const template=(await c.query('SELECT p.* FROM products p WHERE catalog_product_id=$1 AND (presentation=$2 OR id=ANY($3::uuid[])) ORDER BY EXISTS(SELECT 1 FROM product_photos f WHERE f.product_id=p.id) DESC LIMIT 1',[id,label,p.units.map(v=>v.id).filter(Boolean)])).rows[0];
+        const template = (
+          await c.query(
+            "SELECT p.* FROM products p WHERE catalog_product_id=$1 AND (presentation=$2 OR id=ANY($3::uuid[])) ORDER BY EXISTS(SELECT 1 FROM product_photos f WHERE f.product_id=p.id) DESC LIMIT 1",
+            [id, label, p.units.map((v) => v.id).filter(Boolean)],
+          )
+        ).rows[0];
         for (const v of p.units) {
           if (
             !["kg", "lb", "arroba", "pack"].includes(v.unit) ||
@@ -272,7 +289,16 @@ export class OperationsController {
               [vid],
             );
           }
-          if(!p.image&&!old&&template){await c.query('INSERT INTO product_photos SELECT $1,mime,data FROM product_photos WHERE product_id=$2 ON CONFLICT(product_id) DO NOTHING',[vid,template.id]);await c.query('UPDATE products SET image_updated_at=(SELECT image_updated_at FROM products WHERE id=$2) WHERE id=$1',[vid,template.id])}
+          if (!p.image && !old && template) {
+            await c.query(
+              "INSERT INTO product_photos SELECT $1,mime,data FROM product_photos WHERE product_id=$2 ON CONFLICT(product_id) DO NOTHING",
+              [vid, template.id],
+            );
+            await c.query(
+              "UPDATE products SET image_updated_at=(SELECT image_updated_at FROM products WHERE id=$2) WHERE id=$1",
+              [vid, template.id],
+            );
+          }
           kept.push(vid);
         }
       }

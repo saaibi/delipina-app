@@ -9,6 +9,9 @@ sw.addEventListener("install", (e) =>
         c.addAll([
           "/",
           "/logo.png",
+          "/icon-192.png",
+          "/icon-512.png",
+          "/icon-180.png",
           "/presentaciones-delipina.png",
           ...PRECACHE_ASSETS,
         ]),
@@ -57,6 +60,9 @@ sw.addEventListener("push", (e) => {
     sw.registration.showNotification(d.title || "Delipiña", {
       body: "Toca para consultar el detalle.",
       icon: "/logo.png",
+          "/icon-192.png",
+          "/icon-512.png",
+          "/icon-180.png",
       tag: d.id || "delipina-update",
       data: { url: "/?" + query, id: d.id, revision: d.revision },
     }),

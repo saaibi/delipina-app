@@ -1,3 +1,4 @@
+import { DeliveryRoute } from "./delivery-route";
 import { SettlementsView } from "./settlements";
 import { has, customer, portfolio, moduleLabels } from "./access";
 import { RoleFields } from "./permissions";
@@ -654,8 +655,6 @@ function App() {
           timeZone: "America/Bogota",
         }) <= historyEnd) &&
       (!courier || o.courier_id === courier) &&
-      (view !== "available" || !o.courier_id) &&
-      (view !== "mine" || o.courier_id === user.id) &&
       (view !== "deliveries" ||
         (deliveryFilter === "mine" ? o.courier_id === user.id : !o.courier_id)),
   );
@@ -887,22 +886,6 @@ function App() {
                   onError={E}
                 />
               )}
-              {delivery && (
-                <>
-                  <Button
-                    className={view === "mine" ? "" : "neutral"}
-                    onClick={() => V("mine")}
-                  >
-                    Mis entregas
-                  </Button>
-                  <Button
-                    className={view === "available" ? "" : "neutral"}
-                    onClick={() => V("available")}
-                  >
-                    Disponibles
-                  </Button>
-                </>
-              )}
               {admin && (
                 <>
                   <Field
@@ -954,6 +937,16 @@ function App() {
               </Select>
               <span>{selected.length} pedidos</span>
             </div>
+            {delivery && (
+              <DeliveryRoute
+                orders={selected}
+                user={user}
+                origin={
+                  settings?.origin ||
+                  "Plaza San Francisco, Bucaramanga, Colombia"
+                }
+              />
+            )}
             <OrderCards
               orders={selected}
               userRole={prep ? "preparation" : user.role}

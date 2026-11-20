@@ -11,7 +11,7 @@ if (process.env.BOOTSTRAP_ADMIN_EMAIL) await bootstrapAdmin();
 const app = await createApp();
 const io = createRealtime(app.getHttpServer());
 const server = app.getHttpAdapter().getInstance();
-if (process.env.NODE_ENV === "production") {
+if (process.env.NODE_ENV === "production" || process.env.LOCAL_PREVIEW_STATIC === "true") {
   server.use(express.static("dist"));
   server.use((req, res, next) =>
     req.path.startsWith("/api") || req.path.startsWith("/socket.io")

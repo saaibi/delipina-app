@@ -60,3 +60,8 @@ POST `/api/orders` acepta `paymentMethod:cash|online|credit` y `recurrence:{enab
 Rol `custom`: `permissions:[orders,plant,portfolio,analytics,audit,days]` con lista explícita de módulos; por defecto Pedidos y Planta. El servidor comprueba cada operación y revoca sesiones al cambiar permisos. El mensajero solo consulta y abona facturas de sus pedidos. No hay efectivo fuera de Bucaramanga, Girón, Floridablanca y Piedecuesta.
 
 El cierre contable exige todos los cuadres confirmados, entregas resueltas y transferencias verificadas. La hora de cierre solo termina la recepción. Pasarela pendiente de cuenta de comercio: no existe endpoint que simule aprobación de un proveedor.
+
+
+POST `/api/demo-data` solo admin, `{email,courierId?}`: crea un lote idempotente de nueve sucursales y pedidos listos del cliente existente, con `demo_batch_id`. Devuelve lote con `branch_ids` y `order_ids`; no crea facturas, reservas de crédito ni avisos. Los pedidos demo se excluyen de analítica y cierre contable. La ruta no cambia roles ni crea credenciales.
+
+Los recorridos son selección y orden manual en el navegador de los pedidos ya autorizados y asignados al mensajero. Los enlaces Maps URLs usan hasta tres paradas intermedias por tramo y continúan desde el destino anterior. Tracking conserva el alcance de propietario y pedido en reparto; el visor OpenStreetMap recibe solo la ubicación aproximada ya autorizada, sin historial ni otras paradas del mensajero.
