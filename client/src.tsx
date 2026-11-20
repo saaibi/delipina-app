@@ -914,7 +914,9 @@ function App() {
               )}
               {delivery && (
                 <DeliveryRoute
-                  orders={selected}
+                  orders={orders}
+                  day={currentDay}
+                  originLocation={settings?.originLocation}
                   user={user}
                   origin={
                     settings?.origin ||
@@ -1291,6 +1293,24 @@ function App() {
                 placeholder="Bucaramanga, Girón, Floridablanca, Piedecuesta u otra ciudad"
               />
 
+              <Field
+                name="lat"
+                label="Latitud (opcional)"
+                type="number"
+                step="any"
+                required={false}
+                min="-90"
+                max="90"
+              />
+              <Field
+                name="lng"
+                label="Longitud (opcional)"
+                type="number"
+                step="any"
+                required={false}
+                min="-180"
+                max="180"
+              />
               <Button type="submit">Guardar sucursal</Button>
             </Form>
           )}

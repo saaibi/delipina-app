@@ -20,7 +20,7 @@ await tx(async (c) => {
   const u = (await c.query("SELECT id FROM users WHERE role='client' LIMIT 1"))
     .rows[0];
   if (!(await c.query("SELECT 1 FROM branches")).rowCount)
-    await c.query("INSERT INTO branches VALUES($1,$2,$3,$4)", [
+    await c.query("INSERT INTO branches(id,client_id,address,city) VALUES($1,$2,$3,$4)", [
       randomUUID(),
       u.id,
       "Calle 10 # 20-30 (ejemplo)",

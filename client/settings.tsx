@@ -1,4 +1,4 @@
-import { DemoData } from "./demo-data";
+import { BranchLocations } from "./branch-locations";
 import { MembersEditor } from "./members";
 import { ServerTable } from "./server-table";
 import { has } from "./access";
@@ -78,6 +78,7 @@ export function ScheduleEditor({ settings, onSaved }: any) {
             method: "PUT",
             body: {
               origin: b.origin,
+              originLocation: { lat: b.originLat, lng: b.originLng },
               weeklySchedule: week,
             },
           });
@@ -94,6 +95,26 @@ export function ScheduleEditor({ settings, onSaved }: any) {
         label="Origen del reparto"
         name="origin"
         defaultValue={settings.origin}
+      />
+      <Field
+        label="Latitud del origen"
+        name="originLat"
+        type="number"
+        step="any"
+        min="-90"
+        max="90"
+        required={false}
+        defaultValue={settings.originLocation?.lat ?? ""}
+      />
+      <Field
+        label="Longitud del origen"
+        name="originLng"
+        type="number"
+        step="any"
+        min="-180"
+        max="180"
+        required={false}
+        defaultValue={settings.originLocation?.lng ?? ""}
       />
       {days.map((name, i) => {
         const d = week[i + 1];
@@ -247,11 +268,6 @@ export function SettingsView({
         </Section>
       )}
       {admin && (
-        <Section title="Datos demo para rutas">
-          <DemoData users={users} onRefresh={onRefresh} />
-        </Section>
-      )}
-      {admin && (
         <Section title="Pagos en línea">
           <p>
             PSE, Nequi y Bancolombia: cuenta de comercio pendiente. Los pagos
@@ -267,6 +283,11 @@ export function SettingsView({
       {user.role === "client" && (
         <Section title="Usuarios de mi cliente">
           <MembersEditor />
+        </Section>
+      )}
+      {(admin || user.role === "client") && (
+        <Section title="Ubicaciones de entrega">
+          <BranchLocations branches={branches} onSaved={onRefresh} />
         </Section>
       )}
       {user.role === "client" && (

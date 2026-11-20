@@ -4,6 +4,7 @@ import request from "supertest";
 import { randomUUID } from "node:crypto";
 import { createApp } from "../dist-server/app.js";
 process.env.DISABLE_AUTOMATIC_JOBS="true";
+process.env.ROUTING_DISABLE_NETWORK="true";
 const nest = await createApp();
 await nest.init();
 const app = nest.getHttpServer();
@@ -852,4 +853,12 @@ test('Lote demo es exclusivo de admin, no duplica ni crea facturas y no cuenta c
  assert.equal((await pool.query('SELECT count(*)::int n FROM invoices WHERE order_id=ANY($1::uuid[])',[made.body.order_ids])).rows[0].n,0);
  const outside=(await pool.query("SELECT o.payment_method,b.city FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.demo_batch_id=$1 AND b.city='Bogotá'",[made.body.id])).rows[0];assert.equal(outside.payment_method,'online');
  assert.equal((await call('client','get','/orders/'+made.body.order_ids[0])).status,404);
+});
+
+test("Recorridos automáticos limitados al mensajero y jornada, con grupos de máximo cinco",async()=>{
+ const batch=(await pool.query("SELECT * FROM demo_batches WHERE client_id=$1",[users.owner.id])).rows[0];
+ await pool.query("UPDATE orders SET operation_day=(now() AT TIME ZONE 'America/Bogota')::date WHERE demo_batch_id=$1",[batch.id]);
+ const routes=await call('courier','get','/delivery-routes');assert.equal(routes.status,200,JSON.stringify(routes.body));assert.equal(routes.body.groups.flatMap(g=>g.stops).length,9);assert.ok(routes.body.groups.every(g=>g.stops.length<=5));assert.ok(routes.body.groups.every(g=>g.stops.every(s=>s.city!=='Bogotá')||g.stops.every(s=>s.city==='Bogotá')));assert.ok(routes.body.groups.every(g=>g.mode==='distance'));
+ assert.equal((await call('client','get','/delivery-routes')).status,403);assert.equal((await call('courier2','get','/delivery-routes')).body.groups.length,0);
+ const id=batch.branch_ids[0];assert.equal((await call('client','patch','/branches/'+id+'/location',{lat:7,lng:-73})).status,404);assert.equal((await call('owner','patch','/branches/'+id+'/location',{lat:91,lng:-73})).status,400);assert.equal((await call('owner','patch','/branches/'+id+'/location',{lat:7.01,lng:-73.04})).status,200);
 });

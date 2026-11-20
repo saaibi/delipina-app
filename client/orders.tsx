@@ -13,7 +13,7 @@ export function OrderCards({
     <div
       className={
         userRole === "preparation"
-          ? "orders compact"
+          ? "orders plant-order-grid"
           : "orders order-grid-compact"
       }
     >
@@ -25,31 +25,45 @@ export function OrderCards({
         return (
           <article
             className={
-              userRole === "preparation" ? "order" : "order compact-order"
+              userRole === "preparation"
+                ? "order plant-order"
+                : "order compact-order"
             }
             key={o.id}
           >
             {o.demo_batch_id && (
-              <small className="demo-warning">DEMO · sin cobro real</small>
+              <small className="demo-warning">
+                {userRole === "preparation" ? "DEMO" : "DEMO · sin cobro real"}
+              </small>
             )}
             {userRole === "preparation" ? (
               <>
                 <div className="orderhead">
+                  <strong className="plant-order-number">
+                    #{o.id.slice(0, 6)}
+                  </strong>
                   <span className={"status " + o.status}>
                     {labels[o.status]}
                   </span>
                   <span className={"urgency " + color}>{!terminal && urg}</span>
                 </div>
-                <h2>#{o.id.slice(0, 6)}</h2>
-                <div className="window">
-                  {date(o.window_start)} —{" "}
+                <div className="plant-window">
+                  {new Date(o.window_start).toLocaleTimeString("es-CO", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    timeZone: "America/Bogota",
+                  })}{" "}
+                  —{" "}
                   {new Date(o.window_end).toLocaleTimeString("es-CO", {
                     hour: "2-digit",
                     minute: "2-digit",
                     timeZone: "America/Bogota",
                   })}
                 </div>
-                <ul className="items">
+                <ul
+                  className="items plant-items"
+                  aria-label="Productos y cantidades"
+                >
                   {o.items?.map((i, j) => (
                     <li key={j}>
                       <strong>{Number(i.quantity)}</strong>
@@ -57,7 +71,7 @@ export function OrderCards({
                     </li>
                   ))}
                 </ul>
-                {o.notes && <p className="notes">{o.notes}</p>}
+
                 {actionsFor(o)}
               </>
             ) : (
@@ -125,10 +139,14 @@ export function OrderDetails({
         <span className={"status " + o.status}>{labels[o.status]}</span>
         <small>#{o.id.slice(0, 6)}</small>
       </div>
-      <h3>{o.client_name}</h3>
-      <p>
-        {o.address} · {o.city}
-      </p>
+      {userRole !== "preparation" && (
+        <>
+          <h3>{o.client_name}</h3>
+          <p>
+            {o.address} · {o.city}
+          </p>
+        </>
+      )}
       <div className="window">
         {date(o.window_start)} —{" "}
         {new Date(o.window_end).toLocaleTimeString("es-CO", {

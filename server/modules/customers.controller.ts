@@ -1,3 +1,4 @@
+import { coordinates } from "../coordinates.js";
 import { customerId, isCustomer, hasModule, modules } from "../access.js";
 import {
   Controller,
@@ -233,6 +234,26 @@ export class CustomersController {
       ])
     ).rows;
   }
+  @Patch("branches/:id/location") @HttpCode(200) async branchLocation(
+    @Req() req: any,
+  ) {
+    const u = auth(req, ["admin", "client"]),
+      point = coordinates(req.body.lat, req.body.lng);
+    const result = await pool.query(
+      "UPDATE branches SET lat=$2,lng=$3,location_source=$4 WHERE id=$1 AND ($5 OR client_id=$6) RETURNING *",
+      [
+        req.params.id,
+        point?.lat ?? null,
+        point?.lng ?? null,
+        point ? "manual" : null,
+        u.role === "admin",
+        customerId(u),
+      ],
+    );
+    if (!result.rowCount) fail(404, "Sucursal no disponible");
+    await broadcast();
+    return result.rows[0];
+  }
   @Post("branches")
   @HttpCode(200)
   async postBranches(
@@ -241,13 +262,20 @@ export class CustomersController {
   ) {
     const u = auth(req, ["admin", "client"]);
     const b = req.body;
+    const point = coordinates(b.lat, b.lng);
     return (
-      await pool.query("INSERT INTO branches VALUES($1,$2,$3,$4) RETURNING *", [
-        randomUUID(),
-        isCustomer(u) ? customerId(u) : b.clientId,
-        text(b.address),
-        text(b.city, 100),
-      ])
+      await pool.query(
+        "INSERT INTO branches(id,client_id,address,city,lat,lng,location_source) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",
+        [
+          randomUUID(),
+          isCustomer(u) ? customerId(u) : b.clientId,
+          text(b.address),
+          text(b.city, 100),
+          point?.lat ?? null,
+          point?.lng ?? null,
+          point ? "manual" : null,
+        ],
+      )
     ).rows[0];
   }
 }

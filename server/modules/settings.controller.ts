@@ -1,3 +1,4 @@
+import { coordinates } from "../coordinates.js";
 import {
   validateSchedule,
   weeklySchedule,
@@ -58,6 +59,11 @@ export class SettingsController {
     const week = validateSchedule(b),
       cfg = {
         origin: text(b.origin),
+        originLocation:
+          b.originLocation === undefined
+            ? (await pool.query("SELECT data FROM settings WHERE id=1")).rows[0]
+                .data.originLocation
+            : coordinates(b.originLocation?.lat, b.originLocation?.lng),
         weeklySchedule: week,
       };
     await tx(async (c) => {

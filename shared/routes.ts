@@ -1,10 +1,15 @@
 /** Maps URLs: at most three intermediate waypoints for mobile browser support. */
 export function routeLinks(
   origin: string,
-  stops: { address: string; city: string }[],
+  stops: { address: string; city: string; lat?: number; lng?: number }[],
 ) {
   const address = (o: any) =>
-    `${o.address.replace(/^\[DEMO\]\s*/, "")}, ${o.city}, Colombia`;
+    o.lat != null &&
+    o.lng != null &&
+    Number.isFinite(Number(o.lat)) &&
+    Number.isFinite(Number(o.lng))
+      ? `${o.lat},${o.lng}`
+      : `${o.address.replace(/^\[DEMO\]\s*/, "")}, ${o.city}, Colombia`;
   const result: { url: string; count: number }[] = [];
   for (let i = 0; i < stops.length; i += 4) {
     const chunk = stops.slice(i, i + 4),

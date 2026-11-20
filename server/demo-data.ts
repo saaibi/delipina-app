@@ -75,6 +75,17 @@ export async function createDemoData(
         "INSERT INTO branches(id,client_id,address,city) VALUES($1,$2,$3,$4)",
         [branch, client.id, "[DEMO] " + address, city],
       );
+      const point = {
+        Piedecuesta: [6.9871, -73.0495],
+        Floridablanca: [7.0628, -73.086],
+        Girón: [7.0732, -73.1681],
+        Bucaramanga: [7.1193, -73.1227],
+        Bogotá: [4.5981, -74.076],
+      }[city];
+      await c.query(
+        "UPDATE branches SET lat=$2,lng=$3,location_source='demo' WHERE id=$1",
+        [branch, point[0] + (i % 2 ? 0.003 : 0), point[1]],
+      );
       branches.push(branch);
       await c.query(
         "INSERT INTO orders(id,client_id,branch_id,status,courier_id,window_start,window_end,total,credit,notes,operation_day,payment_method,demo_batch_id) VALUES($1,$2,$3,'ready',$4,$5,$6,$7,false,$8,$9,$10,$11)",

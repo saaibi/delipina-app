@@ -1,20 +1,26 @@
 import { spawn } from "node:child_process";
 import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
-const db = new PGlite("../work/preview-db");
+const db = new PGlite(process.env.PREVIEW_DB_DIR || "../work/preview-db");
+const previewPort = process.env.PREVIEW_PORT || "3006",
+  databasePort = Number(process.env.PREVIEW_DB_PORT || 55438);
 await db.waitReady;
-const socket = new PGLiteSocketServer({ db, port: 55438, host: "127.0.0.1" });
+const socket = new PGLiteSocketServer({
+  db,
+  port: databasePort,
+  host: "127.0.0.1",
+});
 await socket.start();
 const env = {
   ...process.env,
-  DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:55438/postgres",
+  DATABASE_URL: `postgresql://postgres:postgres@127.0.0.1:${databasePort}/postgres`,
   DATABASE_SCHEMA: "delipina",
   PGLITE_LOCAL: "true",
   NODE_ENV: "development",
   DEV_AUTH: "true",
   LOCAL_PREVIEW_STATIC: "true",
-  PORT: "3006",
-  APP_ORIGIN: "http://localhost:3006",
+  PORT: previewPort,
+  APP_ORIGIN: `http://localhost:${previewPort}`,
 };
 async function run(args: string[]) {
   await new Promise<void>((resolve, reject) => {

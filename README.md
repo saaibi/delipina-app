@@ -159,6 +159,13 @@ Entregas permite seleccionar pedidos asignados listos o en camino, ordenar parad
 
 El seguimiento muestra OpenStreetMap mediante su visor embebido, con atribución incluida y GPS aproximado obtenido de la aplicación. No usa Google Maps de pago, no conserva un historial de recorrido ni calcula ETA. La app debe mantenerse activa y con permiso de ubicación; los teléfonos pueden suspender el GPS en segundo plano. La disponibilidad del visor público es de mejor esfuerzo.
 
-Ajustes / Datos demo para rutas crea un lote idempotente para un cliente existente: nueve sucursales y pedidos claramente marcados. No envía notificaciones, genera facturas ni reservas de crédito; queda fuera de análisis y cierre contable. Los identificadores se guardan en `demo_batches` para su futura limpieza específica. El destino fuera de zona usa pago online. No ejecuta cobros.
+La herramienta administrativa de datos demo (sección de Ajustes retirada) crea un lote idempotente para un cliente existente: nueve sucursales y pedidos claramente marcados. No envía notificaciones, genera facturas ni reservas de crédito; queda fuera de análisis y cierre contable. Los identificadores se guardan en `demo_batches` para su futura limpieza específica. El destino fuera de zona usa pago online. No ejecuta cobros.
 
 Favicon, Apple Touch Icon, iconos PWA y lanzadores iOS/Android usan el logo existente con márgenes para evitar recortes. La sincronización Capacitor no equivale a un binario firmado.
+
+### Recorridos automáticos (reemplaza armado manual)
+Entregas muestra automáticamente grupos de máximo cinco pedidos asignados y listos/en camino de la jornada. Agrupa por cercanía, mantiene ciudades externas separadas y usa OSRM/FOSSGIS para minimizar el tiempo vial dentro de cada grupo. Requiere ubicar las sucursales desde Ajustes / Ubicaciones de entrega; el origen tiene coordenadas editables. No se utiliza geocodificación de direcciones privadas ni una API de pago. El proveedor público es de mejor esfuerzo: ante indisponibilidad el orden se señala como aproximado por distancia. No hay tráfico en tiempo real ni garantía de óptimo global de toda la flota.
+
+Política: https://routing.openstreetmap.de/about.html . Caché, identificación y límite de una solicitud por 1,1 segundos; atribución visible. La salida de Plaza San Francisco usa la referencia pública de la Alcaldía, editable para precisar el punto de cargue. Los puntos de las sucursales demo son ficticios, identificados como tales.
+
+Planta usa tarjetas compactas con número, estado, franja horaria, productos y cantidades; omite dirección, cliente, precio y notas generales. La sección Datos demo fue retirada de Ajustes sin borrar los lotes ya creados.

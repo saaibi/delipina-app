@@ -49,7 +49,7 @@ export class OrdersController {
       fail(403, "Módulo no autorizado");
     const rows = (
       await pool.query(
-        `SELECT o.*,b.address,b.city,u.name AS client_name,(SELECT json_agg(i) FROM items i WHERE i.order_id=o.id) AS items FROM orders o JOIN branches b ON b.id=o.branch_id JOIN users u ON u.id=o.client_id ORDER BY o.created_at`,
+        `SELECT o.*,b.address,b.city,b.lat,b.lng,u.name AS client_name,(SELECT json_agg(i) FROM items i WHERE i.order_id=o.id) AS items FROM orders o JOIN branches b ON b.id=o.branch_id JOIN users u ON u.id=o.client_id ORDER BY o.created_at`,
       )
     ).rows.filter((o) => orderVisible(u, o));
     return rows.map((o) => {
