@@ -254,6 +254,10 @@ export async function ensureBusinessClock() {
     const cfg = (await c.query("SELECT data FROM settings WHERE id=1")).rows[0]
       ?.data;
     if (!cfg) return false;
+    // Also removes empty days left by a previous instance during a rolling deploy.
+    await c.query(
+      `DELETE FROM business_days d WHERE NOT EXISTS(SELECT 1 FROM orders o WHERE o.operation_day=d.day OR o.sale_day=d.day OR (o.window_start AT TIME ZONE 'America/Bogota')::date=d.day) AND NOT EXISTS(SELECT 1 FROM payments p WHERE p.business_day=d.day OR p.verified_day=d.day) AND NOT EXISTS(SELECT 1 FROM settlements s WHERE s.day=d.day) AND NOT EXISTS(SELECT 1 FROM delivery_runs r WHERE r.day=d.day)`,
+    );
     const activeDays = (
       await c.query(
         "SELECT DISTINCT to_char(COALESCE(operation_day,(window_start AT TIME ZONE 'America/Bogota')::date),'YYYY-MM-DD') AS day FROM orders",

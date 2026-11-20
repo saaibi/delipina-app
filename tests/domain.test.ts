@@ -348,6 +348,7 @@ test("Cierre automático conserva historia, saldos y pedidos futuros", async () 
     "INSERT INTO business_days(day,cutoff_at) VALUES($1,now()-interval '1 hour') ON CONFLICT(day) DO UPDATE SET cutoff_at=excluded.cutoff_at,closed_at=NULL",
     [day],
   );
+  await pool.query("INSERT INTO orders(id,client_id,branch_id,window_start,window_end,total,status,operation_day) VALUES($1,$2,$3,($4::date+time '06:00') AT TIME ZONE 'America/Bogota',($4::date+time '07:00') AT TIME ZONE 'America/Bogota',0,'cancelled',$4)",[randomUUID(),users.client.id,body.branchId,day]);
   const closed = await call("admin", "get", "/business-days");
   assert.equal(closed.status, 200);
   const row = closed.body.find((r) => r.day === day);
@@ -991,6 +992,7 @@ test('Limpieza administrativa reversible conserva catálogo, usuarios y archivos
  assert.equal((await pool.query('SELECT count(*) FROM users WHERE credit_used<>0')).rows[0].count,'0');
  assert.deepEqual((await maintenancePreview()).preserved,before.preserved);
  assert.equal((await call('client','get','/maintenance/archives/'+cleared.id+'/download')).status,403);
+ await pool.query("INSERT INTO business_days(day,cutoff_at) VALUES((now() AT TIME ZONE 'America/Bogota')::date,now())");
  const current=await call('admin','get','/business-day');assert.equal(current.status,200);assert.ok(current.body.day);assert.ok(current.body.cutoffAt);
  await call('admin','get','/business-days');await call('admin','get','/business-day');
  assert.equal((await pool.query('SELECT count(*) FROM business_days')).rows[0].count,'0','Consultar apertura o días futuros no crea jornadas sin pedidos');
