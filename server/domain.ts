@@ -1,3 +1,4 @@
+import { dispatchNativePush } from "./native-push.js";
 import { ensureRecurrences } from "./recurrence.js";
 import { customerId, isCustomer, hasModule, canPortfolio } from "./access.js";
 import { notifyOrder } from "./notification-store.js";
@@ -100,9 +101,11 @@ export async function broadcast() {
 }
 export let pushing = false;
 export async function dispatchPush() {
-  if (pushing || !process.env.VAPID_PRIVATE_KEY) return;
+  if (pushing) return;
   pushing = true;
   try {
+    await dispatchNativePush();
+    if (!process.env.VAPID_PRIVATE_KEY) return;
     webpush.setVapidDetails(
       process.env.VAPID_SUBJECT,
       process.env.VAPID_PUBLIC_KEY,
@@ -207,7 +210,12 @@ export function configureApp(app: any) {
       }
       if (
         !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
-        req.get("origin") !== process.env.APP_ORIGIN
+        req.get("origin") !== process.env.APP_ORIGIN &&
+        !(
+          req.method === "POST" &&
+          req.path === "/api/native-push/pair" &&
+          !req.get("origin")
+        )
       )
         fail(403, "Origen no permitido");
       if (req.user && !["GET", "HEAD", "OPTIONS"].includes(req.method))

@@ -208,3 +208,8 @@ Android abre la web publicada mediante Custom Tabs, compartiendo la sesión del 
 
 ### Inicio de sesión con Apple
 Pendiente de cuenta activa Apple Developer Program. La configuración web requiere App ID, Services ID, dominio y retorno HTTPS registrados y clave privada. No se muestra un botón sin configuración. Documentación: https://developer.apple.com/help/account/capabilities/configure-sign-in-with-apple-for-the-web/
+
+### Firebase Android
+Proyecto independiente `delipina-app-2026` (Spark), app Android `com.delipina.app` y registro Web `Delipiña Web`. Web Push con VAPID se conserva para navegadores. Android usa FCM HTTP v1 con la cuenta `delipina-push`, limitada al rol Firebase Cloud Messaging API Admin; `FIREBASE_SERVICE_ACCOUNT` vive únicamente en el servidor. El archivo `android/app/google-services.json` es configuración pública de cliente y se excluye de Git.
+
+El APK solicita permiso en Android 13+, obtiene el token y muestra un código para vincularlo con la sesión web mediante confirmación explícita, válida diez minutos y de un solo uso. Ajustes permite desactivar ese dispositivo; cerrar sesión también lo desactiva. Los avisos se actualizan por ID/revisión y abren el pedido al tocarlos. El servidor excluye usuarios inactivos. Los tokens se renuevan al abrir la app; falta validar recepción y clic con un teléfono Android real. No se habilita FCM en iOS sin APNs.

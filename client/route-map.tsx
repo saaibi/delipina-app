@@ -32,7 +32,8 @@ export function RouteMap({ route, onClose }: any) {
       .filter((s) => s.lat != null && s.lng != null);
     const m = L.map(host.current, { scrollWheelZoom: false });
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://routing.openstreetmap.de/about.html">OSRM</a> · <a href="https://www.openstreetmap.org/fixthemap">Corregir mapa</a>', 
+      attribution:
+        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://routing.openstreetmap.de/about.html">OSRM</a> · <a href="https://www.openstreetmap.org/fixthemap">Corregir mapa</a>',
       maxZoom: 19,
       referrerPolicy: "strict-origin-when-cross-origin",
     }).addTo(m);

@@ -1,3 +1,4 @@
+import { NativePair } from "./native-pair";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
@@ -735,6 +736,10 @@ function App() {
           S("");
         }}
       />
+      <NativePair
+        userId={user?.id}
+        onLinked={() => window.dispatchEvent(new Event("native-push-linked"))}
+      />
       <PushPermissionPrompt controller={push} />
       <Navigation
         user={user}
@@ -750,6 +755,14 @@ function App() {
         onNavigate={navigateModule}
         onLogout={() =>
           run(async () => {
+            const nativeDevice = localStorage.getItem(
+              "delipina-native-device:" + user.id,
+            );
+            if (nativeDevice)
+              await api("/native-push/device", {
+                method: "PUT",
+                body: { id: nativeDevice, enabled: false },
+              }).catch(() => {});
             await api("/logout", { method: "POST" });
             clearData();
             await clearOffline();

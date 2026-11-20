@@ -1000,3 +1000,20 @@ test('Limpieza administrativa reversible conserva catálogo, usuarios y archivos
  assert.deepEqual((await pool.query('SELECT data FROM invoice_photos WHERE invoice_id=$1',[invoice.id])).rows[0].data,bytes);
  assert.ok((await pool.query('SELECT 1 FROM maintenance_archives WHERE id=ANY($1::uuid[])',[[cleared.id,restored.safetyId]])).rowCount===2);
 });
+test('FCM vincula un dispositivo con código de un solo uso, permiso y aislamiento de usuario',async()=>{
+ const previous=process.env.FIREBASE_SERVICE_ACCOUNT;process.env.FIREBASE_SERVICE_ACCOUNT='{}';
+ try{
+ const deviceKey='a'.repeat(64),token='test-device-token-'.repeat(8);
+ const pair=await request(app).post('/api/native-push/pair').send({deviceKey,token});assert.equal(pair.status,200,JSON.stringify(pair.body));assert.equal(pair.body.code.length,64);
+ assert.equal((await request(app).post('/api/native-push/claim').set('Origin',origin).send({code:pair.body.code})).status,401);
+ const claimed=await call('client','post','/native-push/claim',{code:pair.body.code});assert.equal(claimed.status,200);
+ assert.equal((await call('admin','post','/native-push/claim',{code:pair.body.code})).status,409);
+ assert.equal((await call('admin','get','/native-push/device?id='+claimed.body.id)).body.id,null);
+ assert.equal((await call('admin','put','/native-push/device',{id:claimed.body.id,enabled:false})).status,404);
+ const own=(await call('client','get','/native-push/device?id='+claimed.body.id)).body;assert.equal(own.enabled,true);assert.equal(own.token,undefined);
+ assert.equal((await call('client','put','/native-push/device',{id:claimed.body.id,enabled:false})).status,200);
+ assert.equal((await call('client','get','/native-push/device?id='+claimed.body.id)).body.enabled,false);
+ const expired=await request(app).post('/api/native-push/pair').send({deviceKey,token});await pool.query("UPDATE native_push_devices SET expires_at=now()-interval '1 minute' WHERE id=$1",[claimed.body.id]);assert.equal((await call('client','post','/native-push/claim',{code:expired.body.code})).status,409);
+ await pool.query('DELETE FROM native_push_devices WHERE id=$1',[claimed.body.id]);
+ }finally{if(previous===undefined)delete process.env.FIREBASE_SERVICE_ACCOUNT;else process.env.FIREBASE_SERVICE_ACCOUNT=previous;}
+});

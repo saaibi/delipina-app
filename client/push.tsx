@@ -18,9 +18,42 @@ export function usePushPreferences(
     "serviceWorker" in navigator &&
     "PushManager" in window;
   const key = "delipina-push-disabled:" + userId;
+  const nativeId = () =>
+    localStorage.getItem("delipina-native-device:" + userId);
+  async function nativeStatus() {
+    const id = nativeId();
+    if (!id) return false;
+    const d = await api("/native-push/device?id=" + encodeURIComponent(id));
+    if (!d?.id) {
+      localStorage.removeItem("delipina-native-device:" + userId);
+      return false;
+    }
+    S(d.enabled);
+    ST(
+      d.enabled
+        ? "Notificaciones Android activas"
+        : "Notificaciones Android desactivadas",
+    );
+    A(false);
+    return true;
+  }
+  useEffect(() => {
+    const linked = () => void nativeStatus();
+    window.addEventListener("native-push-linked", linked);
+    return () => window.removeEventListener("native-push-linked", linked);
+  }, [userId]);
   async function activate(requestPermission = false) {
     E("");
     try {
+      if (nativeId()) {
+        await api("/native-push/device", {
+          method: "PUT",
+          body: { id: nativeId(), enabled: true },
+        });
+        localStorage.removeItem(key);
+        await nativeStatus();
+        return;
+      }
       if (!available())
         throw Error("Este dispositivo o navegador no admite Web Push.");
       if (!config?.vapidPublicKey)
@@ -56,6 +89,15 @@ export function usePushPreferences(
   }
   async function disable() {
     try {
+      if (nativeId()) {
+        await api("/native-push/device", {
+          method: "PUT",
+          body: { id: nativeId(), enabled: false },
+        });
+        localStorage.setItem(key, "true");
+        await nativeStatus();
+        return;
+      }
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
@@ -74,6 +116,14 @@ export function usePushPreferences(
   }
   useEffect(() => {
     if (!userId) return;
+    if (nativeId()) {
+      void nativeStatus().catch((e) => E(e.message));
+      return;
+    }
+    if (new URLSearchParams(location.search).has("pushPair")) {
+      A(false);
+      return;
+    }
     if (!available()) {
       ST("Web Push no disponible en este dispositivo");
       return;
@@ -106,7 +156,7 @@ export function usePushPreferences(
     status,
     ask,
     error,
-    available: available() && !!config?.vapidPublicKey,
+    available: !!nativeId() || (available() && !!config?.vapidPublicKey),
     activate: () => activate(true),
     disable,
     dismiss() {

@@ -17,6 +17,7 @@ export const operationalTables = [
   "audit",
   "notifications",
   "push_deliveries",
+  "native_push_deliveries",
   "idempotency",
   "locations",
   "settlements",

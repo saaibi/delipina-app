@@ -1,0 +1,2 @@
+CREATE TABLE native_push_devices(id uuid PRIMARY KEY,device_hash text UNIQUE NOT NULL,token text NOT NULL,user_id uuid REFERENCES users,pair_hash text UNIQUE,expires_at timestamptz,enabled boolean NOT NULL DEFAULT false,updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE native_push_deliveries(notification_id uuid REFERENCES notifications ON DELETE CASCADE,device_id uuid REFERENCES native_push_devices ON DELETE CASCADE,revision int NOT NULL,PRIMARY KEY(notification_id,device_id,revision));
