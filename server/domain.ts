@@ -183,6 +183,7 @@ export function configureApp(app: any) {
   app.use(
     helmet({
       contentSecurityPolicy: false,
+      referrerPolicy: { policy: "strict-origin-when-cross-origin" },
       crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     }),
   );
@@ -197,7 +198,8 @@ export function configureApp(app: any) {
         !req.path.startsWith("/api/health")
       ) {
         const changed = await ensureBusinessClock();
-        if(process.env.DISABLE_AUTOMATIC_JOBS!=='true')void ensureRecurrences().catch(() => {});
+        if (process.env.DISABLE_AUTOMATIC_JOBS !== "true")
+          void ensureRecurrences().catch(() => {});
         if (changed) {
           io?.emit("refresh");
           void dispatchPush();

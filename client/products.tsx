@@ -149,7 +149,7 @@ export function ProductChoices({
                 group.name +
                 (group.label ? " · " + group.label : "") +
                 " por " +
-                unitNames[p.unit]
+                (unitNames[p.unit] || p.unit)
               }
               onClick={() => onQuantity(p.id, quantity > 0 ? "" : 1)}
             >
@@ -160,7 +160,8 @@ export function ProductChoices({
                 <strong>{group.name}</strong>
                 {group.label && <span>{group.label}</span>}
                 <b>
-                  {money(p.price)} / {unitNames[p.unit].toLowerCase()}
+                  {money(p.price)} /{" "}
+                  {(unitNames[p.unit] || p.unit).toLowerCase()}
                 </b>
               </div>
               {selected && <CheckCircle className="product-choice-check" />}
@@ -176,7 +177,7 @@ export function ProductChoices({
               >
                 {group.variants.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {unitNames[v.unit]}
+                    {unitNames[v.unit] || v.unit}
                   </option>
                 ))}
               </Select>
@@ -187,7 +188,7 @@ export function ProductChoices({
                   "Quitar cantidad de " +
                   group.name +
                   " por " +
-                  unitNames[p.unit]
+                  (unitNames[p.unit] || p.unit)
                 }
                 disabled={!quantity}
                 onClick={() => onQuantity(p.id, Math.max(0, quantity - 1))}
@@ -197,11 +198,16 @@ export function ProductChoices({
               <Field
                 required={false}
                 label={
-                  { kg: "kg", lb: "lb", arroba: "@", pack: "uds." }[p.unit]
+                  { kg: "kg", lb: "lb", arroba: "@", pack: "uds." }[p.unit] ||
+                  p.unit
                 }
                 type="number"
                 min="0"
-                step={p.unit === "pack" ? "1" : ".001"}
+                step={
+                  (p.allows_fraction ?? ["kg", "lb", "arroba"].includes(p.unit))
+                    ? ".001"
+                    : "1"
+                }
                 value={quantities[p.id] || ""}
                 onChange={(e) => onQuantity(p.id, e.target.value)}
                 size="small"
@@ -212,7 +218,7 @@ export function ProductChoices({
                   "Agregar cantidad de " +
                   group.name +
                   " por " +
-                  unitNames[p.unit]
+                  (unitNames[p.unit] || p.unit)
                 }
                 onClick={() => onQuantity(p.id, quantity + 1)}
               >
@@ -234,12 +240,13 @@ export function ProductChoices({
                         "Editar " +
                         quantities[v.id] +
                         " " +
-                        unitNames[v.unit] +
+                        (unitNames[v.unit] || v.unit) +
                         " de " +
                         group.name
                       }
                     >
-                      {quantities[v.id]} {unitNames[v.unit].toLowerCase()}
+                      {quantities[v.id]}{" "}
+                      {(unitNames[v.unit] || v.unit).toLowerCase()}
                     </button>
                   ))}
               </div>

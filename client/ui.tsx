@@ -124,7 +124,14 @@ export function Field({
 }: any) {
   if (["date", "datetime-local", "time"].includes(type))
     return (
-      <DateInput label={label} required={required} type={type} {...props} />
+      <DateInput
+        label={label}
+        required={required}
+        type={type}
+        min={min}
+        max={max}
+        {...props}
+      />
     );
   return (
     <TextField
@@ -149,6 +156,8 @@ export function DateInput({
   onChange,
   defaultValue,
   required = false,
+  min,
+  max,
 }: any) {
   const parse = (v: any) =>
     type === "date"
@@ -171,6 +180,8 @@ export function DateInput({
         label={label}
         value={current}
         timezone="America/Bogota"
+        minDate={min ? parse(min) : undefined}
+        maxDate={max ? parse(max) : undefined}
         onChange={(v) => {
           S(v);
           if (onChange)

@@ -1,9 +1,11 @@
 import { spawn } from "node:child_process";
 import { PGlite } from "@electric-sql/pglite";
 import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
-const db = new PGlite(process.env.PREVIEW_DB_DIR || "../work/preview-db");
-const previewPort = process.env.PREVIEW_PORT || "3006",
-  databasePort = Number(process.env.PREVIEW_DB_PORT || 55438);
+const db = new PGlite(
+  process.env.PREVIEW_DB_DIR || "../work/preview-routes-db",
+);
+const previewPort = process.env.PREVIEW_PORT || "3007",
+  databasePort = Number(process.env.PREVIEW_DB_PORT || 55439);
 await db.waitReady;
 const socket = new PGLiteSocketServer({
   db,

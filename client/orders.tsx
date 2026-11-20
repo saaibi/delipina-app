@@ -1,3 +1,6 @@
+import LocalShippingOutlined from "@mui/icons-material/LocalShippingOutlined";
+import PlaceOutlined from "@mui/icons-material/PlaceOutlined";
+import ArrowForward from "@mui/icons-material/ArrowForward";
 import React from "react";
 export function OrderCards({
   orders,
@@ -14,7 +17,9 @@ export function OrderCards({
       className={
         userRole === "preparation"
           ? "orders plant-order-grid"
-          : "orders order-grid-compact"
+          : userRole === "courier"
+            ? "orders courier-order-grid"
+            : "orders order-grid-compact"
       }
     >
       {orders.map((o) => {
@@ -27,7 +32,9 @@ export function OrderCards({
             className={
               userRole === "preparation"
                 ? "order plant-order"
-                : "order compact-order"
+                : userRole === "courier"
+                  ? "order compact-order courier-order " + o.status
+                  : "order compact-order"
             }
             key={o.id}
           >
@@ -40,7 +47,7 @@ export function OrderCards({
               <>
                 <div className="orderhead">
                   <strong className="plant-order-number">
-                    #{o.id.slice(0, 6)}
+                    {o.client_name || "Cliente"}
                   </strong>
                   <span className={"status " + o.status}>
                     {labels[o.status]}
@@ -74,6 +81,75 @@ export function OrderCards({
 
                 {actionsFor(o)}
               </>
+            ) : userRole === "courier" ? (
+              <button
+                type="button"
+                className="courier-card-main"
+                onClick={() => onSelect(o)}
+                aria-label={
+                  "Ver detalle del pedido " +
+                  o.id.slice(0, 6) +
+                  " de " +
+                  o.client_name
+                }
+              >
+                <div className="courier-card-top">
+                  <span
+                    className={
+                      "courier-assignment " +
+                      (!o.courier_id ? "available" : "assigned")
+                    }
+                  >
+                    <LocalShippingOutlined fontSize="small" />
+                    {!o.courier_id
+                      ? "Disponible"
+                      : o.status === "enroute"
+                        ? "En reparto"
+                        : "Asignado a ti"}
+                  </span>
+                  <small>#{o.id.slice(0, 6)}</small>
+                </div>
+                <h2>{o.client_name}</h2>
+                <div className="courier-city">
+                  <PlaceOutlined fontSize="small" />
+                  {o.city}
+                </div>
+                <p className="courier-address">{o.address}</p>
+                <div className="courier-time">
+                  <span>
+                    {new Date(o.window_start).toLocaleTimeString("es-CO", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "America/Bogota",
+                    })}{" "}
+                    —{" "}
+                    {new Date(o.window_end).toLocaleTimeString("es-CO", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "America/Bogota",
+                    })}
+                  </span>
+                  <span className={"status " + o.status}>
+                    {labels[o.status]}
+                  </span>
+                </div>
+                <div className="courier-products">
+                  {o.items?.slice(0, 2).map((item, i) => (
+                    <span key={i}>
+                      <b>{Number(item.quantity)}</b> {item.name}
+                    </span>
+                  ))}
+                  {o.items?.length > 2 && (
+                    <small>+{o.items.length - 2} productos</small>
+                  )}
+                </div>
+                <div className="courier-card-bottom">
+                  <strong>{money(o.total)}</strong>
+                  <span>
+                    Ver pedido <ArrowForward fontSize="small" />
+                  </span>
+                </div>
+              </button>
             ) : (
               <>
                 <button
@@ -91,7 +167,9 @@ export function OrderCards({
                     <span className={"status " + o.status}>
                       {labels[o.status]}
                     </span>
-                    <small>#{o.id.slice(0, 6)}</small>
+                    {userRole !== "preparation" && (
+                      <small>#{o.id.slice(0, 6)}</small>
+                    )}
                     <span className={"urgency " + color}>
                       {!terminal && urg}
                     </span>
@@ -139,6 +217,7 @@ export function OrderDetails({
         <span className={"status " + o.status}>{labels[o.status]}</span>
         <small>#{o.id.slice(0, 6)}</small>
       </div>
+      {userRole === "preparation" && <h3>{o.client_name}</h3>}
       {userRole !== "preparation" && (
         <>
           <h3>{o.client_name}</h3>
@@ -155,6 +234,21 @@ export function OrderDetails({
           minute: "2-digit",
         })}
       </div>
+      {userRole !== "preparation" && o.courier_id && (
+        <p>
+          <strong>Mensajero asignado:</strong> {o.courier_name || "Asignado"}
+        </p>
+      )}
+      {userRole !== "preparation" &&
+        ![
+          "bucaramanga",
+          "piedecuesta",
+          "girón",
+          "giron",
+          "floridablanca",
+        ].includes((o.city || "").toLowerCase()) && (
+          <p>Envío por transportadora · sin recorrido local.</p>
+        )}
       <h3>Productos y cantidades</h3>
       <ul className="items">
         {o.items?.map((i, j) => (

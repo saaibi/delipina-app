@@ -1,3 +1,4 @@
+import { noticeTitle } from "../status-labels.js";
 import { noticeVisibility } from "../notification-store.js";
 import {
   Controller,
@@ -43,7 +44,7 @@ export class NotificationsController {
         `SELECT n.* FROM notifications n LEFT JOIN orders o ON o.id=n.order_id WHERE ${noticeVisibility()} ORDER BY n.updated_at DESC LIMIT 100`,
         [u.id, u.role],
       )
-    ).rows;
+    ).rows.map((n) => ({ ...n, title: noticeTitle(n.title) }));
   }
   @Get("notifications/counts") @HttpCode(200) async counts(@Req() req: any) {
     const u = auth(req);

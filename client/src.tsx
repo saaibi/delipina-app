@@ -1,5 +1,7 @@
+import { BranchEditor, BranchManager } from "./branches";
+import { DeliveryConfirm } from "./delivery-confirm";
 import { WorkspaceDialog } from "./ui";
-import { DeliveryRoute } from "./delivery-route";
+import { DeliveryRoute, RouteRequests } from "./delivery-route";
 import { SettlementsView } from "./settlements";
 import { has, customer, portfolio, moduleLabels } from "./access";
 import { RoleFields } from "./permissions";
@@ -182,6 +184,11 @@ function App() {
         body: n.revision ? { revision: n.revision } : {},
       });
       D(false);
+      if (n.title === "Solicitud de recorrido rechazada") {
+        V("deliveries");
+        S(n.title);
+        return;
+      }
       if (n.module === "orders") {
         V("orders");
         ST("");
@@ -452,19 +459,19 @@ function App() {
       {(admin || prep) && o.status === "preparing" && (
         <Button onClick={() => action(o, "ready")}>Marcar listo</Button>
       )}
-      {delivery &&
-        !o.courier_id &&
-        ["confirmed", "preparing", "ready"].includes(o.status) && (
-          <Button onClick={() => action(o, "take")}>Tomar pedido</Button>
-        )}
-      {(admin || (delivery && o.courier_id === user.id)) &&
-        o.status === "ready" && (
-          <Button onClick={() => action(o, "depart")}>Iniciar recorrido</Button>
-        )}
+      {admin && o.status === "ready" && (
+        <Button onClick={() => action(o, "depart")}>Iniciar recorrido</Button>
+      )}
       {(admin || (delivery && o.courier_id === user.id)) &&
         o.status === "enroute" && (
           <>
-            <Button onClick={() => action(o, "deliver")}>
+            <Button
+              onClick={() =>
+                delivery
+                  ? M({ kind: "deliver", order: o })
+                  : action(o, "deliver")
+              }
+            >
               Confirmar entrega
             </Button>
             <Button
@@ -475,16 +482,22 @@ function App() {
             </Button>
           </>
         )}
-      {admin &&
-        ["confirmed", "preparing", "ready", "enroute"].includes(o.status) && (
-          <Button
-            className="neutral"
-            onClick={() => M({ kind: "assign", order: o })}
-          >
-            Asignar mensajero
-          </Button>
-        )}
+      {admin && ["confirmed", "preparing", "ready"].includes(o.status) && (
+        <Button
+          className="neutral"
+          onClick={() => M({ kind: "assign", order: o })}
+        >
+          {o.courier_id ? "Reasignar mensajero" : "Asignar mensajero"}
+        </Button>
+      )}
       {(admin || delivery) &&
+        [
+          "bucaramanga",
+          "piedecuesta",
+          "girón",
+          "giron",
+          "floridablanca",
+        ].includes((o.city || "").toLowerCase()) &&
         !["pending", "rejected", "cancelled", "delivered"].includes(
           o.status,
         ) && (
@@ -495,14 +508,22 @@ function App() {
             Ver recorrido en mapa
           </Button>
         )}
-      {client && o.status === "enroute" && (
-        <Button
-          className="neutral"
-          onClick={() => M({ kind: "tracking", order: o })}
-        >
-          Seguir entrega
-        </Button>
-      )}
+      {client &&
+        [
+          "bucaramanga",
+          "piedecuesta",
+          "girón",
+          "giron",
+          "floridablanca",
+        ].includes((o.city || "").toLowerCase()) &&
+        o.status === "enroute" && (
+          <Button
+            className="neutral"
+            onClick={() => M({ kind: "tracking", order: o })}
+          >
+            Seguir entrega
+          </Button>
+        )}
       {client &&
         !o.cancel_requested &&
         !["delivered", "rejected", "cancelled"].includes(o.status) && (
@@ -865,7 +886,15 @@ function App() {
                     <GPS
                       active={orders.some(
                         (o) =>
-                          o.courier_id === user.id && o.status === "enroute",
+                          o.courier_id === user.id &&
+                          o.status === "enroute" &&
+                          [
+                            "bucaramanga",
+                            "piedecuesta",
+                            "girón",
+                            "giron",
+                            "floridablanca",
+                          ].includes((o.city || "").toLowerCase()),
                       )}
                       onError={E}
                     />
@@ -915,6 +944,8 @@ function App() {
               {delivery && (
                 <DeliveryRoute
                   orders={orders}
+                  scope={deliveryFilter}
+                  onRefresh={refresh}
                   day={currentDay}
                   originLocation={settings?.originLocation}
                   user={user}
@@ -924,6 +955,7 @@ function App() {
                   }
                 />
               )}
+              {admin && <RouteRequests onRefresh={refresh} />}
               <OrderCards
                 orders={selected}
                 userRole={prep ? "preparation" : user.role}
@@ -1028,11 +1060,14 @@ function App() {
               : {
                   reject: "Revisar rechazo",
                   failed: "Entrega fallida",
-                  assign: "Asignar mensajero",
+                  assign: modal.order?.courier_id
+                    ? "Reasignar mensajero"
+                    : "Asignar mensajero",
                   map: "Recorrido",
                   payment: "Registrar abono",
                   invoice: "Vincular factura externa",
                   tracking: "Seguimiento",
+                  deliver: "Confirmar entrega y dinero recibido",
                   settlement: "Confirmar cuadre diario",
                   credit: "Autorizar cupo",
                   price: "Precio especial por cliente",
@@ -1041,6 +1076,7 @@ function App() {
                       ? "Crear cliente"
                       : "Crear usuario interno",
                   members: "Usuarios del cliente",
+                  branches: "Sucursales del cliente",
                   editUser: "Editar usuario",
                   deleteUser: "Eliminar usuario",
                   editProduct: "Editar producto",
@@ -1266,53 +1302,21 @@ function App() {
             </Form>
           )}
           {modal === "branch" && (
-            <Form
-              onSubmit={(b) =>
-                run(async () => {
-                  await api("/branches", { method: "POST", body: b });
-                  M(null);
-                  await refresh();
-                })
-              }
-            >
-              {admin && (
-                <Select label="Cliente" name="clientId">
-                  {users
-                    .filter((u) => u.role === "client")
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                </Select>
-              )}
-              <Field name="address" label="Dirección" />
-              <Field
-                name="city"
-                label="Ciudad / municipio"
-                placeholder="Bucaramanga, Girón, Floridablanca, Piedecuesta u otra ciudad"
-              />
-
-              <Field
-                name="lat"
-                label="Latitud (opcional)"
-                type="number"
-                step="any"
-                required={false}
-                min="-90"
-                max="90"
-              />
-              <Field
-                name="lng"
-                label="Longitud (opcional)"
-                type="number"
-                step="any"
-                required={false}
-                min="-180"
-                max="180"
-              />
-              <Button type="submit">Guardar sucursal</Button>
-            </Form>
+            <BranchEditor
+              users={admin ? users : []}
+              clientId={admin ? undefined : user.clientId || user.id}
+              onSaved={async () => {
+                M(null);
+                await refresh();
+              }}
+            />
+          )}
+          {modal.kind === "branches" && admin && (
+            <BranchManager
+              clientId={modal.clientId}
+              branches={branches}
+              onSaved={refresh}
+            />
           )}
           {modal === "catalog" && (
             <ProductEditor
@@ -1365,6 +1369,15 @@ function App() {
                 Confirmar {modal.kind === "reject" ? "rechazo" : "incidencia"}
               </Button>
             </Form>
+          )}
+          {modal.kind === "deliver" && (
+            <DeliveryConfirm
+              order={modal.order}
+              onDone={async () => {
+                M(null);
+                await refresh();
+              }}
+            />
           )}
           {modal.kind === "tracking" && <Tracking orderId={modal.order.id} />}
           {modal.kind === "credit" && (
@@ -1465,6 +1478,7 @@ function App() {
           {modal.kind === "payment" && (
             <GeneralPaymentForm
               client={modal.client}
+              user={user}
               business={business}
               money={money}
               onSaved={async (r) => {
@@ -1622,6 +1636,7 @@ function OrderForm({
   const [suggested] = useState(() =>
     suggestedDelivery(settings, business, customer(user)),
   );
+  const [orderStart, OS] = useState(suggested.start);
   const [priced, PR] = useState(products);
   useEffect(() => {
     let valid = true;
@@ -1688,7 +1703,8 @@ function OrderForm({
           name="start"
           label="Entrega desde"
           type="datetime-local"
-          defaultValue={suggested.start}
+          value={orderStart}
+          onChange={(e) => OS(e.target.value)}
         />
         <Field
           name="end"
@@ -1721,7 +1737,11 @@ function OrderForm({
           electrónicos.
         </p>
       )}
-      <RecurrenceEditor value={recurrence} onChange={RC} />
+      <RecurrenceEditor
+        value={recurrence}
+        onChange={RC}
+        baseDay={orderStart?.slice(0, 10)}
+      />
       <label className="check">
         <input name="credit" type="checkbox" /> Solicitar crédito autorizado
       </label>

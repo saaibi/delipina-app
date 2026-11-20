@@ -91,7 +91,7 @@ Si se instala en otro entorno, el despliegue puede iniciar sin Google pero queda
 ## Próximos módulos / límites explícitos
 
 - Google Routes/Places embebidos y ETA de tráfico: **no conectados**, sin key ni habilitación de servicio/costo. Solo enlace Maps. No crear un proyecto facturable automáticamente.
-- Agrupación óptima de recorridos, tiempos de preparación, salida sugerida y toma atómica de grupos: pendientes; no agrupar solo por municipio ni inventar trayectos.
+- Recorridos de hasta cinco pedidos: agrupación geográfica y orden vial por grupo; solicitud del mensajero y aprobación administrativa. No se calcula tráfico ni ETA.
 - Edición de direcciones, reversión/rechazo de transferencias y reapertura de cuadres: pendientes. No reemplazar movimientos históricos para corregirlos.
 - Notificaciones móviles por FCM/APNs y Google OAuth nativo: plugins presentes, configuración/canales nativos pendientes. El login web GIS no debe usarse como login Google embebido de producción en WebView. Abrir con navegador de sistema e implementar retorno OAuth nativo antes de distribuir.
 - Interacciones móviles de deslizar para aceptar/revisar rechazo: pendientes; los botones accesibles actuales funcionan. No equivaler abrir a aceptar.
@@ -153,9 +153,9 @@ Cada día del horario tiene su propia anticipación. Los valores anteriores se u
 
 
 ### Rutas y vista previa
-`npm run build` y `node --import tsx scripts/local-preview.ts` levantan una base local aislada y persistente en `../work/preview-db`, interfaz en http://localhost:3006 y datos ficticios. No usa la base de producción. Cierra el proceso con Ctrl+C.
+`npm run build` y `node --import tsx scripts/local-preview.ts` levantan una base local aislada y persistente en `../work/preview-routes-db`, interfaz en http://localhost:3007 y datos ficticios. No usa la base de producción. Cierra el proceso con Ctrl+C.
 
-Entregas permite seleccionar pedidos asignados listos o en camino, ordenar paradas y abrir Google Maps en tramos de cuatro destinos (tres paradas intermedias, compatible con navegador móvil). El orden lo define el mensajero; no hay optimización de ruta ni API de pago.
+Entregas agrupa automáticamente hasta cinco pedidos listos o en preparación. El mensajero solicita los grupos disponibles y administración aprueba su asignación. Puede ajustar los pedidos antes de salir; iniciar el recorrido exige que todos estén listos y los marca En camino en una transacción. Después de iniciar, el recorrido queda fijo. Un icono abre el mapa completo con todas las paradas y navegación individual.
 
 El seguimiento muestra OpenStreetMap mediante su visor embebido, con atribución incluida y GPS aproximado obtenido de la aplicación. No usa Google Maps de pago, no conserva un historial de recorrido ni calcula ETA. La app debe mantenerse activa y con permiso de ubicación; los teléfonos pueden suspender el GPS en segundo plano. La disponibilidad del visor público es de mejor esfuerzo.
 
@@ -164,8 +164,15 @@ La herramienta administrativa de datos demo (sección de Ajustes retirada) crea 
 Favicon, Apple Touch Icon, iconos PWA y lanzadores iOS/Android usan el logo existente con márgenes para evitar recortes. La sincronización Capacitor no equivale a un binario firmado.
 
 ### Recorridos automáticos (reemplaza armado manual)
-Entregas muestra automáticamente grupos de máximo cinco pedidos asignados y listos/en camino de la jornada. Agrupa por cercanía, mantiene ciudades externas separadas y usa OSRM/FOSSGIS para minimizar el tiempo vial dentro de cada grupo. Requiere ubicar las sucursales desde Ajustes / Ubicaciones de entrega; el origen tiene coordenadas editables. No se utiliza geocodificación de direcciones privadas ni una API de pago. El proveedor público es de mejor esfuerzo: ante indisponibilidad el orden se señala como aproximado por distancia. No hay tráfico en tiempo real ni garantía de óptimo global de toda la flota.
+Entregas muestra automáticamente grupos de máximo cinco pedidos asignados y listos/en preparación de la jornada. Agrupa por cercanía, mantiene ciudades externas separadas y usa OSRM/FOSSGIS para minimizar el tiempo vial dentro de cada grupo. Las sucursales se ubican al crearlas o editarlas, con búsqueda de dirección o selección del punto; el origen tiene coordenadas editables. La búsqueda explícita utiliza Photon; el mapa usa Leaflet y teselas OpenStreetMap. No se habilita una API con facturación. El proveedor público es de mejor esfuerzo: ante indisponibilidad el orden se señala como aproximado por distancia. No hay tráfico en tiempo real ni garantía de óptimo global de toda la flota.
 
 Política: https://routing.openstreetmap.de/about.html . Caché, identificación y límite de una solicitud por 1,1 segundos; atribución visible. La salida de Plaza San Francisco usa la referencia pública de la Alcaldía, editable para precisar el punto de cargue. Los puntos de las sucursales demo son ficticios, identificados como tales.
 
-Planta usa tarjetas compactas con número, estado, franja horaria, productos y cantidades; omite dirección, cliente, precio y notas generales. La sección Datos demo fue retirada de Ajustes sin borrar los lotes ya creados.
+Planta usa tarjetas compactas con nombre del cliente, estado, franja horaria, productos y cantidades; omite dirección, cliente, precio y notas generales. La sección Datos demo fue retirada de Ajustes sin borrar los lotes ya creados.
+
+### Unidades, sucursales y comprobantes
+Cada presentación configura una lista de unidades con nombre editable, precio, posibilidad de cantidades decimales y eliminación de la oferta. Los pedidos anteriores conservan nombre y precio. Los precios especiales utilizan las unidades activas del catálogo.
+
+Clientes administran sus sucursales; administración accede desde la tabla de clientes en Ajustes. Los pedidos conservan la dirección y coordenadas originales. Los destinos externos al área metropolitana se señalan para transportadora y omiten el mapa local.
+
+El mensajero que registra dinero recibido debe adjuntar comprobante de factura; la imagen queda vinculada al pago con acceso restringido. Las transferencias siguen requiriendo verificación administrativa. Las notificaciones muestran estados en español.

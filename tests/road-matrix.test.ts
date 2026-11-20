@@ -53,3 +53,92 @@ test("Cliente OSRM real sobre HTTP: serialización, error HTTP y matriz inválid
     await new Promise<void>((r) => server.close(() => r()));
   }
 });
+import { geocode } from "../dist-server/geocoder.js";
+test("Búsqueda Photon real sobre HTTP: coordenadas, filtros de país y fallos visibles", async () => {
+  let calls = 0;
+  const server = createServer((req, res) => {
+    calls++;
+    const url = new URL(req.url!, "http://localhost");
+    assert.equal(url.searchParams.get("countrycode"), "CO");
+    assert.equal(url.searchParams.get("limit"), "5");
+    res.setHeader("Content-Type", "application/json");
+    if (calls === 1)
+      res.end(
+        JSON.stringify({
+          features: [
+            {
+              geometry: { type: "Point", coordinates: [-73.12, 7.13] },
+              properties: { name: "Plaza de prueba", city: "Bucaramanga" },
+            },
+          ],
+        }),
+      );
+    else {
+      res.statusCode = 503;
+      res.end("{}");
+    }
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const base = "http://127.0.0.1:" + (server.address() as any).port + "/api";
+    const found = await geocode("Plaza de prueba", base, false);
+    assert.equal(found[0].lat, 7.13);
+    assert.equal(found[0].lng, -73.12);
+    assert.ok(found[0].label.includes("Bucaramanga"));
+    await assert.rejects(geocode("Otra plaza", base, false));
+    assert.equal(calls, 2);
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
+import { roadGeometry } from "../dist-server/road-matrix.js";
+test("Trazado completo conserva las cinco paradas y rechaza geometría inválida", async () => {
+  let calls = 0;
+  const points = Array.from({ length: 6 }, (_, i) => ({
+    lat: 7.1 + i / 100,
+    lng: -73.1 - i / 100,
+  }));
+  const coordinates = points.map((p) => [p.lng, p.lat]);
+  const server = createServer((req, res) => {
+    calls++;
+    assert.equal(
+      new URL(req.url!, "http://localhost").pathname
+        .split("/")
+        .at(-1)!
+        .split(";").length,
+      6,
+    );
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({
+        code: "Ok",
+        routes: [
+          {
+            geometry: {
+              type: "LineString",
+              coordinates:
+                calls === 1
+                  ? coordinates
+                  : [
+                      [999, 7],
+                      [-73, 8],
+                    ],
+            },
+          },
+        ],
+      }),
+    );
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const base = "http://127.0.0.1:" + (server.address() as any).port;
+    assert.deepEqual(
+      (await roadGeometry(points, base, false)).coordinates,
+      coordinates,
+    );
+    await assert.rejects(roadGeometry(points, base, false));
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});

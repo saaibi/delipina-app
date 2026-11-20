@@ -1,3 +1,4 @@
+import { statusLabels } from "../status-labels.js";
 import { saveOrderSchedule } from "../recurrence.js";
 import { customerId, isCustomer, hasModule, metropolitan } from "../access.js";
 import {
@@ -49,7 +50,7 @@ export class OrdersController {
       fail(403, "Módulo no autorizado");
     const rows = (
       await pool.query(
-        `SELECT o.*,b.address,b.city,b.lat,b.lng,u.name AS client_name,(SELECT json_agg(i) FROM items i WHERE i.order_id=o.id) AS items FROM orders o JOIN branches b ON b.id=o.branch_id JOIN users u ON u.id=o.client_id ORDER BY o.created_at`,
+        `SELECT o.*,COALESCE(o.delivery_address,b.address) address,COALESCE(o.delivery_city,b.city) city,COALESCE(o.delivery_lat,b.lat) lat,COALESCE(o.delivery_lng,b.lng) lng,u.name AS client_name,(SELECT name FROM users courier WHERE courier.id=o.courier_id) courier_name,(SELECT json_agg(i) FROM items i WHERE i.order_id=o.id) AS items FROM orders o JOIN branches b ON b.id=o.branch_id JOIN users u ON u.id=o.client_id ORDER BY o.created_at`,
       )
     ).rows.filter((o) => orderVisible(u, o));
     return rows.map((o) => {
@@ -57,15 +58,29 @@ export class OrdersController {
         u.role === "preparation" ||
         (u.role === "custom" && !hasModule(u, "orders"))
       ) {
-        const { id, status, window_start, window_end, notes, created_at } = o;
-        return {
+        const {
           id,
           status,
           window_start,
           window_end,
           notes,
           created_at,
-          items: o.items.map(({ name, quantity }) => ({ name, quantity })),
+          client_name,
+          operation_day,
+        } = o;
+        return {
+          id,
+          client_name,
+          operation_day,
+          status,
+          window_start,
+          window_end,
+          notes,
+          created_at,
+          items: (o.items || []).map(({ name, quantity }) => ({
+            name,
+            quantity,
+          })),
         };
       }
       if (isCustomer(u)) {
@@ -151,7 +166,7 @@ export class OrdersController {
           q <= 0 ||
           q > 10000 ||
           Math.abs(q * 1000 - Math.round(q * 1000)) > 0.000001 ||
-          (p.unit === "pack" && !Number.isInteger(q))
+          (!p.allows_fraction && !Number.isInteger(q))
         )
           fail(400, "Cantidad o producto inválido");
         const price = Number(p.actual_price);
@@ -188,14 +203,22 @@ export class OrdersController {
         )
       ).rows[0];
       await c.query(
-        "UPDATE orders SET operation_day=$2,payment_method=$3 WHERE id=$1",
-        [o.id, day, paymentMethod],
+        "UPDATE orders SET operation_day=$2,payment_method=$3,delivery_address=$4,delivery_city=$5,delivery_lat=$6,delivery_lng=$7 WHERE id=$1",
+        [
+          o.id,
+          day,
+          paymentMethod,
+          branch.address,
+          branch.city,
+          branch.lat,
+          branch.lng,
+        ],
       );
       for (const { p, q, price } of items)
         await c.query("INSERT INTO items VALUES($1,$2,$3,$4,$5)", [
           o.id,
           p.id,
-          `${p.product_name||p.name} · ${p.presentation} (${p.unit === "kg" ? "kg" : p.unit === "lb" ? "libra" : p.unit === "arroba" ? "arroba" : "empaque"})`,
+          `${p.product_name || p.name} · ${p.presentation} (${p.unit === "kg" ? "kg" : p.unit === "lb" ? "libra" : p.unit === "arroba" ? "arroba" : p.unit === "pack" ? "empaque" : p.unit})`,
           q,
           price,
         ]);
@@ -235,6 +258,7 @@ export class OrdersController {
       const admin = u.role === "admin";
       let status = o.status;
       if (b.action === "take") {
+        fail(403, "Solicita un recorrido; administración debe aprobarlo");
         if (
           u.role !== "courier" ||
           o.courier_id ||
@@ -248,7 +272,7 @@ export class OrdersController {
         await notify(c, o, "Mensajero tomó un pedido", ["admin"]);
       } else if (b.action === "assign") {
         if (!admin) fail(403, "Solo administración");
-        if (!["confirmed", "preparing", "ready", "enroute"].includes(status))
+        if (!["confirmed", "preparing", "ready"].includes(status))
           fail(409, "Estado no asignable");
         const courier = (
           await c.query(
@@ -333,6 +357,8 @@ export class OrdersController {
             !(u.role === "courier" && o.courier_id === u.id)
           )
             fail(403, "Solo mensajero asignado");
+          if (b.action === "depart" && u.role === "courier")
+            fail(403, "Inicia el recorrido completo desde Entregas");
           if (["depart", "deliver"].includes(b.action) && !o.courier_id)
             fail(409, "Asigna un mensajero");
           status = t[1];
@@ -387,7 +413,7 @@ export class OrdersController {
         await notify(
           c,
           o,
-          `Pedido: ${status}`,
+          `Pedido: ${statusLabels[status] || status}`,
           ["preparing", "enroute", "delivered"].includes(status)
             ? ["client"]
             : ["courier", "preparation"],
@@ -460,6 +486,18 @@ export class OrdersController {
         !(u.role === "courier" && o.courier_id === u.id))
     )
       fail(404, "Pedido no disponible");
+    if (
+      !metropolitan(
+        o.delivery_city ||
+          (
+            await pool.query("SELECT city FROM branches WHERE id=$1", [
+              o.branch_id,
+            ])
+          ).rows[0]?.city ||
+          "",
+      )
+    )
+      return { active: false, carrier: true };
     if (o.status !== "enroute") return { active: false };
     const loc = (
       await pool.query(

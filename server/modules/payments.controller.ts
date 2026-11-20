@@ -1,4 +1,10 @@
-import { customerId, isCustomer, metropolitan } from "../access.js";
+import { imagePayload } from "../images.js";
+import {
+  customerId,
+  isCustomer,
+  metropolitan,
+  canPortfolio,
+} from "../access.js";
 import { notifyEvent } from "../notification-store.js";
 import {
   assertBusinessDateOpen,
@@ -89,6 +95,12 @@ export class PaymentsController {
         if (prev.request_hash !== hash) fail(409, "Clave reutilizada");
         return prev.response;
       }
+      const proof = b.receiptPhoto ? imagePayload(b.receiptPhoto) : null;
+      if (u.role === "courier" && !proof)
+        fail(
+          400,
+          "Adjunta la foto de la factura o comprobante del dinero recibido",
+        );
       let receiptDay: string;
       if (
         !["cash", "nequi", "bancolombia"].includes(b.method) ||
@@ -96,7 +108,8 @@ export class PaymentsController {
       )
         fail(400, "Medio o importe inválido");
       // Serialize receipts with submission/confirmation for this courier.
-      if (u.role === "courier") await c.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [u.id]);
+      if (u.role === "courier")
+        await c.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [u.id]);
       const owner = (
         await c.query(
           "SELECT id FROM users WHERE id=$1 AND role='client' FOR UPDATE",
@@ -161,12 +174,17 @@ export class PaymentsController {
           receiptDay,
         ],
       );
+      if (proof)
+        await c.query(
+          "INSERT INTO payment_proofs(payment_id,mime,data) VALUES($1,$2,$3)",
+          [id, proof.mime, proof.data],
+        );
       for (const a of [...b.allocations].sort((a, b) =>
         a.invoiceId.localeCompare(b.invoiceId),
       )) {
         const inv = (
           await c.query(
-            "SELECT i.*,o.courier_id,o.delivered_by,b.city FROM invoices i JOIN orders o ON o.id=i.order_id JOIN branches b ON b.id=o.branch_id WHERE i.id=$1 AND i.client_id=$2 FOR UPDATE OF i",
+            "SELECT i.*,o.courier_id,o.delivered_by,COALESCE(o.delivery_city,b.city) city FROM invoices i JOIN orders o ON o.id=i.order_id JOIN branches b ON b.id=o.branch_id WHERE i.id=$1 AND i.client_id=$2 FOR UPDATE OF i",
             [a.invoiceId, b.clientId],
           )
         ).rows[0];
@@ -248,7 +266,7 @@ export class PaymentsController {
       const p = (
         await pool.query(
           "SELECT p.* FROM invoice_photos p JOIN invoices i ON i.id=p.invoice_id JOIN orders o ON o.id=i.order_id WHERE p.invoice_id=$1 AND (i.client_id=$2 OR $3) AND ($4<>'courier' OR o.courier_id=$5 OR o.delivered_by=$5)",
-          [req.params.id, customerId(u), !isCustomer(u),u.role,u.id],
+          [req.params.id, customerId(u), !isCustomer(u), u.role, u.id],
         )
       ).rows[0];
       if (!p) fail(404, "Sin fotografía");
@@ -266,7 +284,7 @@ export class PaymentsController {
     const u = auth(req, ["admin", "courier"]);
     return (
       await pool.query(
-        "SELECT p.*,u.name AS receiver FROM payments p JOIN users u ON u.id=p.receiver_id WHERE receiver_id=$1 OR $2 ORDER BY created_at DESC",
+        "SELECT p.*,EXISTS(SELECT 1 FROM payment_proofs f WHERE f.payment_id=p.id) has_proof,u.name AS receiver FROM payments p JOIN users u ON u.id=p.receiver_id WHERE receiver_id=$1 OR $2 ORDER BY created_at DESC",
         [u.id, u.role === "admin"],
       )
     ).rows;
@@ -319,6 +337,27 @@ export class PaymentsController {
     });
     await broadcast();
     return { ok: true };
+  }
+  @Get("payments/:id/proof") async paymentProof(
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const u = auth(req, ["admin", "courier", "client"]);
+    if (isCustomer(u) && !canPortfolio(u)) fail(403, "Sin permiso de cartera");
+    const row = (
+      await pool.query(
+        "SELECT f.mime,f.data FROM payment_proofs f JOIN payments p ON p.id=f.payment_id WHERE p.id=$1 AND ($2 OR p.receiver_id=$3 OR p.client_id=$4)",
+        [
+          req.params.id,
+          u.role === "admin",
+          u.id,
+          isCustomer(u) ? customerId(u) : null,
+        ],
+      )
+    ).rows[0];
+    if (!row) fail(404, "Comprobante no disponible");
+    res.setHeader("Cache-Control", "private,no-store");
+    res.type(row.mime).send(row.data);
   }
   @Get("settlement-days") @HttpCode(200) async settlementDays(@Req() req: any) {
     const u = auth(req, ["admin", "courier"]);

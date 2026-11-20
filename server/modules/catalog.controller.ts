@@ -1,4 +1,4 @@
-import { hasModule,customerId,isCustomer } from "../access.js";
+import { hasModule, customerId, isCustomer } from "../access.js";
 import { imagePayload } from "../images.js";
 import {
   Controller,
@@ -47,7 +47,9 @@ export class CatalogController {
             hasModule(u, "orders")) &&
           typeof req.query.clientId === "string"
             ? req.query.clientId
-            : (isCustomer(u)?customerId(u):u.id),
+            : isCustomer(u)
+              ? customerId(u)
+              : u.id,
           u.role === "admin",
         ],
       )
@@ -61,11 +63,11 @@ export class CatalogController {
   ) {
     auth(req, ["admin"]);
     const b = req.body;
-    if (!["kg", "lb", "arroba", "pack"].includes(b.unit))
+    if (typeof b.unit !== "string" || !b.unit.trim() || b.unit.length > 40)
       fail(400, "Unidad inválida");
     return (
       await pool.query(
-        "INSERT INTO products(id,name,presentation,unit,price,active,image_key) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",
+        "INSERT INTO products(id,name,presentation,unit,price,active,image_key,allows_fraction) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
         [
           b.id || randomUUID(),
           text(b.name, 100),
@@ -74,6 +76,7 @@ export class CatalogController {
           cents(b.price),
           b.active !== false,
           b.image_key || null,
+          b.fractional ?? ["kg", "lb", "arroba"].includes(b.unit),
         ],
       )
     ).rows[0];
@@ -86,11 +89,11 @@ export class CatalogController {
   ) {
     auth(req, ["admin"]);
     const b = req.body;
-    if (!["kg", "lb", "arroba", "pack"].includes(b.unit))
+    if (typeof b.unit !== "string" || !b.unit.trim() || b.unit.length > 40)
       fail(400, "Unidad inválida");
     return (
       await pool.query(
-        "UPDATE products SET name=$2,presentation=$3,price=$4,active=$5,unit=$6,image_key=$7 WHERE id=$1 RETURNING *",
+        "UPDATE products SET name=$2,presentation=$3,price=$4,active=$5,unit=$6,image_key=$7,allows_fraction=COALESCE($8,allows_fraction) WHERE id=$1 RETURNING *",
         [
           req.params.id,
           text(b.name, 100),
@@ -99,6 +102,7 @@ export class CatalogController {
           !!b.active,
           b.unit,
           b.image_key || null,
+          b.fractional ?? null,
         ],
       )
     ).rows[0];

@@ -1,3 +1,4 @@
+import { geocode } from "../geocoder.js";
 import { coordinates } from "../coordinates.js";
 import { customerId, isCustomer, hasModule, modules } from "../access.js";
 import {
@@ -219,6 +220,31 @@ export class CustomersController {
       ]);
       return { ok: true };
     });
+  }
+  @Get("geocode") @HttpCode(200) async searchLocation(@Req() req: any) {
+    auth(req, ["admin", "client"]);
+    return geocode(text(req.query.q, 200));
+  }
+  @Patch("branches/:id") @HttpCode(200) async editBranch(@Req() req: any) {
+    const u = auth(req, ["admin", "client"]),
+      b = req.body,
+      point = coordinates(b.lat, b.lng);
+    const result = await pool.query(
+      "UPDATE branches SET address=$2,city=$3,lat=$4,lng=$5,location_source=$6 WHERE id=$1 AND ($7 OR client_id=$8) RETURNING *",
+      [
+        req.params.id,
+        text(b.address),
+        text(b.city, 100),
+        point?.lat ?? null,
+        point?.lng ?? null,
+        point ? "manual" : null,
+        u.role === "admin",
+        customerId(u),
+      ],
+    );
+    if (!result.rowCount) fail(404, "Sucursal no disponible");
+    await broadcast();
+    return result.rows[0];
   }
   @Get("branches")
   @HttpCode(200)

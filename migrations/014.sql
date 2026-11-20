@@ -1,0 +1,12 @@
+ALTER TABLE products DROP CONSTRAINT products_unit_check;
+ALTER TABLE products ADD CONSTRAINT products_unit_check CHECK(length(trim(unit)) BETWEEN 1 AND 40);
+CREATE TABLE delivery_runs(id uuid PRIMARY KEY,courier_id uuid NOT NULL REFERENCES users,day date NOT NULL,status text NOT NULL CHECK(status IN ('draft','requested','assigned','enroute','completed','rejected')),order_ids uuid[] NOT NULL,manual boolean NOT NULL DEFAULT false,snapshot jsonb NOT NULL DEFAULT '{}',created_at timestamptz NOT NULL DEFAULT now(),started_at timestamptz,decided_by uuid REFERENCES users,CHECK(cardinality(order_ids) BETWEEN 1 AND 5));
+CREATE INDEX delivery_runs_current ON delivery_runs(courier_id,day,status);
+CREATE TABLE payment_proofs(payment_id uuid PRIMARY KEY REFERENCES payments,mime text NOT NULL,data bytea NOT NULL);
+CREATE TABLE geocode_cache(query text PRIMARY KEY,data jsonb NOT NULL,expires_at timestamptz NOT NULL);
+ALTER TABLE orders ADD COLUMN delivery_address text;
+ALTER TABLE orders ADD COLUMN delivery_city text;
+ALTER TABLE orders ADD COLUMN delivery_lat double precision;
+ALTER TABLE orders ADD COLUMN delivery_lng double precision;
+UPDATE orders o SET delivery_address=b.address,delivery_city=b.city,delivery_lat=b.lat,delivery_lng=b.lng FROM branches b WHERE b.id=o.branch_id;
+UPDATE notifications SET title=CASE title WHEN 'Pedido: pending' THEN 'Pedido: Pendiente de confirmar' WHEN 'Pedido: confirmed' THEN 'Pedido: Confirmado' WHEN 'Pedido: preparing' THEN 'Pedido: En preparación' WHEN 'Pedido: ready' THEN 'Pedido: Listo para despacho' WHEN 'Pedido: enroute' THEN 'Pedido: En camino' WHEN 'Pedido: delivered' THEN 'Pedido: Entregado' WHEN 'Pedido: cancelled' THEN 'Pedido: Cancelado' WHEN 'Pedido: rejected' THEN 'Pedido: Rechazado' ELSE title END WHERE title LIKE 'Pedido: %';

@@ -1,3 +1,4 @@
+import dayjs from "dayjs";
 import React, { useEffect, useState } from "react";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -17,6 +18,7 @@ export function RecurrenceEditor({
   value: v,
   onChange: C,
   always = false,
+  baseDay,
 }: any) {
   const set = (b) => C({ ...v, ...b });
   return (
@@ -79,6 +81,14 @@ export function RecurrenceEditor({
           <Field
             type="date"
             label="Repetir hasta (opcional)"
+            min={dayjs(
+              baseDay ||
+                new Date().toLocaleDateString("en-CA", {
+                  timeZone: "America/Bogota",
+                }),
+            )
+              .add(1, "day")
+              .format("YYYY-MM-DD")}
             required={false}
             value={v.endDay || ""}
             onChange={(e) => set({ endDay: e.target.value })}
@@ -114,62 +124,66 @@ export function SchedulesView({ products, money }: any) {
           No hay frecuencias. Activa «Repetir este pedido» al crear uno.
         </div>
       )}
-      {rows.map((r) => (
-        <article className="panel" key={r.id}>
-          <strong>{r.client_name}</strong>
-          <p>
-            {r.frequency === "days"
-              ? `Cada ${r.interval_days} día(s)`
-              : "Semanal · " +
-                r.weekdays
-                  .map(
-                    (d) =>
-                      ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"][d - 1],
-                  )
-                  .join(", ")}{" "}
-            · próxima {String(r.next_day).slice(0, 10)} ·{" "}
-            {r.active ? "Activa" : "Pausada"}
-          </p>
-          {r.last_error && <Alert severity="info">{r.last_error}</Alert>}
-          <div className="actions">
-            <Button
-              onClick={() => {
-                M(r);
-                C({
-                  enabled: true,
-                  frequency: r.frequency,
-                  intervalDays: r.interval_days,
-                  weekdays: r.weekdays,
-                  endDay: r.end_day ? String(r.end_day).slice(0, 10) : "",
-                });
-                Q(
-                  Object.fromEntries(
-                    r.body.items.map((i) => [i.productId, i.quantity]),
-                  ),
-                );
-              }}
-            >
-              Editar frecuencia
-            </Button>
-            <Button
-              className="neutral"
-              onClick={async () => {
-                try {
-                  await api("/schedules/" + r.id, {
-                    method: "PATCH",
-                    body: { active: !r.active },
+      <div className="frequency-grid">
+        {rows.map((r) => (
+          <article className="panel" key={r.id}>
+            <strong>{r.client_name}</strong>
+            <p>
+              {r.frequency === "days"
+                ? `Cada ${r.interval_days} día(s)`
+                : "Semanal · " +
+                  r.weekdays
+                    .map(
+                      (d) =>
+                        ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"][
+                          d - 1
+                        ],
+                    )
+                    .join(", ")}{" "}
+              · próxima {String(r.next_day).slice(0, 10)} ·{" "}
+              {r.active ? "Activa" : "Pausada"}
+            </p>
+            {r.last_error && <Alert severity="info">{r.last_error}</Alert>}
+            <div className="actions">
+              <Button
+                onClick={() => {
+                  M(r);
+                  C({
+                    enabled: true,
+                    frequency: r.frequency,
+                    intervalDays: r.interval_days,
+                    weekdays: r.weekdays,
+                    endDay: r.end_day ? String(r.end_day).slice(0, 10) : "",
                   });
-                  await load();
-                } catch (e) {
-                  E(e.message);
-                }
-              }}
-            >
-              {r.active ? "Desactivar" : "Activar"}
-            </Button>
-          </div>
-        </article>
-      ))}
+                  Q(
+                    Object.fromEntries(
+                      r.body.items.map((i) => [i.productId, i.quantity]),
+                    ),
+                  );
+                }}
+              >
+                Editar frecuencia
+              </Button>
+              <Button
+                className="neutral"
+                onClick={async () => {
+                  try {
+                    await api("/schedules/" + r.id, {
+                      method: "PATCH",
+                      body: { active: !r.active },
+                    });
+                    await load();
+                  } catch (e) {
+                    E(e.message);
+                  }
+                }}
+              >
+                {r.active ? "Desactivar" : "Activar"}
+              </Button>
+            </div>
+          </article>
+        ))}
+      </div>
       {edit && (
         <Modal title="Editar frecuencia" wide onClose={() => M(null)}>
           <form
@@ -199,7 +213,12 @@ export function SchedulesView({ products, money }: any) {
               }
             }}
           >
-            <RecurrenceEditor value={cfg} onChange={C} always />
+            <RecurrenceEditor
+              value={cfg}
+              onChange={C}
+              always
+              baseDay={String(edit.next_day).slice(0, 10)}
+            />
             <Field
               type="date"
               name="nextDay"

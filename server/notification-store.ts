@@ -1,3 +1,4 @@
+import { noticeTitle } from "./status-labels.js";
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 export interface NoticeInput {
@@ -19,7 +20,7 @@ export async function notifyRecipients(
       [
         randomUUID(),
         id,
-        notice.title,
+        noticeTitle(notice.title),
         notice.orderId || null,
         notice.key,
         notice.module,

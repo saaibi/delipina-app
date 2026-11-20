@@ -20,7 +20,9 @@ async function login(role) {
   assert.equal(r.status, 200);
   users[role] = { ...r.body, cookie: r.headers["set-cookie"][0].split(";")[0] };
 }
+const testProof="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jSXkAAAAASUVORK5CYII=";
 const call = (role, method, path, body, key) => {
+  if(role.startsWith("courier") && method==="post" && path==="/payments" && body && body.receiptPhoto===undefined)body={...body,receiptPhoto:testProof};
   let r = request(app)
     [method]("/api" + path)
     .set("Origin", origin)
@@ -94,7 +96,7 @@ test("Flujo, permisos, crédito, abonos, sincronización y toma concurrente", as
         action: "take",
       })
     ).status,
-    409,
+    403,
   );
   assert.equal(
     (
@@ -108,7 +110,8 @@ test("Flujo, permisos, crédito, abonos, sincronización y toma concurrente", as
     call("courier", "post", `/orders/${order.id}/action`, { action: "take" }),
     call("courier", "post", `/orders/${order.id}/action`, { action: "take" }),
   ]);
-  assert.deepEqual(takes.map((r) => r.status).sort(), [200, 409]);
+  assert.deepEqual(takes.map((r) => r.status).sort(), [403, 403]);
+  assert.equal((await call("admin","post",`/orders/${order.id}/action`,{action:"assign",courierId:users.courier.id})).status,200);
   const prepOrders = (await call("preparation", "get", "/orders")).body;
   const po = prepOrders.find((o) => o.id === order.id);
   assert.ok(!("total" in po));
@@ -117,7 +120,7 @@ test("Flujo, permisos, crédito, abonos, sincronización y toma concurrente", as
   for (const [role, action] of [
     ["preparation", "prepare"],
     ["preparation", "ready"],
-    ["courier", "depart"],
+    ["admin", "depart"],
     ["courier", "deliver"],
   ])
     assert.equal(
@@ -858,7 +861,37 @@ test('Lote demo es exclusivo de admin, no duplica ni crea facturas y no cuenta c
 test("Recorridos automáticos limitados al mensajero y jornada, con grupos de máximo cinco",async()=>{
  const batch=(await pool.query("SELECT * FROM demo_batches WHERE client_id=$1",[users.owner.id])).rows[0];
  await pool.query("UPDATE orders SET operation_day=(now() AT TIME ZONE 'America/Bogota')::date WHERE demo_batch_id=$1",[batch.id]);
- const routes=await call('courier','get','/delivery-routes');assert.equal(routes.status,200,JSON.stringify(routes.body));assert.equal(routes.body.groups.flatMap(g=>g.stops).length,9);assert.ok(routes.body.groups.every(g=>g.stops.length<=5));assert.ok(routes.body.groups.every(g=>g.stops.every(s=>s.city!=='Bogotá')||g.stops.every(s=>s.city==='Bogotá')));assert.ok(routes.body.groups.every(g=>g.mode==='distance'));
+ const routes=await call('courier','get','/delivery-routes');assert.equal(routes.status,200,JSON.stringify(routes.body));assert.equal(routes.body.groups.flatMap(g=>g.stops).length,9);assert.ok(routes.body.groups.every(g=>g.stops.length<=5));assert.ok(routes.body.groups.every(g=>g.stops.every(s=>s.city!=='Bogotá')||g.stops.every(s=>s.city==='Bogotá')));assert.ok(routes.body.groups.every(g=>['distance','carrier'].includes(g.mode)));
  assert.equal((await call('client','get','/delivery-routes')).status,403);assert.equal((await call('courier2','get','/delivery-routes')).body.groups.length,0);
  const id=batch.branch_ids[0];assert.equal((await call('client','patch','/branches/'+id+'/location',{lat:7,lng:-73})).status,404);assert.equal((await call('owner','patch','/branches/'+id+'/location',{lat:91,lng:-73})).status,400);assert.equal((await call('owner','patch','/branches/'+id+'/location',{lat:7.01,lng:-73.04})).status,200);
+});
+test('Recorrido: inicio atómico, bloqueo de edición en camino y reagrupación de los pendientes',async()=>{
+ const planned=await call('courier','get','/delivery-routes');const run=planned.body.groups.find(g=>g.mode!=='carrier'&&g.stops.length>1);assert.ok(run);const ids=run.stops.map(o=>o.id);assert.equal((await call('courier2','post','/delivery-routes/'+run.id+'/start',{})).status,404);
+ await pool.query("UPDATE orders SET status='preparing' WHERE id=$1",[ids[0]]);assert.equal((await call('courier','post','/delivery-routes/'+run.id+'/start',{})).status,409);assert.equal((await pool.query("SELECT count(*)::int n FROM orders WHERE id=ANY($1::uuid[]) AND status='enroute'",[ids])).rows[0].n,0);
+ await pool.query("UPDATE orders SET status='ready' WHERE id=$1",[ids[0]]);assert.equal((await call('courier','post','/delivery-routes/'+run.id+'/start',{})).status,200);assert.equal((await call('courier','post','/delivery-routes/'+run.id+'/start',{})).status,200);assert.equal((await pool.query("SELECT count(*)::int n FROM orders WHERE id=ANY($1::uuid[]) AND status='enroute'",[ids])).rows[0].n,ids.length);
+ assert.equal((await call('courier','patch','/delivery-routes/'+run.id,{orderIds:[ids[0]]})).status,409);const after=(await call('courier','get','/delivery-routes')).body;assert.deepEqual(after.groups.find(g=>g.id===run.id).stops.map(o=>o.id),ids);assert.ok(after.groups.filter(g=>g.id!==run.id).every(g=>g.stops.every(o=>!ids.includes(o.id))));
+ const draft=after.groups.find(g=>g.status==='draft'&&g.mode!=='carrier');assert.ok(draft);assert.equal((await call('courier','patch','/delivery-routes/'+draft.id,{orderIds:[draft.stops[0].id]})).status,200);const edited=(await call('courier','get','/delivery-routes')).body.groups.find(g=>g.id===draft.id);assert.equal(edited.stops.length,1);assert.equal(edited.manual,true);assert.equal((await call('courier','post','/delivery-routes/'+draft.id+'/start',{})).status,200);assert.deepEqual((await call('courier','get','/delivery-routes')).body.groups.find(g=>g.id===draft.id).stops.map(o=>o.id),[draft.stops[0].id]);
+});
+test('Disponibles requieren solicitud y aprobación; dos mensajeros no pueden obtener el mismo pedido',async()=>{
+ const batch=(await pool.query('SELECT * FROM demo_batches WHERE client_id=$1',[users.owner.id])).rows[0];const row=(await pool.query("SELECT o.id FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.id=ANY($1::uuid[]) AND o.status='ready' AND b.city<>'Bogotá' LIMIT 1",[batch.order_ids])).rows[0];assert.ok(row);await pool.query('UPDATE orders SET courier_id=NULL WHERE id=$1',[row.id]);
+ const first=await call('courier','post','/delivery-route-requests',{orderIds:[row.id]});assert.equal(first.status,200,JSON.stringify(first.body));const second=await call('courier2','post','/delivery-route-requests',{orderIds:[row.id]});assert.equal(second.status,200);assert.equal((await pool.query('SELECT courier_id FROM orders WHERE id=$1',[row.id])).rows[0].courier_id,null);
+ assert.equal((await call('courier','post','/delivery-routes/'+first.body.id+'/decision',{approve:true})).status,403);const approvals=await Promise.all([call('admin','post','/delivery-routes/'+first.body.id+'/decision',{approve:true}),call('admin','post','/delivery-routes/'+second.body.id+'/decision',{approve:true})]);assert.deepEqual(approvals.map(r=>r.status).sort(),[200,409]);
+});
+test('Comprobante obligatorio al cobrar, privado y persistido con el abono',async()=>{
+ const before=(await pool.query('SELECT count(*)::int n FROM payments')).rows[0].n;const denied=await request(app).post('/api/payments').set('Origin',origin).set('Cookie',users.courier.cookie).set('Idempotency-Key',randomUUID()).send({clientId:users.client.id,method:'cash',amount:100});assert.equal(denied.status,400);assert.equal((await pool.query('SELECT count(*)::int n FROM payments')).rows[0].n,before);
+ const proof=(await pool.query('SELECT payment_id FROM payment_proofs LIMIT 1')).rows[0];assert.ok(proof);assert.equal((await call('admin','get','/payments/'+proof.payment_id+'/proof')).status,200);assert.equal((await call('owner','get','/payments/'+proof.payment_id+'/proof')).status,404);
+});
+test('Unidades libres por presentación y cantidades enteras para caja; historial intacto',async()=>{
+ const group=await call('admin','post','/product-groups',{name:'Panela por unidad',presentations:[{label:'Bloque',units:[{unit:'Unidad',price:200000},{unit:'Caja x 24',price:4500000}]}]});assert.equal(group.status,200,JSON.stringify(group.body));const variants=(await call('admin','get','/product-groups/'+group.body.id)).body.variants;assert.equal(variants.length,2);const box=variants.find(v=>v.unit==='Caja x 24');assert.equal((await call('client','post','/orders',{...body,credit:false,items:[{productId:box.id,quantity:.5}]},randomUUID())).status,400);assert.equal((await call('client','post','/orders',{...body,credit:false,items:[{productId:box.id,quantity:1}]},randomUUID())).status,200);
+});
+test('Editar sucursal conserva la dirección de pedidos existentes y respeta propietario',async()=>{
+ const before=(await call('client','get','/orders/'+order.id)).body;assert.equal((await call('owner','patch','/branches/'+body.branchId,{address:'No autorizada',city:'Bogotá',lat:4.6,lng:-74.1})).status,404);
+ assert.equal((await call('client','patch','/branches/'+body.branchId,{address:'Nueva sucursal editada',city:'Bogotá',lat:4.6,lng:-74.1})).status,200);assert.equal((await call('client','get','/branches')).body.find(b=>b.id===body.branchId).address,'Nueva sucursal editada');assert.equal((await call('client','get','/orders/'+order.id)).body.address,before.address);const plant=(await call('preparation','get','/orders')).body;assert.ok(plant.every(o=>typeof o.client_name==='string'&&!('courier_id' in o)&&!('total' in o)));
+});
+test('Fin de frecuencia posterior al día base y estados de avisos en español',async()=>{
+ const same=String(body.start).slice(0,10);const denied=await call('client','post','/orders',{...body,credit:false,recurrence:{enabled:true,frequency:'days',intervalDays:1,weekdays:[],endDay:same}},randomUUID());assert.equal(denied.status,400);const notices=(await call('client','get','/notifications')).body;assert.ok(notices.every(n=>!/^Pedido: (pending|confirmed|preparing|ready|enroute|delivered)$/.test(n.title)));
+});
+test('Unidades: renombrar, quitar y permitir decimales conserva el pedido histórico',async()=>{
+ const g=await call('admin','post','/product-groups',{name:'Unidades editables',presentations:[{label:'Líquida',units:[{unit:'Litro',fractional:true,price:10000},{unit:'Botella',fractional:false,price:15000}]}]});assert.equal(g.status,200);const variants=(await call('admin','get','/product-groups/'+g.body.id)).body.variants,liter=variants.find(v=>v.unit==='Litro'),bottle=variants.find(v=>v.unit==='Botella');assert.equal(liter.allows_fraction,true);const created=await call('client','post','/orders',{...body,credit:false,paymentMethod:'online',items:[{productId:liter.id,quantity:1.5}]},randomUUID());assert.equal(created.status,200,JSON.stringify(created.body));
+ const updated=await call('admin','put','/product-groups/'+g.body.id,{name:'Unidades editables',presentations:[{label:'Líquida',units:[{id:liter.id,unit:'Litro de 1000 ml',fractional:true,price:12000}]}]});assert.equal(updated.status,200);assert.equal((await call('client','post','/orders',{...body,credit:false,paymentMethod:'online',items:[{productId:bottle.id,quantity:1}]},randomUUID())).status,400);const old=(await call('client','get','/orders/'+created.body.id)).body.items[0];assert.ok(old.name.endsWith('(Litro)'));assert.equal(Number(old.price),10000);assert.equal(Number(old.quantity),1.5);const duplicate=await call('admin','post','/product-groups',{name:'Duplicadas',presentations:[{label:'Bloque',units:[{unit:'Caja',price:100},{unit:'caja',price:100}]}]});assert.equal(duplicate.status,400);
 });

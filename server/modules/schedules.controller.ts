@@ -98,6 +98,15 @@ export class SchedulesController {
         (b.nextDay !== undefined && next < today)
       )
         fail(400, "Próxima fecha inválida");
+      if (
+        (b.endDay || b.active === true) &&
+        cfg.endDay &&
+        (cfg.endDay <= today || cfg.endDay < next)
+      )
+        fail(
+          400,
+          "La fecha final debe ser posterior a hoy e incluir la próxima entrega",
+        );
       await c.query(
         "UPDATE order_schedules SET frequency=$2,interval_days=$3,weekdays=$4,end_day=$5,active=$6,body=$7,next_day=$8,updated_at=now() WHERE id=$1",
         [

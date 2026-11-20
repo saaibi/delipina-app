@@ -1,4 +1,4 @@
-import { BranchLocations } from "./branch-locations";
+import { BranchManager } from "./branches";
 import { MembersEditor } from "./members";
 import { ServerTable } from "./server-table";
 import { has } from "./access";
@@ -231,6 +231,7 @@ export function SettingsView({
                     : !["client", "client_member"].includes(u.role),
                 )}
               onMembers={(u) => onAction({ kind: "members", clientId: u.id })}
+              onBranches={(u) => onAction({ kind: "branches", clientId: u.id })}
               onPrices={(u) => onAction({ kind: "price", clientId: u.id })}
               onEdit={onEditUser}
               onRemove={onRemoveUser}
@@ -285,19 +286,13 @@ export function SettingsView({
           <MembersEditor />
         </Section>
       )}
-      {(admin || user.role === "client") && (
-        <Section title="Ubicaciones de entrega">
-          <BranchLocations branches={branches} onSaved={onRefresh} />
-        </Section>
-      )}
       {user.role === "client" && (
         <Section title="Sucursales y direcciones">
-          <Button onClick={() => onAction("branch")}>Crear sucursal</Button>
-          {branches.map((b) => (
-            <p key={b.id}>
-              {b.address} · {b.city}
-            </p>
-          ))}
+          <BranchManager
+            clientId={user.id}
+            branches={branches}
+            onSaved={onRefresh}
+          />
         </Section>
       )}
     </div>

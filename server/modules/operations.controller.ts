@@ -249,12 +249,15 @@ export class OperationsController {
           )
         ).rows[0];
         for (const v of p.units) {
+          if (typeof v.unit === "string") v.unit = v.unit.trim();
           if (
-            !["kg", "lb", "arroba", "pack"].includes(v.unit) ||
-            combos.has(label.toLowerCase() + "|" + v.unit)
+            typeof v.unit !== "string" ||
+            !v.unit.trim() ||
+            v.unit.length > 40 ||
+            combos.has(label.toLowerCase() + "|" + v.unit.toLowerCase())
           )
             fail(400, "Medida duplicada o inválida");
-          combos.add(label.toLowerCase() + "|" + v.unit);
+          combos.add(label.toLowerCase() + "|" + v.unit.toLowerCase());
           const old = v.id
             ? (
                 await c.query(
@@ -266,7 +269,7 @@ export class OperationsController {
           if (v.id && !old) fail(400, "Presentación ajena al producto");
           const vid = old?.id || randomUUID();
           await c.query(
-            "INSERT INTO products(id,name,presentation,unit,price,active,image_key,catalog_product_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(id) DO UPDATE SET name=excluded.name,presentation=excluded.presentation,unit=excluded.unit,price=excluded.price,active=excluded.active",
+            "INSERT INTO products(id,name,presentation,unit,price,active,image_key,catalog_product_id,allows_fraction) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(id) DO UPDATE SET name=excluded.name,presentation=excluded.presentation,unit=excluded.unit,price=excluded.price,active=excluded.active,allows_fraction=excluded.allows_fraction",
             [
               vid,
               text(b.name, 100),
@@ -276,6 +279,9 @@ export class OperationsController {
               v.active !== false,
               old?.image_key || template?.image_key || null,
               id,
+              v.fractional ??
+                old?.allows_fraction ??
+                ["kg", "lb", "arroba"].includes(v.unit),
             ],
           );
           if (p.image) {

@@ -169,7 +169,14 @@ export function ClientPriceCatalog({
                   <TableHead>
                     <TableRow>
                       <TableCell>Presentación</TableCell>
-                      {Object.entries(unitNames).map(([unit, label]) => (
+                      {Object.entries(
+                        Object.fromEntries(
+                          g.rows.map((p) => [
+                            p.unit,
+                            unitNames[p.unit] || p.unit,
+                          ]),
+                        ),
+                      ).map(([unit, label]) => (
                         <TableCell key={unit}>{label}</TableCell>
                       ))}
                     </TableRow>
@@ -189,49 +196,54 @@ export function ClientPriceCatalog({
                                 <strong>{label}</strong>
                               </div>
                             </TableCell>
-                            {Object.entries(unitNames).map(
-                              ([unit, unitLabel]) => {
-                                const p = variants.find((p) => p.unit === unit);
-                                return (
-                                  <TableCell key={unit} sx={{ minWidth: 165 }}>
-                                    {p ? (
-                                      <>
-                                        <Field
-                                          label={label + " / " + unitLabel}
-                                          type="number"
-                                          required={false}
-                                          min="0"
-                                          step="0.01"
-                                          value={values[p.id] ?? ""}
-                                          placeholder={String(
-                                            Number(p.base_price) / 100,
-                                          )}
-                                          disabled={busy}
-                                          onChange={(e) =>
-                                            change(p.id, e.target.value)
-                                          }
-                                          size="small"
-                                        />
-                                        <small>
-                                          General: {money(p.base_price)}
-                                        </small>
-                                        {values[p.id] !== "" && (
-                                          <Button
-                                            className="neutral"
-                                            disabled={busy}
-                                            onClick={() => change(p.id, "")}
-                                          >
-                                            Usar general
-                                          </Button>
+                            {Object.entries(
+                              Object.fromEntries(
+                                g.rows.map((p) => [
+                                  p.unit,
+                                  unitNames[p.unit] || p.unit,
+                                ]),
+                              ),
+                            ).map(([unit, unitLabel]) => {
+                              const p = variants.find((p) => p.unit === unit);
+                              return (
+                                <TableCell key={unit} sx={{ minWidth: 165 }}>
+                                  {p ? (
+                                    <>
+                                      <Field
+                                        label={label + " / " + unitLabel}
+                                        type="number"
+                                        required={false}
+                                        min="0"
+                                        step="0.01"
+                                        value={values[p.id] ?? ""}
+                                        placeholder={String(
+                                          Number(p.base_price) / 100,
                                         )}
-                                      </>
-                                    ) : (
-                                      "—"
-                                    )}
-                                  </TableCell>
-                                );
-                              },
-                            )}
+                                        disabled={busy}
+                                        onChange={(e) =>
+                                          change(p.id, e.target.value)
+                                        }
+                                        size="small"
+                                      />
+                                      <small>
+                                        General: {money(p.base_price)}
+                                      </small>
+                                      {values[p.id] !== "" && (
+                                        <Button
+                                          className="neutral"
+                                          disabled={busy}
+                                          onClick={() => change(p.id, "")}
+                                        >
+                                          Usar general
+                                        </Button>
+                                      )}
+                                    </>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </TableCell>
+                              );
+                            })}
                           </TableRow>
                         );
                       },

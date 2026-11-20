@@ -1,3 +1,4 @@
+import LocationOn from "@mui/icons-material/LocationOn";
 import People from "@mui/icons-material/People";
 import PriceChange from "@mui/icons-material/PriceChange";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -40,6 +41,7 @@ export function ManagementTable({
   onRestore,
   onPrices,
   onMembers,
+  onBranches,
 }: any) {
   const [archived, SA] = useState(false);
   const [search, S] = useState(""),
@@ -186,6 +188,16 @@ export function ManagementTable({
                   />
                 </TableCell>
                 <TableCell sx={{ whiteSpace: "nowrap" }}>
+                  {clients && onBranches && (
+                    <Tooltip title="Sucursales del cliente">
+                      <IconButton
+                        aria-label={"Sucursales de " + r.name}
+                        onClick={() => onBranches(r)}
+                      >
+                        <LocationOn />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   {clients && onMembers && (
                     <Tooltip title="Usuarios del cliente">
                       <IconButton

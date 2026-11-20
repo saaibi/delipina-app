@@ -1,3 +1,4 @@
+import { attachment } from "./photos";
 import React, { useEffect, useRef, useState } from "react";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
@@ -95,6 +96,32 @@ export function CreditsView({
         </TableContainer>
         {!accounts.length && <p>No hay saldos registrados.</p>}
       </div>
+      {staff && payments.some((p) => p.has_proof) && (
+        <section className="panel">
+          <h2>Comprobantes de cobro</h2>
+          {payments
+            .filter((p) => p.has_proof)
+            .slice(-50)
+            .map((p) => (
+              <p key={p.id}>
+                {money(p.amount)} ·{" "}
+                {{
+                  cash: "Efectivo",
+                  nequi: "Nequi",
+                  bancolombia: "Bancolombia",
+                }[p.method] || p.method}{" "}
+                ·{" "}
+                <a
+                  href={"/api/payments/" + p.id + "/proof"}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Ver factura o comprobante
+                </a>
+              </p>
+            ))}
+        </section>
+      )}
       {user.role === "admin" && payments.some((p) => !p.verified) && (
         <div className="panel">
           <h2>Transferencias por verificar</h2>
@@ -103,7 +130,21 @@ export function CreditsView({
             .map((p) => (
               <article className="invoice" key={p.id}>
                 <div>
-                  {money(p.amount)} · {p.method}
+                  {money(p.amount)} ·{" "}
+                  {{
+                    cash: "Efectivo",
+                    nequi: "Nequi",
+                    bancolombia: "Bancolombia",
+                  }[p.method] || p.method}
+                  {p.has_proof && (
+                    <a
+                      href={"/api/payments/" + p.id + "/proof"}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Ver comprobante
+                    </a>
+                  )}
                   <p>
                     Recibida por {p.receiver} ·{" "}
                     {new Date(p.created_at).toLocaleString("es-CO")}
@@ -180,7 +221,13 @@ export function CreditDetails({ client, money, onPay, canPay }: any) {
     </>
   );
 }
-export function GeneralPaymentForm({ client, business, onSaved, money }: any) {
+export function GeneralPaymentForm({
+  client,
+  business,
+  onSaved,
+  money,
+  user,
+}: any) {
   const key = useRef(crypto.randomUUID()),
     [busy, B] = useState(false),
     [error, E] = useState("");
@@ -197,6 +244,10 @@ export function GeneralPaymentForm({ client, business, onSaved, money }: any) {
             headers: { "Idempotency-Key": key.current },
             body: {
               clientId: client.id,
+              receiptPhoto:
+                b.proof instanceof File && b.proof.size
+                  ? await attachment(b.proof)
+                  : undefined,
               method: b.method,
               amount: Math.round(Number(b.amount) * 100),
             },
@@ -228,6 +279,14 @@ export function GeneralPaymentForm({ client, business, onSaved, money }: any) {
         <option value="nequi">Nequi · requiere verificación</option>
         <option value="bancolombia">Bancolombia · requiere verificación</option>
       </Select>
+      <Field
+        name="proof"
+        label="Foto de la factura o comprobante"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        required={user?.role === "courier"}
+      />
       <p>
         El abono se aplica al saldo general del cliente, empezando por los
         pedidos con saldo más antiguos. Jornada de registro:{" "}

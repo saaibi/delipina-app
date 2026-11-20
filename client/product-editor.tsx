@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import Alert from "@mui/material/Alert";
 import Checkbox from "@mui/material/Checkbox";
+import IconButton from "@mui/material/IconButton";
+import DeleteOutline from "@mui/icons-material/DeleteOutlined";
+import { Select } from "./ui";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { Button, Field } from "./ui";
@@ -11,6 +14,8 @@ const units = {
   lb: "Libra",
   arroba: "Arroba (25 libras)",
   pack: "Empaque",
+  unidad: "Unidad",
+  caja: "Caja",
 };
 const blank = () => ({
   key: crypto.randomUUID(),
@@ -20,7 +25,12 @@ const blank = () => ({
   units: Object.fromEntries(
     Object.keys(units).map((u) => [
       u,
-      { enabled: u === "kg", price: "", id: null },
+      {
+        enabled: u === "kg",
+        price: "",
+        id: null,
+        fractional: ["kg", "lb", "arroba"].includes(u),
+      },
     ]),
   ),
 });
@@ -54,6 +64,8 @@ export function groupVariants(rows: any[]) {
         enabled: p.active,
         price: String(Number(p.price) / 100),
         id: p.id,
+        fractional:
+          p.allows_fraction ?? ["kg", "lb", "arroba"].includes(p.unit),
       };
       return g;
     }, {}),
@@ -96,7 +108,14 @@ export function ProductEditor({ product, onSaved }: any) {
                 .filter(([, v]: any) => v.enabled)
                 .map(([unit, v]: any) => ({
                   id: v.id || undefined,
-                  unit,
+                  unit:
+                    p.names?.[unit]?.trim() &&
+                    p.names[unit].trim().toLowerCase() !==
+                      (units[unit] || unit).toLowerCase()
+                      ? p.names[unit].trim()
+                      : unit,
+                  fractional:
+                    v.fractional ?? ["kg", "lb", "arroba"].includes(unit),
                   price: Math.round(Number(v.price) * 100),
                   active: true,
                 })),
@@ -157,44 +176,145 @@ export function ProductEditor({ product, onSaved }: any) {
           ) : (
             p.photo && <ProductPhoto product={p.photo} small />
           )}
-          <div className="presentation-units">
-            {Object.entries(units).map(([unit, label]) => (
-              <div key={unit}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={p.units[unit].enabled}
-                      onChange={(_, enabled) =>
+          <div className="unit-price-list">
+            <div className="unit-price-heading">
+              <strong>Unidad de venta</strong>
+              <strong>Precio (COP)</strong>
+              <span />
+            </div>
+            {Object.entries(p.units)
+              .filter(([, v]: any) => v.enabled)
+              .map(([unit, v]: any) => (
+                <div className="unit-price-row" key={unit}>
+                  <div>
+                    <Field
+                      label="Unidad"
+                      value={p.names?.[unit] ?? (units[unit] || unit)}
+                      maxLength={40}
+                      onChange={(e) =>
                         change(p.key, {
-                          units: {
-                            ...p.units,
-                            [unit]: { ...p.units[unit], enabled },
-                          },
+                          names: { ...p.names, [unit]: e.target.value },
                         })
                       }
                     />
-                  }
-                  label={label}
-                />
-                {p.units[unit].enabled && (
+                    <FormControlLabel
+                      className="fraction-option"
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={
+                            v.fractional ??
+                            ["kg", "lb", "arroba"].includes(unit)
+                          }
+                          onChange={(_, fractional) =>
+                            change(p.key, {
+                              units: {
+                                ...p.units,
+                                [unit]: { ...v, fractional },
+                              },
+                            })
+                          }
+                        />
+                      }
+                      label="Admite decimales"
+                    />
+                  </div>
                   <Field
-                    label={"Precio " + label + " (COP)"}
+                    label="Precio COP"
                     type="number"
                     min="0"
                     step="0.01"
-                    value={p.units[unit].price}
+                    value={v.price}
                     onChange={(e) =>
                       change(p.key, {
                         units: {
                           ...p.units,
-                          [unit]: { ...p.units[unit], price: e.target.value },
+                          [unit]: { ...v, price: e.target.value },
                         },
                       })
                     }
                   />
-                )}
-              </div>
-            ))}
+                  <IconButton
+                    aria-label={"Quitar unidad " + (units[unit] || unit)}
+                    onClick={() =>
+                      change(p.key, {
+                        units: { ...p.units, [unit]: { ...v, enabled: false } },
+                      })
+                    }
+                  >
+                    <DeleteOutline />
+                  </IconButton>
+                </div>
+              ))}
+          </div>
+          {!Object.values(p.units).some((v: any) => v.enabled) && (
+            <Alert severity="info">
+              Agrega al menos una unidad para esta presentación.
+            </Alert>
+          )}
+          <div className="unit-add-row">
+            <Select
+              label="Agregar unidad"
+              value={p.addChoice || "__custom__"}
+              onChange={(e) => change(p.key, { addChoice: e.target.value })}
+            >
+              <option value="__custom__">Nueva unidad…</option>
+              {Object.entries(units)
+                .filter(([k]) => !p.units[k]?.enabled)
+                .map(([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ))}
+            </Select>
+            {(!p.addChoice || p.addChoice === "__custom__") && (
+              <Field
+                label="Nombre de la nueva unidad"
+                required={false}
+                maxLength={40}
+                value={p.newUnit || ""}
+                onChange={(e) => change(p.key, { newUnit: e.target.value })}
+                placeholder="Ej. Caja de 24"
+              />
+            )}
+            <Button
+              className="neutral"
+              onClick={() => {
+                const name =
+                  p.addChoice && p.addChoice !== "__custom__"
+                    ? p.addChoice
+                    : (p.newUnit || "").trim();
+                if (
+                  !name ||
+                  name.length > 40 ||
+                  Object.entries(p.units).some(
+                    ([k, v]: any) =>
+                      v.enabled &&
+                      (k.toLowerCase() === name.toLowerCase() ||
+                        (units[k] || "").toLowerCase() === name.toLowerCase()),
+                  )
+                )
+                  return E("Escribe o selecciona una unidad nueva");
+                change(p.key, {
+                  newUnit: "",
+                  units: {
+                    ...p.units,
+                    [name]: {
+                      ...p.units[name],
+                      enabled: true,
+                      price: p.units[name]?.price || "",
+                      id: p.units[name]?.id || null,
+                      fractional:
+                        p.units[name]?.fractional ??
+                        ["kg", "lb", "arroba"].includes(name),
+                    },
+                  },
+                });
+                E("");
+              }}
+            >
+              Agregar
+            </Button>
           </div>
           <Button
             className="neutral"
