@@ -163,7 +163,7 @@ export function ManagementTable({
                         {
                           kg: "Kilogramos",
                           lb: "Libras",
-                          arroba: "Arrobas (25 lb)",
+                          arroba: "Arroba",
                           pack: "Empaques",
                         }[r.unit]
                       }

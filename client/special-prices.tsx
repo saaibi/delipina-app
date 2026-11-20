@@ -16,7 +16,7 @@ import { api } from "./offline";
 const unitNames = {
   kg: "kg",
   lb: "libra",
-  arroba: "arroba (25 lb)",
+  arroba: "arroba",
   pack: "empaque",
 };
 export function ClientPriceCatalog({

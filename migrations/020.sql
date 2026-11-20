@@ -1,0 +1,2 @@
+-- Remove only automatically created days without any operational activity.
+DELETE FROM business_days d WHERE NOT EXISTS(SELECT 1 FROM orders o WHERE o.operation_day=d.day OR o.sale_day=d.day OR (o.window_start AT TIME ZONE 'America/Bogota')::date=d.day) AND NOT EXISTS(SELECT 1 FROM payments p WHERE p.business_day=d.day OR p.verified_day=d.day) AND NOT EXISTS(SELECT 1 FROM settlements s WHERE s.day=d.day) AND NOT EXISTS(SELECT 1 FROM delivery_runs r WHERE r.day=d.day);

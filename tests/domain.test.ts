@@ -991,6 +991,9 @@ test('Limpieza administrativa reversible conserva catálogo, usuarios y archivos
  assert.equal((await pool.query('SELECT count(*) FROM users WHERE credit_used<>0')).rows[0].count,'0');
  assert.deepEqual((await maintenancePreview()).preserved,before.preserved);
  assert.equal((await call('client','get','/maintenance/archives/'+cleared.id+'/download')).status,403);
+ const current=await call('admin','get','/business-day');assert.equal(current.status,200);assert.ok(current.body.day);assert.ok(current.body.cutoffAt);
+ await call('admin','get','/business-days');await call('admin','get','/business-day');
+ assert.equal((await pool.query('SELECT count(*) FROM business_days')).rows[0].count,'0','Consultar apertura o días futuros no crea jornadas sin pedidos');
  const restored=await restoreOperations(users.admin.id,cleared.id,'RESTAURAR DELIPIÑA');
  const after=await maintenancePreview();assert.deepEqual(after.counts,before.counts);assert.deepEqual(after.preserved,before.preserved);
  assert.deepEqual((await pool.query('SELECT id,credit_used FROM users ORDER BY id')).rows,credits);

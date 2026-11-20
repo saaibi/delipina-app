@@ -1,4 +1,3 @@
-import { Maintenance } from "./maintenance";
 import { FeedbackSnackbar } from "./feedback";
 import { BranchManager } from "./branches";
 import { MembersEditor } from "./members";
@@ -273,11 +272,6 @@ export function SettingsView({
             )}
           </Section>
         </>
-      )}
-      {admin && (
-        <Section title="Administración de datos">
-          <Maintenance onRefresh={onRefresh} />
-        </Section>
       )}
       {has(user, "audit") && (
         <Section title="Trazabilidad">

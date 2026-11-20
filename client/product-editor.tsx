@@ -12,7 +12,7 @@ import { ProductPhoto } from "./products";
 const units = {
   kg: "Kilo",
   lb: "Libra",
-  arroba: "Arroba (25 libras)",
+  arroba: "Arroba",
   pack: "Empaque",
   unidad: "Unidad",
   caja: "Caja",

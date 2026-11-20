@@ -200,18 +200,6 @@ export function DeliveryRoute({
           </div>
         </article>
       ))}
-      <small>
-        Rutas OSRM/FOSSGIS · © OpenStreetMap ·{" "}
-        <a
-          href="https://www.openstreetmap.org/fixthemap"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Corregir mapa
-        </a>
-        . Las coordenadas se comparten con el proveedor al calcular rutas;
-        Google recibe las paradas al abrir la navegación.
-      </small>
 
       {edit && (
         <Modal title="Pedidos del recorrido" onClose={() => M(null)}>

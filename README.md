@@ -200,8 +200,11 @@ Registrar una entrega fallida cambia a Rechazado y conserva mensajero, factura y
 Recargar fuerza consultas sin caché HTTP, actualiza recorridos aunque no cambien los IDs y comparte clics simultáneos. Las respuestas antiguas no sobrescriben la última actualización; la cartera y solicitudes se vuelven a consultar mediante la invalidación del módulo. La interfaz indica cuándo está actualizando y confirma la recarga.
 
 
-### Limpieza y recuperación
-Solo administración puede usar Ajustes → Administración de datos. Cada limpieza conserva usuarios, catálogo, imágenes y ajustes; archiva comprimidos los datos operativos antes de retirarlos en una transacción limitada al schema de Delipiña. Los respaldos permiten descargar y restaurar la operación. Una restauración respalda también el estado que reemplaza. La jornada vacía de hoy se abre automáticamente. No hay una opción de purga permanente de respaldos.
+### Jornadas y recuperación
+Las consultas de horario no crean jornadas. El reloj registra únicamente fechas con pedidos y conserva el cierre contable sujeto a cuadres. La migración 020 retira jornadas automáticas sin actividad, comprobando pedidos, pagos, recorridos y cuadres. El apartado de administración de datos fue retirado; el respaldo previo permanece conservado.
+
+### APK de prueba
+Android abre la web publicada mediante Custom Tabs, compartiendo la sesión del navegador y permitiendo el acceso Google. Requiere conexión y un navegador compatible. No es un WebView con login Google embebido. La compilación debug es para instalación y pruebas, no para Play Store; Firebase nativo requiere configuración y vinculación de dispositivo antes de probar la recepción.
 
 ### Inicio de sesión con Apple
 Pendiente de cuenta activa Apple Developer Program. La configuración web requiere App ID, Services ID, dominio y retorno HTTPS registrados y clave privada. No se muestra un botón sin configuración. Documentación: https://developer.apple.com/help/account/capabilities/configure-sign-in-with-apple-for-the-web/

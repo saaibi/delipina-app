@@ -16,7 +16,7 @@ export class BusinessDayController {
       const day = await businessDate(c),
         cfg = (await c.query("SELECT data FROM settings WHERE id=1")).rows[0]
           .data;
-      const { schedule } = await prepareDay(c, day, cfg);
+      const { schedule, cutoff } = await prepareDay(c, day, cfg);
       const r = (
         await c.query("SELECT * FROM business_days WHERE day=$1", [day])
       ).rows[0];
@@ -29,14 +29,14 @@ export class BusinessDayController {
         day,
         isOpen:
           schedule.enabled &&
-          !r.intake_closed_at &&
+          !r?.intake_closed_at &&
           localTime >= schedule.open &&
           localTime < schedule.close,
-        closedAt: r.intake_closed_at,
-        accountingClosedAt: r.closed_at,
-        cutoffAt: r.cutoff_at,
+        closedAt: r?.intake_closed_at || null,
+        accountingClosedAt: r?.closed_at || null,
+        cutoffAt: r?.cutoff_at || cutoff,
         nextOperatingDay: await operatingDate(c),
-        reason: r.intake_closed_at
+        reason: r?.intake_closed_at
           ? "daily_close"
           : !schedule.enabled || localTime < schedule.open
             ? "outside_hours"
@@ -82,7 +82,10 @@ export class BusinessDayController {
       )
     ).rows[0];
     if (!r?.closed_at)
-      fail(409, "El cierre contable espera entregas resueltas, transferencias verificadas y todos los cuadres confirmados");
+      fail(
+        409,
+        "El cierre contable espera entregas resueltas, transferencias verificadas y todos los cuadres confirmados",
+      );
     return { day, summary: r.summary, automatic: true };
   }
 }

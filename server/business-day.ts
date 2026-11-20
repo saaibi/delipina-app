@@ -50,7 +50,12 @@ export async function businessDate(c?: PoolClient) {
       );
   return r.rows[0].day as string;
 }
-export async function prepareDay(c: PoolClient, day: string, cfg: any) {
+export async function prepareDay(
+  c: PoolClient,
+  day: string,
+  cfg: any,
+  persist = false,
+) {
   const weekday = Number(
     (
       await c.query("SELECT EXTRACT(ISODOW FROM $1::date)::int AS weekday", [
@@ -65,10 +70,11 @@ export async function prepareDay(c: PoolClient, day: string, cfg: any) {
       [day, schedule.enabled ? schedule.close : "00:00"],
     )
   ).rows[0].cutoff;
-  await c.query(
-    "INSERT INTO business_days(day,cutoff_at) VALUES($1,$2) ON CONFLICT(day) DO UPDATE SET cutoff_at=COALESCE(business_days.cutoff_at,excluded.cutoff_at)",
-    [day, cutoff],
-  );
+  if (persist)
+    await c.query(
+      "INSERT INTO business_days(day,cutoff_at) VALUES($1,$2) ON CONFLICT(day) DO UPDATE SET cutoff_at=COALESCE(business_days.cutoff_at,excluded.cutoff_at)",
+      [day, cutoff],
+    );
   return { schedule, cutoff };
 }
 export async function operatingDate(c: PoolClient, at = new Date()) {
@@ -81,7 +87,7 @@ export async function operatingDate(c: PoolClient, at = new Date()) {
     )
   ).rows;
   for (const { day } of dates) {
-    const { schedule } = await prepareDay(c, day, cfg);
+    const { schedule, cutoff } = await prepareDay(c, day, cfg);
     const record = (
       await c.query(
         "SELECT cutoff_at,closed_at,intake_closed_at FROM business_days WHERE day=$1",
@@ -90,8 +96,8 @@ export async function operatingDate(c: PoolClient, at = new Date()) {
     ).rows[0];
     if (
       schedule.enabled &&
-      !record.intake_closed_at &&
-      +new Date(record.cutoff_at) > +at
+      !record?.intake_closed_at &&
+      +new Date(record?.cutoff_at || cutoff) > +at
     ) {
       await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
         "delipina:day:" + day,
@@ -105,7 +111,7 @@ export async function assertBusinessDateOpen(c: PoolClient, day?: string) {
   if (!day) return operatingDate(c);
   const cfg = (await c.query("SELECT data FROM settings WHERE id=1")).rows[0]
     .data;
-  const { schedule } = await prepareDay(c, day, cfg);
+  const { schedule, cutoff } = await prepareDay(c, day, cfg);
   await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
     "delipina:day:" + day,
   ]);
@@ -117,8 +123,8 @@ export async function assertBusinessDateOpen(c: PoolClient, day?: string) {
   ).rows[0];
   if (
     !schedule.enabled ||
-    r.intake_closed_at ||
-    +new Date(r.cutoff_at) <= Date.now()
+    r?.intake_closed_at ||
+    +new Date(r?.cutoff_at || cutoff) <= Date.now()
   )
     fail(
       409,
@@ -248,22 +254,12 @@ export async function ensureBusinessClock() {
     const cfg = (await c.query("SELECT data FROM settings WHERE id=1")).rows[0]
       ?.data;
     if (!cfg) return false;
-    const today = await businessDate(c);
-    await prepareDay(c, today, cfg);
-    const gaps = (
+    const activeDays = (
       await c.query(
-        "SELECT to_char(d,'YYYY-MM-DD') AS day FROM generate_series(COALESCE((SELECT min(day) FROM business_days),$1::date),$1::date,interval '1 day') d WHERE NOT EXISTS(SELECT 1 FROM business_days b WHERE b.day=d::date)",
-        [today],
+        "SELECT DISTINCT to_char(COALESCE(operation_day,(window_start AT TIME ZONE 'America/Bogota')::date),'YYYY-MM-DD') AS day FROM orders",
       )
     ).rows;
-    for (const { day } of gaps) await prepareDay(c, day, cfg);
-
-    const missing = (
-      await c.query(
-        "SELECT to_char(day,'YYYY-MM-DD') AS day FROM business_days WHERE cutoff_at IS NULL",
-      )
-    ).rows;
-    for (const { day } of missing) await prepareDay(c, day, cfg);
+    for (const { day } of activeDays) await prepareDay(c, day, cfg, true);
     const days = (
       await c.query(
         "SELECT to_char(day,'YYYY-MM-DD') AS day,cutoff_at FROM business_days WHERE intake_closed_at IS NULL AND cutoff_at<=now() ORDER BY day FOR UPDATE",
@@ -345,5 +341,5 @@ export async function accountingDate(c: PoolClient, receiver?: string) {
   const record = (
     await c.query("SELECT closed_at FROM business_days WHERE day=$1", [today])
   ).rows[0];
-  return record.closed_at ? operatingDate(c) : today;
+  return record?.closed_at ? operatingDate(c) : today;
 }
