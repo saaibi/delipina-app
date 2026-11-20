@@ -26,7 +26,9 @@ export function RouteMap({ route, onClose }: any) {
   }, [route.id]);
   useEffect(() => {
     if (!data || !host.current || data.carrier) return;
-    const points = data.stops.filter((s) => s.lat != null && s.lng != null);
+    const points = data.stops
+      .map((s, i) => ({ ...s, stopNumber: i + 1 }))
+      .filter((s) => s.lat != null && s.lng != null);
     const m = L.map(host.current, { scrollWheelZoom: false });
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors",
@@ -52,7 +54,7 @@ export function RouteMap({ route, onClose }: any) {
         fillColor: "#e8bc36",
         fillOpacity: 1,
       })
-        .bindTooltip(String(i + 1), {
+        .bindTooltip(String(s.stopNumber), {
           permanent: true,
           direction: "center",
           className: "route-number",
