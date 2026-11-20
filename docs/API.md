@@ -70,7 +70,7 @@ Los recorridos se calculan en servidor, máximo cinco pedidos. `GET /delivery-ro
 
 GET `/api/delivery-routes` exige mensajero. Recupera únicamente sus pedidos asignados `ready|enroute` de la jornada actual, sin IDs recibidos desde el cliente. Devuelve `{day,origin,originLocation,missingOrigin,groups:[{id,stops,mode,seconds,demo}]}`. Los grupos tienen hasta cinco pedidos, agrupación geográfica; Bogotá/otras ciudades se mantienen separadas del área metropolitana. Dentro de cada grupo se comparan hasta 120 órdenes posibles desde el origen para minimizar la suma de tiempos de la matriz vial OSRM. No se promete un óptimo global de flota, tráfico o puntualidad.
 
-Modos: `road` matriz vial válida; `distance` respaldo geográfico explícito; `pending_location` faltan coordenadas; `unreachable` matriz sin conexión entre destinos. No se elimina ningún pedido por faltar ubicación o por fallo del proveedor. El icono de mapa abre las cinco paradas en una sola vista interna; la navegación individual utiliza Google Maps.
+Modos: `road` matriz vial válida; `distance` respaldo geográfico explícito; `pending_location` faltan coordenadas; `unreachable` matriz sin conexión entre destinos. No se elimina ningún pedido por faltar ubicación o por fallo del proveedor. La interfaz ofrece «Ver mapa» para abrir directamente Google Maps con las paradas ordenadas, además de acceso individual por parada. El enlace conserva las cinco paradas; el navegador móvil de Google puede limitar las intermedias a tres.
 
 PATCH `/api/branches/:id/location` admin o cliente propietario/gestor autorizado; `{lat,lng}` con límites geográficos y par obligatorio. Admite borrar ambos. POST `/api/branches` admite coordenadas opcionales. PUT `/api/settings` admite `originLocation:{lat,lng}`; sin campo conserva el punto previo. Coordenadas demo se marcan como ficticias; no equivalen a una ubicación verificada.
 
@@ -79,3 +79,7 @@ Proveedor gratuito: OSRM/FOSSGIS Table API, configurable por `OSRM_BASE_URL` (so
 `GET /geocode?q=` busca direcciones mediante Photon para clientes y administración. `PATCH /branches/:id` exige propiedad o rol administrador. Los cambios no modifican las direcciones históricas de pedidos.
 
 `POST /payments` exige `receiptPhoto` cuando cobra un mensajero. `GET /payments/:id/proof` entrega la imagen solo a administración, receptor del pago o cliente autorizado. La prueba y pago se guardan en la misma transacción.
+
+`DELETE /branches/:id` elimina de forma recuperable (propietario/administración), conserva pedidos y desactiva frecuencias de esa sucursal. `GET /branches?includeDeleted=true` incluye eliminadas respetando el alcance del usuario. `POST /branches/:id/restore` restaura la sucursal sin activar frecuencias. La creación de pedidos rechaza sucursales eliminadas y toma un bloqueo compartido para coordinar eliminaciones concurrentes.
+
+La búsqueda devuelve `precision` (`number` cuando coinciden calle y placa, `approximate` en otro caso) y `numberMatch`. No estima placas ausentes ni selecciona coordenadas automáticamente. Caché versionada y respuestas obsoletas descartadas en cliente.

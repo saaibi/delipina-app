@@ -895,3 +895,20 @@ test('Unidades: renombrar, quitar y permitir decimales conserva el pedido histó
  const g=await call('admin','post','/product-groups',{name:'Unidades editables',presentations:[{label:'Líquida',units:[{unit:'Litro',fractional:true,price:10000},{unit:'Botella',fractional:false,price:15000}]}]});assert.equal(g.status,200);const variants=(await call('admin','get','/product-groups/'+g.body.id)).body.variants,liter=variants.find(v=>v.unit==='Litro'),bottle=variants.find(v=>v.unit==='Botella');assert.equal(liter.allows_fraction,true);const created=await call('client','post','/orders',{...body,credit:false,paymentMethod:'online',items:[{productId:liter.id,quantity:1.5}]},randomUUID());assert.equal(created.status,200,JSON.stringify(created.body));
  const updated=await call('admin','put','/product-groups/'+g.body.id,{name:'Unidades editables',presentations:[{label:'Líquida',units:[{id:liter.id,unit:'Litro de 1000 ml',fractional:true,price:12000}]}]});assert.equal(updated.status,200);assert.equal((await call('client','post','/orders',{...body,credit:false,paymentMethod:'online',items:[{productId:bottle.id,quantity:1}]},randomUUID())).status,400);const old=(await call('client','get','/orders/'+created.body.id)).body.items[0];assert.ok(old.name.endsWith('(Litro)'));assert.equal(Number(old.price),10000);assert.equal(Number(old.quantity),1.5);const duplicate=await call('admin','post','/product-groups',{name:'Duplicadas',presentations:[{label:'Bloque',units:[{unit:'Caja',price:100},{unit:'caja',price:100}]}]});assert.equal(duplicate.status,400);
 });
+test('Eliminar y restaurar sucursales conserva pedidos, pausa frecuencias y restringe propietario', async()=>{
+ const made=await call('client','post','/branches',{address:'Sucursal a eliminar',city:'Bucaramanga'});assert.equal(made.status,200);const id=made.body.id;
+ const placed=await call('client','post','/orders',{...body,branchId:id,credit:false,recurrence:{enabled:true,frequency:'days',intervalDays:2,weekdays:[]}},randomUUID());assert.equal(placed.status,200,JSON.stringify(placed.body));
+ const schedule=(await pool.query("SELECT id FROM order_schedules WHERE source_order_id=$1",[placed.body.id])).rows[0];assert.ok(schedule);
+ assert.equal((await call('owner','delete','/branches/'+id)).status,404);
+ assert.equal((await call('client','delete','/branches/'+id)).status,200);
+ assert.ok(!(await call('client','get','/branches')).body.some(b=>b.id===id));
+ assert.ok((await call('client','get','/branches?includeDeleted=true')).body.some(b=>b.id===id&&b.deleted_at));
+ assert.equal((await call('client','get','/orders/'+placed.body.id)).body.address,'Sucursal a eliminar');
+ assert.equal((await pool.query('SELECT active FROM order_schedules WHERE id=$1',[schedule.id])).rows[0].active,false);
+ assert.equal((await call('client','patch','/schedules/'+schedule.id,{active:true})).status,409);
+ assert.equal((await call('client','post','/orders',{...body,branchId:id,credit:false},randomUUID())).status,400);
+ assert.equal((await call('owner','post','/branches/'+id+'/restore',{})).status,404);
+ assert.equal((await call('admin','post','/branches/'+id+'/restore',{})).status,200);
+ assert.ok((await call('client','get','/branches')).body.some(b=>b.id===id));
+ assert.equal((await pool.query('SELECT active FROM order_schedules WHERE id=$1',[schedule.id])).rows[0].active,false);
+});

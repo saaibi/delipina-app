@@ -74,3 +74,14 @@ test("El menor tiempo por vías respeta matriz asimétrica y detecta destinos de
     null,
   );
 });
+import { mapsUrl, localDelivery } from "../shared/routes.js";
+test("Ver mapa abre la ruta completa o un destino individual con coordenadas o dirección",()=>{
+ const stops=Array.from({length:5},(_,i)=>({address:'[DEMO] Carrera '+(i+1)+' #6-68',city:'Bucaramanga',lat:7+i/100,lng:-73}));
+ const route=new URL(mapsUrl(stops,'7.13,-73.12'));
+ assert.equal(route.searchParams.get('waypoints')!.split('|').length,4);
+ assert.equal(route.searchParams.get('destination'),'7.04,-73');
+ const single=new URL(mapsUrl([{address:'[DEMO] Carrera 23 #6-68',city:'Bucaramanga'}]));
+ assert.equal(single.searchParams.get('destination'),'Carrera 23 #6-68, Bucaramanga, Colombia');
+ assert.equal(single.searchParams.has('waypoints'),false);assert.equal(single.searchParams.has('origin'),false);
+ assert.equal(localDelivery('Girón'),true);assert.equal(localDelivery('Bogotá'),false);
+});

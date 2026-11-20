@@ -95,6 +95,9 @@ export class DeliveryRoutesController {
               ...r.snapshot,
               stops: (r.snapshot.stops || stops).map((s) => ({
                 ...s,
+                client_name:
+                  stops.find((o) => o.id === s.id)?.client_name ||
+                  s.client_name,
                 status: stops.find((o) => o.id === s.id)?.status || s.status,
               })),
             }

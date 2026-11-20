@@ -1,4 +1,4 @@
-import { RouteMap } from "./route-map";
+import { mapsUrl, localDelivery } from "../shared/routes";
 import IconButton from "@mui/material/IconButton";
 import MapOutlined from "@mui/icons-material/MapOutlined";
 import Chip from "@mui/material/Chip";
@@ -19,7 +19,6 @@ export function DeliveryRoute({
   const [data, S] = useState<any>(null),
     [error, E] = useState(""),
     [edit, M] = useState<any>(null),
-    [mapRoute, MAP] = useState<any>(null),
     [ids, I] = useState<string[]>([]),
     [busy, B] = useState(false),
     [success, OK] = useState("");
@@ -96,23 +95,63 @@ export function DeliveryRoute({
           {g.demo && (
             <small className="demo-warning">DEMO · puntos ficticios</small>
           )}
-          <ol>
-            {g.stops.map((o) => (
-              <li key={o.id}>
-                #{o.id.slice(0, 6)} · {o.address} · {o.city} ·{" "}
-                {
+          <ol className="route-stop-list">
+            {g.stops.map((o, n) => (
+              <li key={o.id} className="route-stop-row">
+                <span className="route-stop-number">{n + 1}</span>
+                <div className="route-stop-copy">
+                  <strong>{o.client_name || "Cliente"}</strong>
+                  <span>{o.address}</span>
+                  <small>{o.city}</small>
+                </div>
+                <span className={"status " + o.status}>
                   {
-                    ready: "Listo",
-                    preparing: "En preparación",
-                    confirmed: "Confirmado",
-                    enroute: "En camino",
-                    delivered: "Entregado",
-                  }[o.status]
-                }
+                    {
+                      ready: "Listo",
+                      preparing: "En preparación",
+                      confirmed: "Confirmado",
+                      enroute: "En camino",
+                      delivered: "Entregado",
+                      cancelled: "Cancelado",
+                      rejected: "Rechazado",
+                    }[o.status]
+                  }
+                </span>
+                {localDelivery(o.city) && (
+                  <IconButton
+                    component="a"
+                    href={mapsUrl([o])}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Ver mapa"
+                    aria-label={`Ver mapa de ${o.client_name || "cliente"}, ${o.address}`}
+                  >
+                    <MapOutlined />
+                  </IconButton>
+                )}
               </li>
             ))}
           </ol>
           <div className="actions">
+            {g.mode !== "carrier" && (
+              <Button
+                className="neutral"
+                startIcon={<MapOutlined />}
+                component="a"
+                href={mapsUrl(
+                  g.stops,
+                  originLocation?.lat != null && originLocation?.lng != null
+                    ? `${originLocation.lat},${originLocation.lng}`
+                    : origin,
+                )}
+                target="_blank"
+                rel="noreferrer"
+                title="Ver mapa"
+                aria-label={`Ver mapa del recorrido ${i + 1}`}
+              >
+                Ver mapa
+              </Button>
+            )}
             {scope === "available"
               ? g.mode !== "carrier" && (
                   <Button
@@ -159,16 +198,6 @@ export function DeliveryRoute({
                   </>
                 )}
           </div>
-          {g.mode !== "carrier" && (
-            <IconButton
-              className="route-map-open"
-              title="Ver recorrido completo"
-              aria-label={`Abrir recorrido completo ${i + 1}`}
-              onClick={() => MAP(g)}
-            >
-              <MapOutlined />
-            </IconButton>
-          )}
         </article>
       ))}
       <small>
@@ -183,7 +212,7 @@ export function DeliveryRoute({
         . Las coordenadas se comparten con el proveedor al calcular rutas;
         Google recibe las paradas al abrir la navegación.
       </small>
-      {mapRoute && <RouteMap route={mapRoute} onClose={() => MAP(null)} />}
+
       {edit && (
         <Modal title="Pedidos del recorrido" onClose={() => M(null)}>
           {error && <Alert severity="error">{error}</Alert>}
@@ -236,10 +265,7 @@ export function DeliveryRoute({
                     }
                   />
                   <span className="route-selection-copy">
-                    <strong>
-                      {o.client_name || "Pedido"}{" "}
-                      <small>#{o.id.slice(0, 6)}</small>
-                    </strong>
+                    <strong>{o.client_name || "Pedido"} </strong>
                     <span>{o.address}</span>
                     <small>{o.city}</small>
                   </span>

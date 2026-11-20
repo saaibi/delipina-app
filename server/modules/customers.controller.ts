@@ -230,7 +230,7 @@ export class CustomersController {
       b = req.body,
       point = coordinates(b.lat, b.lng);
     const result = await pool.query(
-      "UPDATE branches SET address=$2,city=$3,lat=$4,lng=$5,location_source=$6 WHERE id=$1 AND ($7 OR client_id=$8) RETURNING *",
+      "UPDATE branches SET address=$2,city=$3,lat=$4,lng=$5,location_source=$6 WHERE id=$1 AND deleted_at IS NULL AND ($7 OR client_id=$8) RETURNING *",
       [
         req.params.id,
         text(b.address),
@@ -246,6 +246,38 @@ export class CustomersController {
     await broadcast();
     return result.rows[0];
   }
+  @Delete("branches/:id") @HttpCode(200) async deleteBranch(@Req() req: any) {
+    const u = auth(req, ["admin", "client"]);
+    await tx(async (c) => {
+      const r = await c.query(
+        "UPDATE branches SET deleted_at=now() WHERE id=$1 AND deleted_at IS NULL AND ($2 OR client_id=$3) RETURNING id",
+        [req.params.id, u.role === "admin", customerId(u)],
+      );
+      if (!r.rowCount) fail(404, "Sucursal no disponible");
+      await c.query(
+        "UPDATE order_schedules SET active=false,last_error='Sucursal eliminada',updated_at=now() WHERE body->>'branchId'=$1 AND active",
+        [req.params.id],
+      );
+      await c.query("INSERT INTO audit(actor_id,action) VALUES($1,$2)", [
+        u.id,
+        "branch:" + req.params.id + ":deleted",
+      ]);
+    });
+    await broadcast();
+    return { ok: true };
+  }
+  @Post("branches/:id/restore") @HttpCode(200) async restoreBranch(
+    @Req() req: any,
+  ) {
+    const u = auth(req, ["admin", "client"]);
+    const r = await pool.query(
+      "UPDATE branches SET deleted_at=NULL WHERE id=$1 AND deleted_at IS NOT NULL AND ($2 OR client_id=$3) RETURNING id",
+      [req.params.id, u.role === "admin", customerId(u)],
+    );
+    if (!r.rowCount) fail(404, "Sucursal no disponible");
+    await broadcast();
+    return { ok: true };
+  }
   @Get("branches")
   @HttpCode(200)
   async getBranches(
@@ -254,10 +286,10 @@ export class CustomersController {
   ) {
     const u = auth(req, ["admin", "client", "plant_admin"]);
     return (
-      await pool.query("SELECT * FROM branches WHERE client_id=$1 OR $2", [
-        customerId(u),
-        !isCustomer(u),
-      ])
+      await pool.query(
+        "SELECT * FROM branches WHERE (client_id=$1 OR $2) AND (deleted_at IS NULL OR $3) ORDER BY address",
+        [customerId(u), !isCustomer(u), req.query.includeDeleted === "true"],
+      )
     ).rows;
   }
   @Patch("branches/:id/location") @HttpCode(200) async branchLocation(
@@ -266,7 +298,7 @@ export class CustomersController {
     const u = auth(req, ["admin", "client"]),
       point = coordinates(req.body.lat, req.body.lng);
     const result = await pool.query(
-      "UPDATE branches SET lat=$2,lng=$3,location_source=$4 WHERE id=$1 AND ($5 OR client_id=$6) RETURNING *",
+      "UPDATE branches SET lat=$2,lng=$3,location_source=$4 WHERE id=$1 AND deleted_at IS NULL AND ($5 OR client_id=$6) RETURNING *",
       [
         req.params.id,
         point?.lat ?? null,

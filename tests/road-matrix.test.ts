@@ -142,3 +142,14 @@ test("Trazado completo conserva las cinco paradas y rechaza geometría inválida
     await new Promise<void>((r) => server.close(() => r()));
   }
 });
+import { numberedAddress } from "../dist-server/address-query.js";
+test("Búsqueda espera numeración completa y prioriza números coincidentes",async()=>{
+ assert.equal(numberedAddress("Carrera 23"),null);assert.equal(numberedAddress("Carrera 23 #6-"),null);
+ assert.equal(numberedAddress("carrea 23 #6-68")?.house,"6-68");assert.equal(numberedAddress("Cra. 23 # 6 - 68")?.street,"Carrera 23");
+ const server=createServer((req,res)=>{
+  const url=new URL(req.url!,"http://localhost");assert.equal(url.searchParams.get("q"),"Carrera 23 6-68, Bucaramanga, Colombia");
+  res.setHeader("Content-Type","application/json");res.end(JSON.stringify({features:[{geometry:{type:"Point",coordinates:[-73.1,7.1]},properties:{street:"Carrera 23",city:"Bucaramanga"}},{geometry:{type:"Point",coordinates:[-73.11,7.11]},properties:{street:"Carrera 23",housenumber:"6-68",city:"Bucaramanga"}}]}));
+ });
+ await new Promise<void>(r=>server.listen(0,"127.0.0.1",r));
+ try {const found=await geocode("carrea 23 #6-68, Bucaramanga, Colombia","http://127.0.0.1:"+(server.address() as any).port,false);assert.equal(found[0].precision,"number");assert.equal(found[1].precision,"approximate");}finally{await new Promise<void>(r=>server.close(()=>r()));}
+});

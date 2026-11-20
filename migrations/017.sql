@@ -1,0 +1,1 @@
+ALTER TABLE branches ADD COLUMN deleted_at timestamptz;

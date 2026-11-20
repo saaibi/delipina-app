@@ -1,3 +1,4 @@
+import { numberedAddress, numberKey } from "./address-query.js";
 import { pool, fail } from "./db.js";
 let queue = Promise.resolve(),
   last = 0;
@@ -6,12 +7,14 @@ export async function geocode(
   base = process.env.GEOCODER_URL || "https://photon.komoot.io/api/",
   cache = true,
 ) {
+  const parsed = numberedAddress(q);
+  const cacheKey = "numbered-v2:" + q;
   const task = queue.then(async () => {
     if (cache) {
       const old = (
         await pool.query(
           "SELECT data FROM geocode_cache WHERE query=$1 AND expires_at>now()",
-          [q],
+          [cacheKey],
         )
       ).rows[0];
       if (old) return old.data;
@@ -21,7 +24,12 @@ export async function geocode(
     );
     last = Date.now();
     const url = new URL(base);
-    url.searchParams.set("q", q);
+    url.searchParams.set(
+      "q",
+      parsed
+        ? `${parsed.street} ${parsed.house}, ${q.split(",").slice(1).join(",").trim()}`
+        : q,
+    );
     url.searchParams.set("limit", "5");
     url.searchParams.set("countrycode", "CO");
     const response = await fetch(url, {
@@ -47,25 +55,41 @@ export async function geocode(
           Math.abs(f.geometry.coordinates[0]) <= 180 &&
           Math.abs(f.geometry.coordinates[1]) <= 90,
       )
-      .map((f) => ({
-        lat: f.geometry.coordinates[1],
-        lng: f.geometry.coordinates[0],
-        label: [
-          f.properties.name,
-          f.properties.street,
-          f.properties.housenumber,
-          f.properties.city || f.properties.town,
-          f.properties.state,
-        ]
-          .filter(Boolean)
-          .join(", "),
-      }))
+      .map((f) => {
+        const match =
+          !!parsed &&
+          numberKey(f.properties.housenumber || "") ===
+            numberKey(parsed.house) &&
+          numberKey(
+            numberedAddress((f.properties.street || "") + " #" + parsed.house)
+              ?.street || "",
+          ) === numberKey(parsed.street);
+        return {
+          numberMatch: match,
+          precision: match ? "number" : "approximate",
+          lat: f.geometry.coordinates[1],
+          lng: f.geometry.coordinates[0],
+          label: [
+            ...new Set(
+              [
+                f.properties.name,
+                f.properties.street,
+                f.properties.housenumber,
+                f.properties.city || f.properties.town,
+                f.properties.state,
+              ].filter(Boolean),
+            ),
+          ].join(", "),
+        };
+      })
+      .sort((a, b) => Number(b.numberMatch) - Number(a.numberMatch))
+      .filter((r, i, rows) => rows.findIndex((x) => x.label === r.label) === i)
       .slice(0, 5);
     if (cache) {
       await pool.query("DELETE FROM geocode_cache WHERE expires_at<now()");
       await pool.query(
         "INSERT INTO geocode_cache(query,data,expires_at) VALUES($1,$2,now()+interval '7 days') ON CONFLICT(query) DO UPDATE SET data=excluded.data,expires_at=excluded.expires_at",
-        [q, JSON.stringify(results)],
+        [cacheKey, JSON.stringify(results)],
       );
     }
     return results;

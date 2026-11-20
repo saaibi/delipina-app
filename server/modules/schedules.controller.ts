@@ -32,6 +32,16 @@ export class SchedulesController {
         fail(404, "Frecuencia no disponible");
       if (u.role === "custom" && !hasModule(u, "orders"))
         fail(403, "Sin permiso");
+      if (
+        req.body.active === true &&
+        !(
+          await c.query(
+            "SELECT 1 FROM branches WHERE id=$1 AND deleted_at IS NULL",
+            [r.body.branchId],
+          )
+        ).rowCount
+      )
+        fail(409, "Restaura la sucursal antes de activar esta frecuencia");
       const b = req.body,
         cfg = recurrenceConfig({
           frequency: b.frequency ?? r.frequency,

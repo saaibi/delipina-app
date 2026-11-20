@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import Alert from "@mui/material/Alert";
-import { Field, Button, Select } from "./ui";
+import { Field, Button, Select, Modal } from "./ui";
 import { LocationPicker } from "./location-picker";
 import { api } from "./offline";
 export function BranchEditor({
@@ -99,9 +99,55 @@ export function BranchEditor({
   );
 }
 export function BranchManager({ clientId, branches, onSaved }: any) {
-  const [edit, M] = useState<any>(null);
+  const [edit, M] = useState<any>(null),
+    [removing, D] = useState<any>(null),
+    [error, E] = useState(""),
+    [busy, B] = useState(false),
+    [archived, H] = useState<any[] | null>(null);
+  async function changeBranch(id, restore = false) {
+    B(true);
+    E("");
+    try {
+      await api("/branches/" + id + (restore ? "/restore" : ""), {
+        method: restore ? "POST" : "DELETE",
+      });
+      D(null);
+      await onSaved();
+      if (archived)
+        H(
+          (await api("/branches?includeDeleted=true")).filter(
+            (b) => b.deleted_at && (!clientId || b.client_id === clientId),
+          ),
+        );
+    } catch (e) {
+      E(e.message);
+    } finally {
+      B(false);
+    }
+  }
   return (
-    <section>
+    <section className="branch-manager">
+      {error && <Alert severity="error">{error}</Alert>}
+      {removing && (
+        <Modal title="Eliminar sucursal" onClose={() => !busy && D(null)}>
+          <p>
+            ¿Eliminar {removing.address}, {removing.city}?
+          </p>
+          <p>
+            Los pedidos existentes se conservan. Sus frecuencias se
+            desactivarán. Puedes restaurar la sucursal desde «Sucursales
+            eliminadas».
+          </p>
+          <div className="actions">
+            <Button disabled={busy} onClick={() => changeBranch(removing.id)}>
+              Eliminar sucursal
+            </Button>
+            <Button className="neutral" disabled={busy} onClick={() => D(null)}>
+              Cancelar
+            </Button>
+          </div>
+        </Modal>
+      )}
       {edit ? (
         <BranchEditor
           key={edit.id || "new"}
@@ -115,19 +161,69 @@ export function BranchManager({ clientId, branches, onSaved }: any) {
         />
       ) : (
         <>
-          <Button onClick={() => M({})}>Crear sucursal</Button>
+          <div className="actions branch-toolbar">
+            <Button onClick={() => M({})}>Crear sucursal</Button>
+            <Button
+              className="neutral"
+              onClick={async () => {
+                E("");
+                try {
+                  H(
+                    archived
+                      ? null
+                      : (await api("/branches?includeDeleted=true")).filter(
+                          (b) =>
+                            b.deleted_at &&
+                            (!clientId || b.client_id === clientId),
+                        ),
+                  );
+                } catch (e) {
+                  E(e.message);
+                }
+              }}
+            >
+              {archived ? "Ocultar eliminadas" : "Sucursales eliminadas"}
+            </Button>
+          </div>
+          {archived && (
+            <section>
+              <h3>Sucursales eliminadas</h3>
+              {!archived.length && <p>No hay sucursales eliminadas.</p>}
+              {archived.map((b) => (
+                <article className="panel branch-card" key={b.id}>
+                  <strong>
+                    {b.address} · {b.city}
+                  </strong>
+                  <div className="actions branch-card-actions">
+                    <Button
+                      className="neutral"
+                      disabled={busy}
+                      onClick={() => changeBranch(b.id, true)}
+                    >
+                      Restaurar sucursal
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </section>
+          )}
           {branches
             .filter((b) => !clientId || b.client_id === clientId)
             .map((b) => (
-              <article className="panel" key={b.id}>
+              <article className="panel branch-card" key={b.id}>
                 <strong>{b.address}</strong>
                 <p>
                   {b.city}
                   {b.lat == null ? " · Ubicación pendiente" : ""}
                 </p>
-                <Button className="neutral" onClick={() => M(b)}>
-                  Editar sucursal
-                </Button>
+                <div className="actions branch-card-actions">
+                  <Button className="neutral" onClick={() => M(b)}>
+                    Editar sucursal
+                  </Button>
+                  <Button className="neutral" onClick={() => D(b)}>
+                    Eliminar sucursal
+                  </Button>
+                </div>
               </article>
             ))}
         </>

@@ -155,7 +155,7 @@ Cada día del horario tiene su propia anticipación. Los valores anteriores se u
 ### Rutas y vista previa
 `npm run build` y `node --import tsx scripts/local-preview.ts` levantan una base local aislada y persistente en `../work/preview-routes-db`, interfaz en http://localhost:3007 y datos ficticios. No usa la base de producción. Cierra el proceso con Ctrl+C.
 
-Entregas agrupa automáticamente hasta cinco pedidos listos o en preparación. El mensajero solicita los grupos disponibles y administración aprueba su asignación. Puede ajustar los pedidos antes de salir; iniciar el recorrido exige que todos estén listos y los marca En camino en una transacción. Después de iniciar, el recorrido queda fijo. Un icono abre el mapa completo con todas las paradas y navegación individual.
+Entregas agrupa automáticamente hasta cinco pedidos listos o en preparación. El mensajero solicita los grupos disponibles y administración aprueba su asignación. Puede ajustar los pedidos antes de salir; iniciar el recorrido exige que todos estén listos y los marca En camino en una transacción. Después de iniciar, el recorrido queda fijo. «Ver mapa» abre directamente la aplicación de mapas para el recorrido; cada parada y pedido también tiene acceso individual. Se incluyen todas las paradas en el enlace. Google Maps admite hasta tres paradas intermedias en navegador móvil y hasta nueve en otros entornos; para cinco entregas conviene abrir la aplicación o utilizar el acceso de cada parada.
 
 El seguimiento muestra OpenStreetMap mediante su visor embebido, con atribución incluida y GPS aproximado obtenido de la aplicación. No usa Google Maps de pago, no conserva un historial de recorrido ni calcula ETA. La app debe mantenerse activa y con permiso de ubicación; los teléfonos pueden suspender el GPS en segundo plano. La disponibilidad del visor público es de mejor esfuerzo.
 
@@ -176,3 +176,8 @@ Cada presentación configura una lista de unidades con nombre editable, precio, 
 Clientes administran sus sucursales; administración accede desde la tabla de clientes en Ajustes. Los pedidos conservan la dirección y coordenadas originales. Los destinos externos al área metropolitana se señalan para transportadora y omiten el mapa local.
 
 El mensajero que registra dinero recibido debe adjuntar comprobante de factura; la imagen queda vinculada al pago con acceso restringido. Las transferencias siguen requiriendo verificación administrativa. Las notificaciones muestran estados en español.
+
+### Eliminar sucursales y buscar direcciones
+Clientes y administración pueden eliminar sucursales con confirmación y restaurarlas desde «Sucursales eliminadas». Se conserva el historial de pedidos, se impide usarlas en pedidos nuevos y se pausan sus frecuencias. Restaurar una sucursal no reactiva frecuencias automáticamente.
+
+La búsqueda espera una dirección colombiana con placa completa (p. ej. Carrera 23 #6-68) y 1,2 segundos sin escribir. Conserva la búsqueda manual para lugares sin nomenclatura. Normaliza abreviaturas comunes, incluye municipio y país, descarta respuestas de consultas anteriores y prioriza coincidencias de calle y placa. Photon/OpenStreetMap no cubre todas las placas: los resultados sin coincidencia se identifican como aproximados y requieren confirmar el punto en el mapa.

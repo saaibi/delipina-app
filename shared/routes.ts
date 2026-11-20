@@ -28,3 +28,32 @@ export function routeLinks(
   }
   return result;
 }
+
+export function localDelivery(city: string) {
+  return ["bucaramanga", "piedecuesta", "giron", "floridablanca"].includes(
+    (city || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase(),
+  );
+}
+export function mapsUrl(stops: any[], origin?: string) {
+  if (!stops.length) return "";
+  const place = (o: any) =>
+    o.lat != null &&
+    o.lng != null &&
+    Number.isFinite(Number(o.lat)) &&
+    Number.isFinite(Number(o.lng))
+      ? `${o.lat},${o.lng}`
+      : `${(o.address || "").replace(/^\[DEMO\]\s*/, "")}, ${o.city}, Colombia`;
+  const p = new URLSearchParams({
+    api: "1",
+    destination: place(stops.at(-1)),
+    travelmode: "driving",
+  });
+  if (origin) p.set("origin", origin);
+  if (stops.length > 1)
+    p.set("waypoints", stops.slice(0, -1).map(place).join("|"));
+  return "https://www.google.com/maps/dir/?" + p;
+}

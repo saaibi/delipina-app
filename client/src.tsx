@@ -1,3 +1,4 @@
+import { mapsUrl } from "../shared/routes";
 import { BranchEditor, BranchManager } from "./branches";
 import { DeliveryConfirm } from "./delivery-confirm";
 import { WorkspaceDialog } from "./ui";
@@ -503,9 +504,12 @@ function App() {
         ) && (
           <Button
             className="neutral"
-            onClick={() => M({ kind: "map", order: o })}
+            component="a"
+            href={mapsUrl([o])}
+            target="_blank"
+            rel="noreferrer"
           >
-            Ver recorrido en mapa
+            Ver mapa
           </Button>
         )}
       {client &&

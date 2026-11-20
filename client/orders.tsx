@@ -1,3 +1,6 @@
+import { mapsUrl, localDelivery } from "../shared/routes";
+import MapOutlined from "@mui/icons-material/MapOutlined";
+import { Button } from "./ui";
 import LocalShippingOutlined from "@mui/icons-material/LocalShippingOutlined";
 import PlaceOutlined from "@mui/icons-material/PlaceOutlined";
 import ArrowForward from "@mui/icons-material/ArrowForward";
@@ -107,7 +110,6 @@ export function OrderCards({
                         ? "En reparto"
                         : "Asignado a ti"}
                   </span>
-                  <small>#{o.id.slice(0, 6)}</small>
                 </div>
                 <h2>{o.client_name}</h2>
                 <div className="courier-city">
@@ -167,9 +169,7 @@ export function OrderCards({
                     <span className={"status " + o.status}>
                       {labels[o.status]}
                     </span>
-                    {userRole !== "preparation" && (
-                      <small>#{o.id.slice(0, 6)}</small>
-                    )}
+
                     <span className={"urgency " + color}>
                       {!terminal && urg}
                     </span>
@@ -196,6 +196,20 @@ export function OrderCards({
                   {o.reason && <small className="red">Requiere revisión</small>}
                 </button>
               </>
+            )}
+            {userRole !== "preparation" && localDelivery(o.city) && (
+              <div className="order-map-action">
+                <Button
+                  component="a"
+                  className="neutral"
+                  href={mapsUrl([o])}
+                  target="_blank"
+                  rel="noreferrer"
+                  startIcon={<MapOutlined />}
+                >
+                  Ver mapa
+                </Button>
+              </div>
             )}
           </article>
         );

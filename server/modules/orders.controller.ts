@@ -128,10 +128,10 @@ export class OrdersController {
       ).rows[0];
       if (!client) fail(400, "Cliente inválido");
       const branch = (
-        await c.query("SELECT * FROM branches WHERE id=$1 AND client_id=$2", [
-          b.branchId,
-          clientId,
-        ])
+        await c.query(
+          "SELECT * FROM branches WHERE id=$1 AND client_id=$2 AND deleted_at IS NULL FOR SHARE",
+          [b.branchId, clientId],
+        )
       ).rows[0];
       if (!branch) fail(400, "Sucursal inválida");
       const { start, end, day } = await validateDeliveryWindow(

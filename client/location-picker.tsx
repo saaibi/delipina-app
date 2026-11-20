@@ -3,12 +3,14 @@ import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import Alert from "@mui/material/Alert";
 import { Button } from "./ui";
+import { numberedAddress } from "../server/address-query";
 import { api } from "./offline";
 export function LocationPicker({ address, city, point, onChange }: any) {
   const host = useRef<HTMLDivElement>(null),
     map = useRef<any>(null),
     marker = useRef<any>(null),
     callback = useRef(onChange),
+    version = useRef(0),
     [results, R] = useState([]),
     [error, E] = useState(""),
     [busy, B] = useState(false);
@@ -25,12 +27,16 @@ export function LocationPicker({ address, city, point, onChange }: any) {
       attribution:
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(m);
-    m.on("click", (e) =>
+    m.on("click", (e) => {
+      version.current++;
+      B(false);
+      R([]);
+      E("");
       callback.current({
         lat: Number(e.latlng.lat.toFixed(6)),
         lng: Number(e.latlng.lng.toFixed(6)),
-      }),
-    );
+      });
+    });
     setTimeout(() => m.invalidateSize(), 0);
     return () => {
       m.remove();
@@ -55,46 +61,89 @@ export function LocationPicker({ address, city, point, onChange }: any) {
     }).addTo(map.current);
     map.current.setView([point.lat, point.lng], 16);
   }, [point?.lat, point?.lng]);
+  async function search(requestVersion: number) {
+    B(true);
+    E("");
+    R([]);
+    try {
+      const found = await api(
+        "/geocode?q=" +
+          encodeURIComponent(address + ", " + city + ", Colombia"),
+      );
+      if (requestVersion !== version.current) return;
+      R(
+        found.filter(
+          (r, i, rows) => rows.findIndex((x) => x.label === r.label) === i,
+        ),
+      );
+      if (!found.length)
+        E(
+          "No se encontró esa dirección. Marca el punto directamente en el mapa.",
+        );
+      else if (numberedAddress(address) && !found.some((r) => r.numberMatch))
+        E(
+          "No encontramos esa numeración exacta. Estas opciones son aproximadas: confirma el punto de entrega en el mapa.",
+        );
+    } catch (e) {
+      if (requestVersion === version.current) E(e.message);
+    } finally {
+      if (requestVersion === version.current) B(false);
+    }
+  }
+  useEffect(() => {
+    const id = ++version.current;
+    R([]);
+    E("");
+    B(false);
+    if (!city.trim() || !numberedAddress(address) || point) return;
+    const timer = setTimeout(() => {
+      if (id === version.current) search(id);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [address, city]);
+  useEffect(
+    () => () => {
+      version.current++;
+    },
+    [],
+  );
   return (
-    <section>
+    <section className="address-picker">
       {error && <Alert severity="info">{error}</Alert>}
       <Button
         className="neutral"
         disabled={busy || !address || !city}
-        onClick={async () => {
-          B(true);
-          E("");
-          try {
-            const found = await api(
-              "/geocode?q=" +
-                encodeURIComponent(address + ", " + city + ", Colombia"),
-            );
-            R(found);
-            if (!found.length)
-              E(
-                "No se encontró esa dirección. Marca el punto directamente en el mapa.",
-              );
-          } catch (e) {
-            E(e.message);
-          } finally {
-            B(false);
-          }
+        onClick={() => {
+          const id = ++version.current;
+          search(id);
         }}
       >
         {busy ? "Buscando…" : "Buscar dirección en el mapa"}
       </Button>
-      {results.map((r: any, i) => (
-        <Button
-          key={i}
-          className="neutral"
-          onClick={() => {
-            onChange({ lat: r.lat, lng: r.lng });
-            R([]);
-          }}
-        >
-          {r.label}
-        </Button>
-      ))}
+      <small className="address-search-hint">
+        Escribe la dirección completa, por ejemplo Carrera 23 #6-68. Buscaremos
+        al terminar la numeración; también puedes buscar manualmente.
+      </small>
+      <div className="address-results">
+        {results.map((r: any, i) => (
+          <Button
+            key={i}
+            className="neutral"
+            onClick={() => {
+              version.current++;
+              B(false);
+              E("");
+              onChange({ lat: r.lat, lng: r.lng });
+              R([]);
+            }}
+          >
+            {r.label} ·{" "}
+            {r.precision === "number"
+              ? "Numeración coincidente"
+              : "Ubicación aproximada"}
+          </Button>
+        ))}
+      </div>
       <div
         ref={host}
         className="branch-map"
