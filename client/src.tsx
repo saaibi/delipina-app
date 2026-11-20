@@ -708,7 +708,14 @@ function App() {
           }
         >
           {prep && full ? (
-            <div className="plant-focus-controls">
+            <div className="plant-focus-controls heading-actions">
+              <Button
+                className="neutral"
+                aria-label="Actualizar módulo"
+                onClick={() => pull.refresh()}
+              >
+                ↻
+              </Button>
               <Button className="neutral" onClick={() => F(false)}>
                 Minimizar
               </Button>
@@ -752,21 +759,23 @@ function App() {
                       : "Cada pedido, en su momento."}
                 </p>
               </div>
-              {(admin || plantAdmin || client) && view === "orders" && (
-                <Button onClick={() => M("order")}>＋ Crear pedido</Button>
-              )}
-              <Button
-                className="neutral"
-                aria-label="Actualizar módulo"
-                onClick={() => pull.refresh()}
-              >
-                ↻
-              </Button>
-              {prep && (
-                <Button className="neutral" onClick={() => F(!full)}>
-                  {full ? "Minimizar" : "Maximizar"}
+              <div className="heading-actions">
+                {(admin || plantAdmin || client) && view === "orders" && (
+                  <Button onClick={() => M("order")}>＋ Crear pedido</Button>
+                )}
+                <Button
+                  className="neutral"
+                  aria-label="Actualizar módulo"
+                  onClick={() => pull.refresh()}
+                >
+                  ↻
                 </Button>
-              )}
+                {prep && (
+                  <Button className="neutral" onClick={() => F(!full)}>
+                    {full ? "Minimizar" : "Maximizar"}
+                  </Button>
+                )}
+              </div>
             </div>
           )}
           {error && (
@@ -953,7 +962,9 @@ function App() {
                   }
                 />
               )}
-              {admin && view === "orders" && <RouteRequests onRefresh={refresh} />}
+              {admin && view === "orders" && (
+                <RouteRequests onRefresh={refresh} />
+              )}
               <OrderCards
                 orders={selected}
                 userRole={prep ? "preparation" : user.role}
