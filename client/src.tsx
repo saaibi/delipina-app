@@ -1,3 +1,13 @@
+import { SettlementsView } from "./settlements";
+import { has, customer, portfolio, moduleLabels } from "./access";
+import { RoleFields } from "./permissions";
+import { MembersEditor } from "./members";
+import { ServerTable } from "./server-table";
+import {
+  SchedulesView,
+  RecurrenceEditor,
+  emptyRecurrence,
+} from "./recurrences";
 import { ClientPriceCatalog } from "./special-prices";
 import { SettingsView } from "./settings";
 import { ProductEditor } from "./product-editor";
@@ -62,7 +72,8 @@ const labels = {
     courier: "Mensajero",
     client: "Cliente",
     preparation: "Planta",
-    plant_admin: "Administrador de planta",
+    custom: "Personalizado",
+    client_member: "Gestor de cliente",
   };
 const money = (n) =>
   new Intl.NumberFormat("es-CO", {
@@ -94,6 +105,7 @@ function App() {
     [modal, setModal] = useState(null),
     [drawer, D] = useState(false),
     [view, V] = useState("orders"),
+    [deliveryFilter, DF] = useState("mine"),
     [error, E] = useState(""),
     [notice, S] = useState(""),
     [status, ST] = useState(""),
@@ -146,7 +158,9 @@ function App() {
   };
   const lastTap = useRef({ id: "", at: 0 });
   function navigateModule(id: string) {
-    const current = view === "accepted" ? "orders" : view;
+    const current = ["accepted", "recurrences"].includes(view)
+      ? "orders"
+      : view;
     const now = Date.now();
     if (current === id) {
       if (lastTap.current.id === id && now - lastTap.current.at < 400)
@@ -223,7 +237,20 @@ function App() {
     return () => clearInterval(timer);
   }, [user?.id]);
   useEffect(() => {
-    if (user) V(user.role === "courier" ? "mine" : "orders");
+    if (user)
+      V(
+        user.role === "courier"
+          ? "deliveries"
+          : user.role === "preparation"
+            ? "plant"
+            : user.role === "custom"
+              ? has(user, "orders")
+                ? "orders"
+                : has(user, "plant")
+                  ? "plant"
+                  : "settings"
+              : "orders",
+      );
   }, [user?.id]);
   useEffect(() => {
     if (business?.day && view === "orders") FD(business.day);
@@ -251,7 +278,10 @@ function App() {
     setOfflineUser(u.id);
     await saveIdentity(u);
     const tasks = [
-      cached("/orders").then((value) => {
+      (u.role === "custom" && !has(u, "orders") && !has(u, "plant")
+        ? Promise.resolve([])
+        : cached("/orders")
+      ).then((value) => {
         guard(O)(value);
         if (epoch === authEpoch.current && subject.current === u.id)
           setModal((prev) =>
@@ -271,15 +301,16 @@ function App() {
       cached("/business-day").then(guard(BD)),
       queued().then((q) => guard(PN)(q.length)),
     ];
-    if (["admin", "client", "plant_admin"].includes(u.role))
+    if (customer(u) || has(u, "orders"))
       tasks.push(cached("/branches").then(guard(B)));
-    if (u.role === "plant_admin") tasks.push(cached("/users").then(guard(US)));
+    if (u.role === "custom" && has(u, "orders"))
+      tasks.push(cached("/users").then(guard(US)));
     if (u.role === "admin")
       tasks.push(
         cached("/users").then(guard(US)),
         cached("/business-days").then(guard(CL)),
       );
-    if (!["preparation", "plant_admin"].includes(u.role))
+    if (portfolio(u))
       tasks.push(
         cached("/invoices").then(guard(I)),
         cached("/credit-accounts").then(guard(AC)),
@@ -384,9 +415,9 @@ function App() {
     });
   }
   const admin = user?.role === "admin",
-    plantAdmin = user?.role === "plant_admin",
-    prep = ["preparation", "plant_admin"].includes(user?.role),
-    client = user?.role === "client",
+    plantAdmin = user?.role === "custom" && has(user, "orders"),
+    prep = user?.role === "preparation" || view === "plant",
+    client = customer(user),
     delivery = user?.role === "courier";
   const editUser = (u) => M({ kind: "editUser", user: u });
   const deleteUser = (u) => M({ kind: "deleteUser", user: u });
@@ -624,7 +655,9 @@ function App() {
         }) <= historyEnd) &&
       (!courier || o.courier_id === courier) &&
       (view !== "available" || !o.courier_id) &&
-      (view !== "mine" || o.courier_id === user.id),
+      (view !== "mine" || o.courier_id === user.id) &&
+      (view !== "deliveries" ||
+        (deliveryFilter === "mine" ? o.courier_id === user.id : !o.courier_id)),
   );
   const selected = scoped
     .filter((o) => !status || o.status === status)
@@ -671,7 +704,7 @@ function App() {
           })
         }
       />
-      <SecondaryActions role={user.role} onAction={M} />
+      <SecondaryActions role={user.role} user={user} onAction={M} />
       <main className={full ? "workspace maximized" : "workspace"}>
         <div className="heading">
           <div>
@@ -679,25 +712,31 @@ function App() {
             <h1>
               {view === "payments"
                 ? "Cartera de clientes"
-                : view === "analytics"
-                  ? "Inteligencia de negocio"
-                  : view === "accepted"
-                    ? "Pedidos aceptados"
-                    : view === "users"
-                      ? "Usuarios"
-                      : view === "catalog"
-                        ? "Catálogo"
-                        : view === "settings"
-                          ? "Ajustes"
-                          : prep
-                            ? plantAdmin
-                              ? "Pedidos de planta"
-                              : "Planta"
-                            : client
-                              ? "Mis pedidos"
-                              : delivery
-                                ? "Mis entregas"
-                                : "Pedidos del día"}
+                : view === "recurrences"
+                  ? "Frecuencias"
+                  : view === "audit"
+                    ? "Trazabilidad"
+                    : view === "days"
+                      ? "Jornadas"
+                      : view === "analytics"
+                        ? "Inteligencia de negocio"
+                        : view === "accepted"
+                          ? "Pedidos aceptados"
+                          : view === "users"
+                            ? "Usuarios"
+                            : view === "catalog"
+                              ? "Catálogo"
+                              : view === "settings"
+                                ? "Ajustes"
+                                : prep
+                                  ? plantAdmin
+                                    ? "Pedidos de planta"
+                                    : "Planta"
+                                  : client
+                                    ? "Mis pedidos"
+                                    : delivery
+                                      ? "Entregas"
+                                      : "Pedidos del día"}
             </h1>
             <p>
               {prep
@@ -742,6 +781,16 @@ function App() {
             al reconectar y vuelven a validar horario, precios y cupo.
           </div>
         )}
+        {(client || has(user, "orders")) &&
+          ["orders", "accepted", "recurrences"].includes(view) && (
+            <Tabs
+              value={view === "recurrences" ? "recurrences" : "orders"}
+              onChange={(_, v) => V(v)}
+            >
+              <Tab value="orders" label="Pedidos" />
+              <Tab value="recurrences" label="Frecuencias" />
+            </Tabs>
+          )}
         {view === "settings" ? (
           <SettingsView
             {...{ user, push, settings, users, products, branches, accounts }}
@@ -753,7 +802,13 @@ function App() {
             onToggleProduct={toggleProduct}
             onRefresh={() => run(() => refresh())}
           />
-        ) : view === "analytics" && admin ? (
+        ) : view === "recurrences" ? (
+          <SchedulesView products={products} money={money} />
+        ) : view === "audit" ? (
+          <ServerTable kind="audit" />
+        ) : view === "days" ? (
+          <ServerTable kind="days" />
+        ) : view === "analytics" && has(user, "analytics") ? (
           <AnalyticsView money={money} labels={labels} closings={closings} />
         ) : view === "payments" ? (
           <>
@@ -773,26 +828,18 @@ function App() {
                 })
               }
             />
-            {admin && (
-              <div className="panel">
-                <h2>Cuadre de mensajeros</h2>
-                <Button
-                  className="neutral"
-                  onClick={() => M({ kind: "settlement" })}
-                >
-                  Confirmar cuadre diario
-                </Button>
-                {settlements.map((r) => (
-                  <p key={r.id}>
-                    {r.day.slice(0, 10)} · {r.courier_name} · recibido{" "}
-                    {money(r.received_cash)} · esperado {money(r.expected_cash)}
-                  </p>
-                ))}
-              </div>
+            {(admin || delivery) && (
+              <SettlementsView user={user} money={money} />
             )}
           </>
         ) : (
           <>
+            {delivery && (
+              <Tabs value={deliveryFilter} onChange={(_, v) => DF(v)}>
+                <Tab value="mine" label="Mis entregas" />
+                <Tab value="available" label="Disponibles" />
+              </Tabs>
+            )}
             {admin && (
               <Tabs
                 value={view === "accepted" ? "accepted" : "orders"}
@@ -909,7 +956,7 @@ function App() {
             </div>
             <OrderCards
               orders={selected}
-              userRole={user.role}
+              userRole={prep ? "preparation" : user.role}
               actionsFor={actionsFor}
               urgency={urgency}
               labels={labels}
@@ -1003,6 +1050,7 @@ function App() {
                     modal.group === "clients"
                       ? "Crear cliente"
                       : "Crear usuario interno",
+                  members: "Usuarios del cliente",
                   editUser: "Editar usuario",
                   deleteUser: "Eliminar usuario",
                   editProduct: "Editar producto",
@@ -1072,7 +1120,11 @@ function App() {
                   S(
                     r.queued
                       ? "Pedido guardado para sincronizar. Aún no está confirmado."
-                      : "Pedido registrado",
+                      : r.window_start &&
+                          new Date(r.window_start).toLocaleDateString() !==
+                            new Date(b.start).toLocaleDateString()
+                        ? "Pedido registrado para " + date(r.window_start)
+                        : "Pedido registrado",
                   );
                   await refresh();
                 })
@@ -1101,6 +1153,9 @@ function App() {
                       name: b.name,
                       email: b.email,
                       role: b.role,
+                      permissions: Object.keys(moduleLabels).filter(
+                        (k) => b["module_" + k] === "on",
+                      ),
                       creditLimit: Math.round(Number(b.creditLimit) * 100),
                       active: b.active === "on",
                       restore: !!modal.user.deleted_at && b.active === "on",
@@ -1122,13 +1177,12 @@ function App() {
                 type="email"
                 defaultValue={modal.user.email}
               />
-              <Select label="Rol" name="role" defaultValue={modal.user.role}>
-                {Object.entries(roles).map(([key, label]) => (
-                  <option value={key} key={key}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
+              <RoleFields
+                role={modal.user.role}
+                permissions={modal.user.permissions || ["orders", "plant"]}
+                client={modal.user.role === "client"}
+              />
+
               <Field
                 label="Cupo total COP"
                 type="number"
@@ -1174,6 +1228,9 @@ function App() {
               </Button>
             </>
           )}
+          {modal.kind === "members" && (
+            <MembersEditor admin clientId={modal.clientId} />
+          )}
           {modal.kind === "editProduct" && (
             <ProductEditor
               product={modal.product}
@@ -1191,6 +1248,9 @@ function App() {
                     method: "POST",
                     body: {
                       ...b,
+                      permissions: Object.keys(moduleLabels).filter(
+                        (k) => b["module_" + k] === "on",
+                      ),
                       creditLimit: Math.round(Number(b.creditLimit || 0) * 100),
                     },
                   });
@@ -1201,21 +1261,8 @@ function App() {
             >
               <Field label="Nombre" name="name" />
               <Field label="Correo Google" name="email" type="email" />
-              <Select label="Rol" name="role">
-                {Object.entries(roles)
-                  .filter(
-                    ([k]) =>
-                      modal.kind !== "createUser" ||
-                      (modal.group === "clients"
-                        ? k === "client"
-                        : k !== "client"),
-                  )
-                  .map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-              </Select>
+              <RoleFields client={modal.group === "clients"} />
+
               {(modal === "user" || modal.group === "clients") && (
                 <Field
                   label="Cupo autorizado COP (0 sin crédito)"
@@ -1250,13 +1297,12 @@ function App() {
                 </Select>
               )}
               <Field name="address" label="Dirección" />
-              <Select label="Municipio" name="city">
-                {["Bucaramanga", "Girón", "Floridablanca", "Piedecuesta"].map(
-                  (c) => (
-                    <option key={c}>{c}</option>
-                  ),
-                )}
-              </Select>
+              <Field
+                name="city"
+                label="Ciudad / municipio"
+                placeholder="Bucaramanga, Girón, Floridablanca, Piedecuesta u otra ciudad"
+              />
+
               <Button type="submit">Guardar sucursal</Button>
             </Form>
           )}
@@ -1356,45 +1402,6 @@ function App() {
               onSaved={() => refresh()}
             />
           )}
-          {modal.kind === "settlement" && (
-            <Form
-              onSubmit={(b) =>
-                run(async () => {
-                  await api("/settlements", {
-                    method: "POST",
-                    body: {
-                      ...b,
-                      receivedCash: Math.round(Number(b.receivedCash) * 100),
-                    },
-                  });
-                  M(null);
-                  await refresh();
-                })
-              }
-            >
-              <Select label="Mensajero" name="courierId">
-                {users
-                  .filter((u) => u.role === "courier")
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-              </Select>
-              <Field name="day" label="Fecha del cuadre" type="date" />
-              <Field
-                name="receivedCash"
-                label="Efectivo recibido en local COP"
-                type="number"
-                min="0"
-              />
-              <p>
-                Confirma el efectivo recibido y registra las transferencias
-                verificadas del día.
-              </p>
-              <Button type="submit">Confirmar cuadre</Button>
-            </Form>
-          )}
           {modal.kind === "assign" && (
             <Form
               onSubmit={(b) =>
@@ -1472,7 +1479,7 @@ function App() {
           {modal.kind === "orderDetail" && (
             <OrderDetails
               order={orders.find((o) => o.id === modal.order.id) || modal.order}
-              userRole={user.role}
+              userRole={prep ? "preparation" : user.role}
               actions={actionsFor(
                 orders.find((o) => o.id === modal.order.id) || modal.order,
               )}
@@ -1582,10 +1589,31 @@ function OrderForm({
   business,
 }) {
   const [c, C] = useState(
-      admin ? users.find((u) => u.role === "client")?.id : user.id,
+      admin
+        ? users.find((u) => u.role === "client")?.id
+        : user.clientId || user.id,
     ),
-    [quant, Q] = useState({});
-  const [suggested] = useState(() => suggestedDelivery(settings, business));
+    [quant, Q] = useState({}),
+    [recurrence, RC] = useState(emptyRecurrence),
+    [branchId, BI] = useState(""),
+    [pay, PAYMETHOD] = useState("cash");
+  useEffect(() => {
+    BI(branches.find((b) => b.client_id === c)?.id || "");
+  }, [c, branches]);
+  const chosenBranch = branches.find((b) => b.id === branchId);
+  const cashAllowed = [
+    "bucaramanga",
+    "girón",
+    "giron",
+    "floridablanca",
+    "piedecuesta",
+  ].includes(chosenBranch?.city?.toLowerCase());
+  useEffect(() => {
+    PAYMETHOD(cashAllowed ? "cash" : "online");
+  }, [branchId, cashAllowed]);
+  const [suggested] = useState(() =>
+    suggestedDelivery(settings, business, customer(user)),
+  );
   const [priced, PR] = useState(products);
   useEffect(() => {
     let valid = true;
@@ -1604,6 +1632,8 @@ function OrderForm({
     <Form
       onSubmit={(b) =>
         onSubmit({
+          recurrence,
+          paymentMethod: pay,
           clientId: c,
           branchId: b.branchId,
           start: new Date(b.start).toISOString(),
@@ -1630,7 +1660,13 @@ function OrderForm({
             ))}
         </Select>
       )}
-      <Select label="Sucursal" name="branchId" required>
+      <Select
+        label="Sucursal"
+        name="branchId"
+        required
+        value={branchId}
+        onChange={(e) => BI(e.target.value)}
+      >
         {branches
           .filter((b) => b.client_id === c)
           .map((b) => (
@@ -1663,6 +1699,21 @@ function OrderForm({
         onQuantity={(id, value) => Q({ ...quant, [id]: value })}
         money={money}
       />
+      <Select
+        label="Forma de pago"
+        value={pay}
+        onChange={(e) => PAYMETHOD(e.target.value)}
+      >
+        {cashAllowed && <option value="cash">Efectivo contra entrega</option>}
+        <option value="online">Transferencia / pago electrónico</option>
+      </Select>
+      {!cashAllowed && (
+        <p>
+          Fuera del área metropolitana el pago se realiza por medios
+          electrónicos.
+        </p>
+      )}
+      <RecurrenceEditor value={recurrence} onChange={RC} />
       <label className="check">
         <input name="credit" type="checkbox" /> Solicitar crédito autorizado
       </label>

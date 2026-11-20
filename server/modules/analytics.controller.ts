@@ -5,8 +5,13 @@ import { pool, fail } from "../db.js";
 export class AnalyticsController {
   @Get("analytics") @HttpCode(200) async report(@Req() req: any) {
     auth(req, ["admin"]);
-    const from = req.query.from || "1900-01-01",
-      to = req.query.to || "9999-12-31";
+    const today = new Date().toLocaleDateString("en-CA", {
+        timeZone: "America/Bogota",
+      }),
+      last = new Date(today + "T12:00:00Z");
+    last.setUTCFullYear(last.getUTCFullYear() - 1);
+    const from = req.query.from || last.toISOString().slice(0, 10),
+      to = req.query.to || today;
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(from) ||
       !/^\d{4}-\d{2}-\d{2}$/.test(to) ||

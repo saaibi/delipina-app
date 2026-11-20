@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import request from "supertest";
 import { randomUUID } from "node:crypto";
 import { createApp } from "../dist-server/app.js";
+process.env.DISABLE_AUTOMATIC_JOBS="true";
 const nest = await createApp();
 await nest.init();
 const app = nest.getHttpServer();
@@ -31,7 +32,7 @@ test("Flujo, permisos, crédito, abonos, sincronización y toma concurrente", as
   for (const r of ["admin", "client", "courier", "preparation"]) await login(r);
   const branches = await call("client", "get", "/branches");
   const products = await call("client", "get", "/products");
-  const start = new Date();
+  const start = new Date(new Date().toLocaleDateString("en-CA", {timeZone:"America/Bogota"})+"T12:00:00Z");
   start.setUTCDate(start.getUTCDate() + 2);
   start.setUTCHours(15, 0, 0, 0);
   body = {
@@ -201,7 +202,9 @@ test("Flujo, permisos, crédito, abonos, sincronización y toma concurrente", as
     .set("Cookie", "session=" + token);
   assert.equal(notices.body.length, 0);
   // Credit row lock serializes simultaneous confirmations.
-  const price = Number(products.body[0].price);
+  const price = Number(
+    products.body.find((p) => p.id === body.items[0].productId).price,
+  );
   const before = (
     await pool.query("SELECT credit_used FROM users WHERE id=$1", [
       users.client.id,
@@ -477,10 +480,15 @@ test("Horario semanal y anticipación se validan en el servidor", async () => {
       ).status,
       200,
     );
-    assert.equal(
-      (await call("client", "post", "/orders", body, randomUUID())).status,
-      400,
+    const disabledDay = await call(
+      "client",
+      "post",
+      "/orders",
+      body,
+      randomUUID(),
     );
+    assert.equal(disabledDay.status, 200);
+    assert.ok(+new Date(disabledDay.body.window_start) > +new Date(body.start));
     week[weekday].enabled = true;
     week[weekday].leadHours = 200;
     assert.equal(
@@ -493,10 +501,15 @@ test("Horario semanal y anticipación se validan en el servidor", async () => {
       ).status,
       200,
     );
-    assert.equal(
-      (await call("client", "post", "/orders", body, randomUUID())).status,
-      400,
+    const leadShift = await call(
+      "client",
+      "post",
+      "/orders",
+      body,
+      randomUUID(),
     );
+    assert.equal(leadShift.status, 200);
+    assert.ok(+new Date(leadShift.body.window_start) > +new Date(body.start));
     const other = new Date(body.start);
     other.setUTCDate(other.getUTCDate() + 1);
     const allowed = await call(
@@ -743,6 +756,50 @@ test("Precios por cliente se guardan desde el catálogo en una transacción y pu
     ),
     changes[0].price,
   );
+});
+test("Módulos personalizados se aplican también en servidor y se revocan en sesiones",async()=>{
+ const user=await call('admin','post','/users',{name:'Custom',email:'custom@demo.test',role:'custom',permissions:['orders','plant']});assert.equal(user.status,409); // Semilla de revisión
+ await login('custom');assert.equal((await call('custom','get','/users')).status,200);assert.equal((await call('custom','get','/analytics')).status,403);assert.equal((await call('custom','get','/credit-accounts')).status,403);
+ const created=await call('custom','post','/orders',{...body,clientId:users.client.id,credit:false},randomUUID());assert.equal(created.status,200);assert.equal(created.body.status,'pending');
+ assert.equal((await call('admin','patch','/users/'+users.custom.id,{permissions:['analytics']})).status,200);assert.equal((await call('custom','get','/orders')).status,401);await login('custom');assert.equal((await call('custom','get','/orders')).status,403);assert.equal((await call('custom','get','/analytics')).status,200);
+ await call('admin','patch','/users/'+users.custom.id,{permissions:['orders','plant']});await login('custom');
+});
+test("Gestores de cliente: asociación, cartera opcional y desactivación sin acceso cruzado",async()=>{
+ const owner=await call('admin','post','/users',{name:'Cliente titular',email:'owner@demo.test',role:'client'});assert.equal(owner.status,200);await login('owner');const branch=await call('owner','post','/branches',{address:'Sucursal de prueba',city:'Bogotá'});assert.equal(branch.status,200);
+ const member=await call('owner','post','/client-members',{name:'Gestor',email:'delegate@demo.test',canViewPortfolio:false,role:'admin'});assert.equal(member.status,200);await login('delegate');assert.equal(users.delegate.role,'client_member');assert.equal(users.delegate.clientId,users.owner.id);
+ assert.equal((await call('delegate','get','/branches')).body[0].id,branch.body.id);assert.equal((await call('delegate','get','/invoices')).status,403);assert.equal((await call('delegate','post','/client-members',{name:'No',email:'not@demo.test'})).status,403);
+ const cash=await call('delegate','post','/orders',{...body,branchId:branch.body.id,clientId:users.client.id,credit:false,paymentMethod:'cash'},randomUUID());assert.equal(cash.status,400);
+ const order=await call('delegate','post','/orders',{...body,branchId:branch.body.id,clientId:users.client.id,credit:false,paymentMethod:'online'},randomUUID());assert.equal(order.status,200,JSON.stringify(order.body));assert.equal(order.body.client_id,users.owner.id);
+ assert.equal((await call('client','get','/orders/'+order.body.id)).status,404);
+ assert.equal((await call('owner','patch','/client-members/'+member.body.id,{canViewPortfolio:true})).status,200);assert.equal((await call('delegate','get','/credit-accounts')).status,401);await login('delegate');assert.equal((await call('delegate','get','/credit-accounts')).status,200);
+ assert.equal((await call('client','patch','/client-members/'+member.body.id,{active:false})).status,404);assert.equal((await call('owner','patch','/client-members/'+member.body.id,{active:false})).status,200);assert.equal((await call('delegate','get','/orders')).status,401);
+});
+test("Producto con n presentaciones conserva variantes históricas al editar y desactivar",async()=>{
+ const group=await call('admin','post','/product-groups',{name:'Salsa de prueba',presentations:[{label:'Frasco',units:[{unit:'pack',price:100000}]},{label:'Bolsa',units:[{unit:'kg',price:200000},{unit:'lb',price:110000}]}]});assert.equal(group.status,200,JSON.stringify(group.body));
+ const got=await call('admin','get','/product-groups/'+group.body.id);assert.equal(got.body.variants.length,3);const variant=got.body.variants.find(v=>v.presentation==='Frasco');const created=await call('client','post','/orders',{...body,credit:false,items:[{productId:variant.id,quantity:1}]},randomUUID());assert.equal(created.status,200);
+ const saved=await call('admin','put','/product-groups/'+group.body.id,{name:'Salsa nueva',presentations:[{label:'Bolsa',units:got.body.variants.filter(v=>v.presentation==='Bolsa').map(v=>({id:v.id,unit:v.unit,price:Number(v.price)}))}]});assert.equal(saved.status,200);assert.equal((await call('client','post','/orders',{...body,credit:false,items:[{productId:variant.id,quantity:1}]},randomUUID())).status,400);assert.equal(Number((await call('client','get','/orders/'+created.body.id)).body.items[0].price),100000);
+ assert.equal((await call('admin','get','/audit?page=0&pageSize=2')).body.rows.length,2);assert.equal((await call('client','get','/audit?page=0')).status,403);assert.ok((await call('admin','get','/business-days?page=0&pageSize=2')).body.total>=0);
+});
+test("Frecuencias generan una sola repetición y pausar evita nuevas órdenes",async()=>{
+ const created=await call('client','post','/orders',{...body,credit:false,recurrence:{enabled:true,frequency:'days',intervalDays:2,weekdays:[]}},randomUUID());assert.equal(created.status,200,JSON.stringify(created.body));const schedule=(await call('client','get','/schedules')).body.find(s=>s.source_order_id===created.body.id);assert.ok(schedule);
+ const day=new Date(body.start).toISOString().slice(0,10);await pool.query('UPDATE order_schedules SET next_day=$2 WHERE id=$1',[schedule.id,day]);const{ensureRecurrences}=await import('../dist-server/recurrence.js');await Promise.all([ensureRecurrences(),ensureRecurrences()]);await ensureRecurrences();
+ const runs=(await pool.query("SELECT * FROM schedule_runs WHERE schedule_id=$1 AND status='created'",[schedule.id])).rows;assert.equal(runs.length,1);assert.ok(runs[0].order_id);assert.equal((await call('owner','patch','/schedules/'+schedule.id,{active:false})).status,404);assert.equal((await call('client','patch','/schedules/'+schedule.id,{active:false})).status,200);const count=(await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n;await ensureRecurrences();assert.equal((await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n,count);
+});
+test("Jornada contable espera envío y confirmación de todos los cuadres",async()=>{
+ const day=(await pool.query("SELECT to_char((now() AT TIME ZONE 'America/Bogota')::date-1,'YYYY-MM-DD') AS day")).rows[0].day;
+ await pool.query("INSERT INTO business_days(day,cutoff_at,intake_closed_at) VALUES($1,now()-interval '1 day',now()-interval '1 day') ON CONFLICT(day) DO UPDATE SET closed_at=NULL,intake_closed_at=excluded.intake_closed_at",[day]);
+ const id=randomUUID();await pool.query("INSERT INTO orders(id,client_id,branch_id,status,courier_id,delivered_by,window_start,window_end,total,credit,operation_day,delivered_at,sale_day) VALUES($1,$2,$3,'delivered',$4,$4,$5::date+time '10:00',$5::date+time '11:00',100,false,$5,now(),$5)",[id,users.client.id,body.branchId,users.courier.id,day]);
+ await call('admin','get','/business-days');assert.equal((await pool.query('SELECT closed_at FROM business_days WHERE day=$1',[day])).rows[0].closed_at,null);
+ const submitted=await call('courier','post','/settlements',{day,receivedCash:0});assert.equal(submitted.status,200,JSON.stringify(submitted.body));assert.equal((await pool.query('SELECT closed_at FROM business_days WHERE day=$1',[day])).rows[0].closed_at,null);
+ const confirmed=await call('admin','post','/settlements',{day,courierId:users.courier.id,confirm:true});assert.equal(confirmed.status,200,JSON.stringify(confirmed.body));assert.ok((await pool.query('SELECT closed_at FROM business_days WHERE day=$1',[day])).rows[0].closed_at);
+});
+test("Cartera y cobros de mensajero se limitan a sus pedidos; fuera de zona no hay efectivo",async()=>{
+ const courier=await call('admin','post','/users',{name:'Otro mensajero',email:'courier2@demo.test',role:'courier'});assert.equal(courier.status,200);await login('courier2');
+ const branch=(await call('owner','get','/branches')).body[0];const created=await call('owner','post','/orders',{...body,branchId:branch.id,credit:false,paymentMethod:'online'},randomUUID());assert.equal(created.status,200);await call('admin','post','/orders/'+created.body.id+'/action',{action:'confirm'});await call('admin','post','/orders/'+created.body.id+'/action',{action:'assign',courierId:users.courier2.id});
+ const hidden=(await call('courier','get','/credit-accounts')).body;assert.ok(!hidden.some(r=>r.id===users.owner.id));assert.equal((await call('courier','get','/credit-accounts/'+users.owner.id+'/orders')).body.length,0);
+ const own=(await call('courier2','get','/credit-accounts')).body;assert.ok(own.some(r=>r.id===users.owner.id));const inv=(await call('courier2','get','/invoices')).body.find(i=>i.order_id===created.body.id);assert.ok(inv);
+ const cash=await call('courier2','post','/payments',{clientId:users.owner.id,method:'cash',amount:1,allocations:[{invoiceId:inv.id,amount:1}]},randomUUID());assert.equal(cash.status,400);
+ assert.equal((await call('courier2','get','/settlement-days')).status,200);
 });
 test("Socket exige sesión y solo transmite invalidaciones sin datos privados", async () => {
   const { createRealtime } = await import("../dist-server/realtime.js");

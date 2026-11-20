@@ -103,6 +103,7 @@ export class AuthController {
       }
       return u;
     });
+    if(u.role==='client_member'&&!(await pool.query("SELECT id FROM users WHERE id=$1 AND role='client' AND active",[u.client_account_id])).rowCount)fail(403,'Cliente no disponible');
     return login(res, u);
   }
   @Post("logout")

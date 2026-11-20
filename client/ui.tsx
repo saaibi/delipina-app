@@ -1,3 +1,4 @@
+import { has, customer, portfolio } from "./access";
 import Insights from "@mui/icons-material/Insights";
 import StatusChip from "@mui/material/Chip";
 import WifiOff from "@mui/icons-material/WifiOff";
@@ -149,7 +150,7 @@ export function DateInput({
   required = false,
 }: any) {
   const parse = (v: any) =>
-    type === "date" ? dayjs.tz(v, "America/Bogota") : dayjs(v);
+    type === "date" ? dayjs.tz(v, "America/Bogota") : type==='time'&&/^\d{2}:\d{2}$/.test(v)?dayjs.tz('2026-01-01T'+v,'America/Bogota'):dayjs(v);
   const [internal, S] = useState(defaultValue ? parse(defaultValue) : null);
   const controlled = value !== undefined;
   const current = controlled ? (value ? parse(value) : null) : internal;
@@ -173,7 +174,7 @@ export function DateInput({
                 value: v?.isValid()
                   ? type === "date"
                     ? v.format("YYYY-MM-DD")
-                    : v.toISOString()
+                    : type==='time'?v.format('HH:mm'):v.toISOString()
                   : "",
               },
             });
@@ -188,7 +189,7 @@ export function DateInput({
             current?.isValid()
               ? type === "date"
                 ? current.format("YYYY-MM-DD")
-                : current.toISOString()
+                : type==='time'?current.format('HH:mm'):current.toISOString()
               : ""
           }
         />
@@ -236,36 +237,46 @@ export function Modal({ title, children, onClose, wide = false }: any) {
     </Dialog>
   );
 }
-const navFor = (role: string) =>
-  role === "admin"
-    ? [
-        ["orders", "Pedidos", ReceiptLong],
-        ["analytics", "Análisis", Insights],
-        ["payments", "Cartera", Payments],
-
-        ["settings", "Ajustes", Settings],
+const navFor = (user: any) => {
+  if (user.role === "admin")
+    return [
+      ["orders", "Pedidos", ReceiptLong],
+      ["plant", "Planta", Restaurant],
+      ["payments", "Cartera", Payments],
+      ["analytics", "Análisis", Insights],
+      ["settings", "Ajustes", Settings],
+    ];
+  if (user.role === "courier")
+    return [
+      ["deliveries", "Entregas", LocalShipping],
+      ["payments", "Cartera", Payments],
+      ["settings", "Ajustes", Settings],
+    ];
+  if (user.role === "preparation")
+    return [
+      ["plant", "Planta", Restaurant],
+      ["settings", "Ajustes", Settings],
+    ];
+  if (user.role === "custom")
+    return [
+      ...[
+        ["orders", "Pedidos", ReceiptLong, "orders"],
+        ["plant", "Planta", Restaurant, "plant"],
+        ["payments", "Cartera", Payments, "portfolio"],
+        ["analytics", "Análisis", Insights, "analytics"],
+        ["audit", "Trazabilidad", ReceiptLong, "audit"],
+        ["days", "Jornadas", ReceiptLong, "days"],
       ]
-    : role === "courier"
-      ? [
-          ["mine", "Mis entregas", LocalShipping],
-          ["available", "Disponibles", ReceiptLong],
-          ["payments", "Cartera", Payments],
-          ["settings", "Ajustes", Settings],
-        ]
-      : ["preparation", "plant_admin"].includes(role)
-        ? [
-            [
-              "orders",
-              role === "plant_admin" ? "Pedidos" : "Planta",
-              Restaurant,
-            ],
-            ["settings", "Ajustes", Settings],
-          ]
-        : [
-            ["orders", "Mis pedidos", ReceiptLong],
-            ["payments", "Mi cartera", Payments],
-            ["settings", "Ajustes", Settings],
-          ];
+        .filter((r) => has(user, r[3] as string))
+        .map((r) => r.slice(0, 3)),
+      ["settings", "Ajustes", Settings],
+    ];
+  return [
+    ["orders", "Mis pedidos", ReceiptLong],
+    ...(portfolio(user) ? [["payments", "Mi cartera", Payments]] : []),
+    ["settings", "Ajustes", Settings],
+  ];
+};
 export function Navigation({
   user,
   view,
@@ -278,7 +289,7 @@ export function Navigation({
   business,
   counts = {},
 }: any) {
-  const nav = navFor(user.role);
+  const nav = navFor(user);
   const mobileNav = nav;
   return (
     <>
@@ -363,16 +374,11 @@ export function Navigation({
           },
         }}
       >
-        <Box sx={{ p: 2, pb: 0 }}>
-          <Typography variant="overline" color="text.secondary">
-            MÓDULOS
-          </Typography>
-        </Box>
         <List>
           {nav.map(([id, label, Icon]: any) => (
             <ListItemButton
               key={id}
-              selected={(view === "accepted" ? "orders" : view) === id}
+              selected={(["accepted","recurrences"].includes(view) ? "orders" : view) === id}
               onClick={() => onNavigate(id)}
               sx={{ mx: 1, my: 0.5, borderRadius: 2 }}
             >
@@ -402,7 +408,7 @@ export function Navigation({
         }}
       >
         <BottomNavigation
-          value={view === "accepted" ? "orders" : view}
+          value={["accepted","recurrences"].includes(view) ? "orders" : view}
           showLabels
           sx={{
             height: 68,
@@ -437,7 +443,7 @@ export function Navigation({
     </>
   );
 }
-export function SecondaryActions({ role, onAction }: any) {
+export function SecondaryActions({ role, user, onAction }: any) {
   const [position, POS] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("delipina-speed-dial") || "null");
@@ -481,9 +487,9 @@ export function SecondaryActions({ role, onAction }: any) {
           ],
           ["Precio especial", PriceChange, () => onAction({ kind: "price" })],
         ]
-      : role === "plant_admin"
+      : role === "plant_admin" || (role === "custom" && has(user, "orders"))
         ? [["Crear pedido", ReceiptLong, () => onAction("order")]]
-        : role === "client"
+        : ["client", "client_member"].includes(role)
           ? [
               ["Crear pedido", ReceiptLong, () => onAction("order")],
               ["Crear sucursal", AddLocationAlt, () => onAction("branch")],
@@ -545,10 +551,13 @@ export function SecondaryActions({ role, onAction }: any) {
         sx={{
           position: "relative",
           height: 56,
+          "& .MuiSpeedDialAction-fab": { margin: 0 },
           "& .MuiSpeedDial-actions": {
             position: "absolute",
-            bottom: 56,
-            pb: 1,
+            bottom: "76px !important",
+            margin: "0 !important",
+            pb: 0,
+            gap: 1,
           },
         }}
       >
@@ -582,7 +591,11 @@ export function NoticeDrawer({ onClose, children }: any) {
   );
 }
 
-export function suggestedDelivery(settings: any, business: any) {
+export function suggestedDelivery(
+  settings: any,
+  business: any,
+  customerMode = false,
+) {
   const now = dayjs().tz("America/Bogota");
   let start = now.startOf("day");
   for (let i = 0; i < 15; i++) {
@@ -597,11 +610,13 @@ export function suggestedDelivery(settings: any, business: any) {
       start = start.add(1, "day").startOf("day");
       continue;
     }
-    const earliest = now
-      .add(d.leadHours ?? settings?.leadHours ?? 2, "hour")
-      .add(1, "minute")
-      .second(0)
-      .millisecond(0);
+    const earliest = customerMode
+      ? now.add(1, "minute").second(0).millisecond(0)
+      : now
+          .add(d.leadHours ?? settings?.leadHours ?? 2, "hour")
+          .add(1, "minute")
+          .second(0)
+          .millisecond(0);
     if (start.isBefore(earliest)) {
       if (earliest.format("YYYY-MM-DD") !== start.format("YYYY-MM-DD")) {
         start = start.add(1, "day").startOf("day");
@@ -617,6 +632,14 @@ export function suggestedDelivery(settings: any, business: any) {
       .startOf("day")
       .hour(Number(d.close.split(":")[0]))
       .minute(Number(d.close.split(":")[1]));
+    if (
+      customerMode &&
+      start.format("YYYY-MM-DD") === now.format("YYYY-MM-DD") &&
+      now.isAfter(close.subtract(d.leadHours ?? 2, "hour"))
+    ) {
+      start = start.add(1, "day").startOf("day");
+      continue;
+    }
     if (start.isBefore(open)) start = open;
     if (
       start.add(1, "hour").isAfter(close) ||

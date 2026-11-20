@@ -1,3 +1,4 @@
+import { OperationsModule } from "./modules/operations.module.js";
 import { CreditsModule } from "./modules/credits.module.js";
 import { AnalyticsModule } from "./modules/analytics.module.js";
 import { BusinessDayModule } from "./modules/business-day.module.js";
@@ -11,6 +12,7 @@ import { PaymentsModule } from "./modules/payments.module.js";
 import { NotificationsModule } from "./modules/notifications.module.js";
 @Module({
   imports: [
+    OperationsModule,
     CreditsModule,
     AnalyticsModule,
     BusinessDayModule,

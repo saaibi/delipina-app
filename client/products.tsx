@@ -107,10 +107,14 @@ export function ProductChoices({
       .filter((p) => p.active)
       .reduce((groups, p) => {
         const label = presentationLabel(p),
-          key = p.name.trim().toLowerCase() + "|" + label.toLowerCase();
+          key =
+            (p.catalog_product_id ||
+              (p.product_name || p.name).trim().toLowerCase()) +
+            "|" +
+            label.toLowerCase();
         (groups[key] ??= {
           key,
-          name: p.name,
+          name: p.product_name || p.name,
           label,
           variants: [],
         }).variants.push(p);

@@ -1,3 +1,4 @@
+import People from "@mui/icons-material/People";
 import PriceChange from "@mui/icons-material/PriceChange";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
@@ -22,7 +23,8 @@ const roles = {
   courier: "Mensajero",
   client: "Cliente",
   preparation: "Planta",
-  plant_admin: "Administrador de planta",
+  custom: "Personalizado",
+  client_member: "Gestor de cliente",
 };
 const money = (n) =>
   new Intl.NumberFormat("es-CO", {
@@ -37,6 +39,7 @@ export function ManagementTable({
   onRemove,
   onRestore,
   onPrices,
+  onMembers,
 }: any) {
   const [archived, SA] = useState(false);
   const [search, S] = useState(""),
@@ -183,6 +186,16 @@ export function ManagementTable({
                   />
                 </TableCell>
                 <TableCell sx={{ whiteSpace: "nowrap" }}>
+                  {clients && onMembers && (
+                    <Tooltip title="Usuarios del cliente">
+                      <IconButton
+                        aria-label={"Usuarios de " + r.name}
+                        onClick={() => onMembers(r)}
+                      >
+                        <People />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   {clients && onPrices && (
                     <Tooltip title="Precios del catálogo">
                       <IconButton

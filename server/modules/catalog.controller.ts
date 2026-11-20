@@ -1,3 +1,4 @@
+import { hasModule,customerId,isCustomer } from "../access.js";
 import { imagePayload } from "../images.js";
 import {
   Controller,
@@ -40,12 +41,13 @@ export class CatalogController {
     const u = auth(req);
     return (
       await pool.query(
-        "SELECT p.*,p.price AS base_price,s.price AS special_price,EXISTS(SELECT 1 FROM product_photos f WHERE f.product_id=p.id) AS has_image,COALESCE(s.price,p.price) AS price FROM products p LEFT JOIN prices s ON s.product_id=p.id AND s.client_id=$1 WHERE p.active OR $2",
+        "SELECT p.*,g.name AS product_name,g.active AS group_active,(p.active AND COALESCE(g.active,true)) AS active,p.price AS base_price,s.price AS special_price,EXISTS(SELECT 1 FROM product_photos f WHERE f.product_id=p.id) AS has_image,COALESCE(s.price,p.price) AS price FROM products p LEFT JOIN catalog_products g ON g.id=p.catalog_product_id LEFT JOIN prices s ON s.product_id=p.id AND s.client_id=$1 WHERE (p.active AND COALESCE(g.active,true)) OR $2",
         [
-          ["admin", "plant_admin"].includes(u.role) &&
+          (["admin", "plant_admin"].includes(u.role) ||
+            hasModule(u, "orders")) &&
           typeof req.query.clientId === "string"
             ? req.query.clientId
-            : u.id,
+            : (isCustomer(u)?customerId(u):u.id),
           u.role === "admin",
         ],
       )

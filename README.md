@@ -67,7 +67,7 @@ La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, s
 - PWA con caché de aplicación y datos por usuario, cola IndexedDB y claves idempotentes. Solo creación de pedidos se encola offline; cobros, asignaciones y cambios de estado requieren conexión. En modo offline no se garantiza precio/cupo/horario hasta validar en servidor. Logout borra caché y cola local.
 - Android/iOS Capacitor generados, adaptador SQLite nativo para la misma caché/cola. **Proyecto preparado, no APK compilado, no app instalada.**
 - Selección visual de presentaciones con las fotos proporcionadas por el usuario (recorte CSS, sin redibujar los productos), cantidades directas y referencia visual configurable en catálogo.
-- Jornadas por fecha de Colombia con horarios por día y anticipación por día de entrega en Ajustes. El cierre automático conserva resumen al corte, cartera, pedidos pendientes y futuros. Render Free puede dormir: el corte lógico se respeta y se materializa al despertar o recibir una consulta.
+- Jornadas por fecha de Colombia con horarios por día y anticipación por día de entrega en Ajustes. El horario cierra la recepción; el cierre contable espera entregas resueltas, transferencias verificadas y todos los cuadres enviados por mensajero y confirmados por administración. Render Free puede dormir: los procesos se retoman al despertar o recibir una consulta.
 - Pedidos y ventas unificados, tarjetas compactas con detalle en modal y vista de todos los aceptados. Cartera por cliente con abonos generales y distribución automática a facturas antiguas; transferencias pendientes reservan saldo.
 - Productos genéricos con imágenes propias guardadas en PostgreSQL; usuarios y catálogo son secciones de Ajustes. Análisis con Google Charts y datos reales.
 - Un aviso por pedido y destinatario, actualizado por estado; lectura por revisión al abrir y contador en Pedidos. Push web usa la misma etiqueta y abre el pedido. Deslizar hacia abajo al inicio actualiza datos; doble toque en el módulo vuelve arriba.
@@ -137,3 +137,16 @@ El catálogo admite kilo, libra (500 g), arroba colombiana (25 libras / 12,5 kg)
 Los precios especiales se editan desde el catálogo de un cliente, con búsqueda, precio general como referencia y guardado conjunto transaccional. Campo vacío restaura precio general. Los pedidos previos conservan sus importes. La tabla de clientes muestra cupo total, utilizado y saldo por cobrar, con acciones de edición y precios.
 
 Cada día del horario tiene su propia anticipación. Los valores anteriores se usan como respaldo hasta guardar la configuración semanal. La notificación tiene cierre en la esquina superior derecha. Firebase/FCM y APNs todavía no están configurados: la web usa Web Push/VAPID y la bandeja interna.
+
+
+### Operación y accesos ampliados
+- Rol Personalizado con módulos seleccionables (Pedidos y Planta por defecto). Los permisos se verifican en servidor y sus cambios revocan sesiones.
+- Usuarios gestores asociados a un cliente: el titular puede agregar y desactivar accesos y habilitar consulta de Cartera. Comparten sucursales, pedidos y precios del cliente; no se envían invitaciones automáticas.
+- Catálogo agrupado por producto con múltiples presentaciones, imagen por presentación y precios independientes por kilo, libra, arroba colombiana y empaque. Las ediciones conservan los pedidos históricos.
+- La fecha del pedido de cliente se ajusta al siguiente día habilitado cuando pasa el cierre menos la anticipación de ese día.
+- Frecuencias diarias, por intervalo o días de la semana, editables y pausables. Cada repetición crea un pedido pendiente con disponibilidad y precios vigentes; una clave única evita duplicados. En Render Free se procesan mientras el servicio está despierto y al reactivarse; las fechas vencidas se omiten con motivo visible.
+- Entregas reúne pedidos propios y disponibles. La Cartera del mensajero y sus abonos solo incluyen pedidos asignados a él.
+- El mensajero envía el cuadre y administración confirma. La jornada conserva actividad recibida después del horario hasta completar el cierre contable; no se puede desactivar un mensajero con cuadre pendiente.
+- Análisis abre en 1 Año y permite períodos editables o rango. Trazabilidad y jornadas usan paginación en servidor.
+- Pagos en línea: pendiente crear cuenta de comercio y configurar credenciales y confirmaciones del proveedor. No se habilita un cobro real ni se aprueba un pago sin verificación. Fuera del área metropolitana no se ofrece efectivo.
+- Maps: enlaces de ruta y ubicación GPS aproximada; no se han habilitado APIs de rutas con facturación ni estimaciones de llegada.

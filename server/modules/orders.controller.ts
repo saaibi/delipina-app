@@ -1,3 +1,5 @@
+import { saveOrderSchedule } from "../recurrence.js";
+import { customerId, isCustomer, hasModule, metropolitan } from "../access.js";
 import {
   assertBusinessDateOpen,
   validateDeliveryWindow,
@@ -39,13 +41,22 @@ export class OrdersController {
   @HttpCode(200)
   async getOrders(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     const u = auth(req);
+    if (
+      u.role === "custom" &&
+      !hasModule(u, "orders") &&
+      !hasModule(u, "plant")
+    )
+      fail(403, "Módulo no autorizado");
     const rows = (
       await pool.query(
         `SELECT o.*,b.address,b.city,u.name AS client_name,(SELECT json_agg(i) FROM items i WHERE i.order_id=o.id) AS items FROM orders o JOIN branches b ON b.id=o.branch_id JOIN users u ON u.id=o.client_id ORDER BY o.created_at`,
       )
     ).rows.filter((o) => orderVisible(u, o));
     return rows.map((o) => {
-      if (u.role === "preparation") {
+      if (
+        u.role === "preparation" ||
+        (u.role === "custom" && !hasModule(u, "orders"))
+      ) {
         const { id, status, window_start, window_end, notes, created_at } = o;
         return {
           id,
@@ -57,7 +68,7 @@ export class OrdersController {
           items: o.items.map(({ name, quantity }) => ({ name, quantity })),
         };
       }
-      if (u.role === "client") {
+      if (isCustomer(u)) {
         delete o.courier_id;
         delete o.delivered_by;
       }
@@ -93,7 +104,7 @@ export class OrdersController {
           fail(409, "Clave reutilizada con datos distintos");
         return previous.response;
       }
-      const clientId = u.role === "client" ? u.id : b.clientId;
+      const clientId = isCustomer(u) ? customerId(u) : b.clientId;
       const client = (
         await c.query(
           "SELECT * FROM users WHERE id=$1 AND role='client' AND active FOR UPDATE",
@@ -108,7 +119,20 @@ export class OrdersController {
         ])
       ).rows[0];
       if (!branch) fail(400, "Sucursal inválida");
-      const { start, end } = await validateDeliveryWindow(c, b.start, b.end);
+      const { start, end, day } = await validateDeliveryWindow(
+        c,
+        b.start,
+        b.end,
+        isCustomer(u) && !req.recurring,
+      );
+      const paymentMethod = b.credit
+        ? "credit"
+        : b.paymentMethod || (metropolitan(branch.city) ? "cash" : "online");
+      if (
+        !["cash", "online", "credit"].includes(paymentMethod) ||
+        (paymentMethod === "cash" && !metropolitan(branch.city))
+      )
+        fail(400, "Fuera del área metropolitana el pago debe ser electrónico");
       if (!Array.isArray(b.items) || !b.items.length || b.items.length > 100)
         fail(400, "Agrega productos");
       let total = 0;
@@ -116,7 +140,7 @@ export class OrdersController {
       for (const item of b.items) {
         const p = (
           await c.query(
-            "SELECT p.*,COALESCE(s.price,p.price) AS actual_price FROM products p LEFT JOIN prices s ON s.product_id=p.id AND s.client_id=$2 WHERE p.id=$1 AND p.active",
+            "SELECT p.*,g.name AS product_name,COALESCE(s.price,p.price) AS actual_price FROM products p LEFT JOIN catalog_products g ON g.id=p.catalog_product_id LEFT JOIN prices s ON s.product_id=p.id AND s.client_id=$2 WHERE p.id=$1 AND p.active AND NOT EXISTS(SELECT 1 FROM catalog_products g WHERE g.id=p.catalog_product_id AND NOT g.active)",
             [item.productId, clientId],
           )
         ).rows[0];
@@ -137,7 +161,8 @@ export class OrdersController {
       if (!Number.isSafeInteger(total)) fail(400, "Total inválido");
       if (b.credit && Number(client.credit_limit) === 0)
         fail(409, "Crédito no autorizado");
-      const status = u.role === "admin" ? "confirmed" : "pending";
+      const status =
+        u.role === "admin" && !req.recurring ? "confirmed" : "pending";
       if (status === "confirmed" && b.credit) {
         if (Number(client.credit_used) + total > Number(client.credit_limit))
           fail(409, "Cupo insuficiente");
@@ -162,11 +187,15 @@ export class OrdersController {
           ],
         )
       ).rows[0];
+      await c.query(
+        "UPDATE orders SET operation_day=$2,payment_method=$3 WHERE id=$1",
+        [o.id, day, paymentMethod],
+      );
       for (const { p, q, price } of items)
         await c.query("INSERT INTO items VALUES($1,$2,$3,$4,$5)", [
           o.id,
           p.id,
-          `${p.name} · ${p.presentation} (${p.unit === "kg" ? "kg" : p.unit === "lb" ? "libra" : p.unit === "arroba" ? "arroba" : "empaque"})`,
+          `${p.product_name||p.name} · ${p.presentation} (${p.unit === "kg" ? "kg" : p.unit === "lb" ? "libra" : p.unit === "arroba" ? "arroba" : "empaque"})`,
           q,
           price,
         ]);
@@ -175,6 +204,7 @@ export class OrdersController {
         "INSERT INTO audit(order_id,actor_id,action,next_status) VALUES($1,$2,$3,$4)",
         [o.id, u.id, "created", status],
       );
+      if (!req.recurring) await saveOrderSchedule(c, u, o, b.recurrence, b);
       await notify(c, o, "Nuevo pedido", ["admin", "courier", "preparation"]);
       await c.query("INSERT INTO idempotency VALUES($1,$2,$3,$4)", [
         u.id,
@@ -247,7 +277,7 @@ export class OrdersController {
         ]);
       } else if (b.action === "request_cancel") {
         if (
-          u.role !== "client" ||
+          !isCustomer(u) ||
           ["delivered", "cancelled", "rejected"].includes(status)
         )
           fail(409, "No se puede solicitar");
@@ -293,7 +323,8 @@ export class OrdersController {
           if (
             ["prepare", "ready"].includes(b.action) &&
             !admin &&
-            !["preparation", "plant_admin"].includes(u.role)
+            !["preparation", "plant_admin"].includes(u.role) &&
+            !hasModule(u, "plant")
           )
             fail(403, "Solo planta");
           if (
@@ -347,7 +378,7 @@ export class OrdersController {
         if (status === "delivered")
           await c.query("UPDATE orders SET sale_day=$2 WHERE id=$1", [
             o.id,
-            await operatingDate(c),
+            o.operation_day || (await operatingDate(c)),
           ]);
         await c.query(
           "UPDATE orders SET status=$2,reason=$3,delivered_by=CASE WHEN $2='delivered' THEN courier_id ELSE delivered_by END,delivered_at=CASE WHEN $2='delivered' THEN clock_timestamp() ELSE delivered_at END WHERE id=$1",
@@ -425,7 +456,7 @@ export class OrdersController {
     if (
       !o ||
       (u.role !== "admin" &&
-        !(u.role === "client" && o.client_id === u.id) &&
+        !(isCustomer(u) && o.client_id === customerId(u)) &&
         !(u.role === "courier" && o.courier_id === u.id))
     )
       fail(404, "Pedido no disponible");

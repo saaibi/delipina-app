@@ -1,5 +1,11 @@
+import { customerId, isCustomer, metropolitan } from "../access.js";
 import { notifyEvent } from "../notification-store.js";
-import { assertBusinessDateOpen, operatingDate } from "../business-day.js";
+import {
+  assertBusinessDateOpen,
+  operatingDate,
+  accountingDate,
+  ensureBusinessClock,
+} from "../business-day.js";
 import {
   Controller,
   Get,
@@ -41,8 +47,8 @@ export class PaymentsController {
     const u = auth(req, ["admin", "courier", "client"]);
     return (
       await pool.query(
-        "SELECT i.*,u.name AS client_name FROM invoices i JOIN users u ON u.id=i.client_id WHERE i.client_id=$1 OR $2",
-        [u.id, u.role !== "client"],
+        "SELECT i.*,u.name AS client_name FROM invoices i JOIN users u ON u.id=i.client_id JOIN orders o ON o.id=i.order_id WHERE (i.client_id=$1 OR $2) AND ($3<>'courier' OR o.courier_id=$4 OR o.delivered_by=$4)",
+        [customerId(u), !isCustomer(u), u.role, u.id],
       )
     ).rows;
   }
@@ -96,12 +102,25 @@ export class PaymentsController {
         )
       ).rows[0];
       if (!owner) fail(400, "Cliente inválido");
-      receiptDay = await operatingDate(c);
+      receiptDay = await accountingDate(c, u.id);
+      if (
+        u.role === "courier" &&
+        (
+          await c.query(
+            "SELECT id FROM settlements WHERE courier_id=$1 AND day=$2 AND status='confirmed'",
+            [u.id, receiptDay],
+          )
+        ).rowCount
+      )
+        fail(
+          409,
+          "Tu cuadre ya fue confirmado; solicita revisión administrativa",
+        );
       if (!Array.isArray(b.allocations)) {
         const invoices = (
           await c.query(
-            "SELECT i.*,COALESCE((SELECT sum(a.amount) FROM allocations a JOIN payments p ON p.id=a.payment_id WHERE a.invoice_id=i.id AND NOT p.verified),0) AS pending FROM invoices i JOIN orders o ON o.id=i.order_id WHERE i.client_id=$1 AND i.balance>0 ORDER BY o.created_at,i.id FOR UPDATE OF i",
-            [b.clientId],
+            "SELECT i.*,COALESCE((SELECT sum(a.amount) FROM allocations a JOIN payments p ON p.id=a.payment_id WHERE a.invoice_id=i.id AND NOT p.verified),0) AS pending FROM invoices i JOIN orders o ON o.id=i.order_id WHERE i.client_id=$1 AND i.balance>0 AND ($2<>'courier' OR o.courier_id=$3 OR o.delivered_by=$3) ORDER BY o.created_at,i.id FOR UPDATE OF i",
+            [b.clientId, u.role, u.id],
           )
         ).rows;
         let remaining = b.amount;
@@ -145,10 +164,19 @@ export class PaymentsController {
       )) {
         const inv = (
           await c.query(
-            "SELECT * FROM invoices WHERE id=$1 AND client_id=$2 FOR UPDATE",
+            "SELECT i.*,o.courier_id,o.delivered_by,b.city FROM invoices i JOIN orders o ON o.id=i.order_id JOIN branches b ON b.id=o.branch_id WHERE i.id=$1 AND i.client_id=$2 FOR UPDATE OF i",
             [a.invoiceId, b.clientId],
           )
         ).rows[0];
+        if (
+          inv &&
+          u.role === "courier" &&
+          inv.courier_id !== u.id &&
+          inv.delivered_by !== u.id
+        )
+          fail(403, "Solo puedes cobrar tus pedidos asignados");
+        if (inv && b.method === "cash" && !metropolitan(inv.city))
+          fail(400, "Fuera del área metropolitana no se permite efectivo");
         const pending = Number(
           (
             await c.query(
@@ -217,8 +245,8 @@ export class PaymentsController {
       const u = auth(req, ["admin", "courier", "client"]);
       const p = (
         await pool.query(
-          "SELECT p.* FROM invoice_photos p JOIN invoices i ON i.id=p.invoice_id WHERE p.invoice_id=$1 AND (i.client_id=$2 OR $3)",
-          [req.params.id, u.id, u.role !== "client"],
+          "SELECT p.* FROM invoice_photos p JOIN invoices i ON i.id=p.invoice_id JOIN orders o ON o.id=i.order_id WHERE p.invoice_id=$1 AND (i.client_id=$2 OR $3) AND ($4<>'courier' OR o.courier_id=$5 OR o.delivered_by=$5)",
+          [req.params.id, customerId(u), !isCustomer(u),u.role,u.id],
         )
       ).rows[0];
       if (!p) fail(404, "Sin fotografía");
@@ -277,7 +305,7 @@ export class PaymentsController {
       }
       await c.query(
         "UPDATE payments SET verified=true,verified_at=clock_timestamp(),verified_day=$2 WHERE id=$1",
-        [p.id, await operatingDate(c)],
+        [p.id, await accountingDate(c)],
       );
       await notifyEvent(c, ["admin"], [p.client_id, p.receiver_id], {
         key: "payment:" + p.id,
@@ -289,6 +317,15 @@ export class PaymentsController {
     });
     await broadcast();
     return { ok: true };
+  }
+  @Get("settlement-days") @HttpCode(200) async settlementDays(@Req() req: any) {
+    const u = auth(req, ["admin", "courier"]);
+    return (
+      await pool.query(
+        `SELECT to_char(d.day,'YYYY-MM-DD') AS day,courier.id courier_id,courier.name courier_name,s.id,s.status,s.received_cash,s.expected_cash,s.verified_transfers,(SELECT COALESCE(sum(p.amount),0) FROM payments p WHERE p.receiver_id=courier.id AND p.business_day=d.day AND p.method='cash') AS current_cash FROM business_days d JOIN (SELECT DISTINCT operation_day AS day,COALESCE(delivered_by,courier_id) id FROM orders WHERE COALESCE(delivered_by,courier_id) IS NOT NULL UNION SELECT business_day,receiver_id FROM payments) activity ON activity.day=d.day JOIN users courier ON courier.id=activity.id AND courier.role='courier' LEFT JOIN settlements s ON s.day=d.day AND s.courier_id=courier.id WHERE d.closed_at IS NULL AND ($1 OR courier.id=$2) ORDER BY d.day,courier.name`,
+        [u.role === "admin", u.id],
+      )
+    ).rows;
   }
   @Get("settlements")
   @HttpCode(200)
@@ -310,34 +347,96 @@ export class PaymentsController {
     @Req() req: any,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const u = auth(req, ["admin"]);
-    const b = req.body;
+    const u = auth(req, ["admin", "courier"]),
+      b = req.body;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(b.day)) fail(400, "Fecha inválida");
-    const received = cents(b.receivedCash);
-    return tx(async (c) => {
-      await c.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [
-        b.courierId,
-      ]);
+    const result = await tx(async (c) => {
+      const courierId = u.role === "courier" ? u.id : b.courierId;
+      if (
+        !(
+          await c.query(
+            "SELECT id FROM users WHERE id=$1 AND role='courier' FOR UPDATE",
+            [courierId],
+          )
+        ).rowCount
+      )
+        fail(400, "Mensajero inválido");
+      const day = (
+        await c.query("SELECT * FROM business_days WHERE day=$1", [b.day])
+      ).rows[0];
+      if (!day || day.closed_at) fail(409, "Jornada no disponible");
+      const existing = (
+        await c.query(
+          "SELECT * FROM settlements WHERE courier_id=$1 AND day=$2 FOR UPDATE",
+          [courierId, b.day],
+        )
+      ).rows[0];
       const sums = (
         await c.query(
-          "SELECT COALESCE(sum(amount) FILTER(WHERE method='cash' AND business_day=$2),0) AS cash,COALESCE(sum(amount) FILTER(WHERE method<>'cash' AND verified AND verified_day=$2),0) AS transfers FROM payments WHERE receiver_id=$1",
-          [b.courierId, b.day],
+          "SELECT COALESCE(sum(amount) FILTER(WHERE method='cash'),0) cash,COALESCE(sum(amount) FILTER(WHERE method<>'cash' AND verified),0) transfers FROM payments WHERE receiver_id=$1 AND business_day=$2",
+          [courierId, b.day],
         )
       ).rows[0];
-      return (
+      const outstanding = (
         await c.query(
-          "INSERT INTO settlements VALUES($1,$2,$3,$4,$5,$6,$7,now()) RETURNING *",
+          "SELECT count(*)::int n FROM orders WHERE operation_day=$1 AND courier_id=$2 AND status NOT IN ('delivered','cancelled','rejected')",
+          [b.day, courierId],
+        )
+      ).rows[0].n;
+      if (outstanding)
+        fail(409, "Resuelve tus entregas antes de enviar el cuadre");
+      if (
+        (
+          await c.query(
+            "SELECT id FROM payments WHERE receiver_id=$1 AND business_day=$2 AND NOT verified",
+            [courierId, b.day],
+          )
+        ).rowCount
+      )
+        fail(409, "Las transferencias deben verificarse antes del cuadre");
+      if (u.role === "admin" && b.confirm) {
+        if (!existing || existing.status !== "submitted")
+          fail(409, "El mensajero debe enviar su cuadre primero");
+        if (
+          Number(existing.expected_cash) !== Number(sums.cash) ||
+          Number(existing.verified_transfers) !== Number(sums.transfers)
+        )
+          fail(
+            409,
+            "Hubo nuevos movimientos; solicita al mensajero reenviar el cuadre",
+          );
+        await c.query(
+          "UPDATE settlements SET status='confirmed',confirmed_at=clock_timestamp(),confirmed_by=$2 WHERE id=$1",
+          [existing.id, u.id],
+        );
+      } else {
+        if (u.role !== "courier")
+          fail(403, "El mensajero debe enviar su propio cuadre");
+        if (existing?.status === "confirmed") fail(409, "Cuadre ya confirmado");
+        await c.query(
+          "INSERT INTO settlements(id,courier_id,day,expected_cash,received_cash,verified_transfers,confirmed_by,confirmed_at,status,submitted_at) VALUES($1,$2,$3,$4,$5,$6,NULL,NULL,'submitted',clock_timestamp()) ON CONFLICT(courier_id,day) DO UPDATE SET expected_cash=excluded.expected_cash,received_cash=excluded.received_cash,verified_transfers=excluded.verified_transfers,status='submitted',submitted_at=excluded.submitted_at",
           [
             randomUUID(),
-            b.courierId,
+            courierId,
             b.day,
             sums.cash,
-            received,
+            cents(b.receivedCash),
             sums.transfers,
-            u.id,
           ],
-        )
-      ).rows[0];
+        );
+      }
+      await c.query(
+        "INSERT INTO audit(actor_id,action,entity_type,entity_id) VALUES($1,$2,'business_day',$3)",
+        [
+          u.id,
+          b.confirm ? "settlement-confirmed" : "settlement-submitted",
+          b.day,
+        ],
+      );
+      return { ok: true };
     });
+    await ensureBusinessClock();
+    await broadcast();
+    return result;
   }
 }

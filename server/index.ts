@@ -1,3 +1,4 @@
+import { ensureRecurrences } from "./recurrence.js";
 import { broadcast } from "./domain.js";
 import { ensureBusinessClock } from "./business-day.js";
 import { bootstrapAdmin } from "./bootstrap.js";
@@ -37,6 +38,7 @@ const businessClock = setInterval(() => {
   ensureBusinessClock()
     .then((changed) => {
       if (changed) void broadcast();
+      void ensureRecurrences();
     })
     .catch(() =>
       console.error("No se pudo completar el cierre automático de jornada"),

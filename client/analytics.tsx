@@ -1,3 +1,4 @@
+import { PeriodPicker, periodDates } from "./period-picker";
 import React, { useEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import { Field, Button } from "./ui";
@@ -29,7 +30,7 @@ function loadCharts() {
 }
 function Chart({ title, type, rows }: any) {
   const root = useRef<HTMLDivElement>(null),
-    [error, E] = useState("");
+    [error, E] = useState(periodDates("1 Año").from);
   useEffect(() => {
     if (rows.length < 2) return;
     let active = true,
@@ -93,7 +94,7 @@ function Chart({ title, type, rows }: any) {
 }
 export function AnalyticsView({ money, labels, closings }: any) {
   const [from, F] = useState(""),
-    [to, T] = useState(""),
+    [to, T] = useState(periodDates("1 Año").to),
     [report, R] = useState<any>(null),
     [error, E] = useState("");
   const load = () =>
@@ -114,25 +115,12 @@ export function AnalyticsView({ money, labels, closings }: any) {
   }, [from, to]);
   return (
     <>
-      <div className="toolbar">
-        <Field
-          type="date"
-          label="Desde"
-          required={false}
-          value={from}
-          onChange={(e) => F(e.target.value)}
-        />
-        <Field
-          type="date"
-          label="Hasta"
-          required={false}
-          value={to}
-          onChange={(e) => T(e.target.value)}
-        />
-        <Button className="neutral" onClick={load}>
-          Actualizar análisis
-        </Button>
-      </div>
+      <PeriodPicker
+        onChange={({ from, to }) => {
+          F(from);
+          T(to);
+        }}
+      />
       {error && <Alert severity="error">{error}</Alert>}
       {report && (
         <>
@@ -193,7 +181,6 @@ export function AnalyticsView({ money, labels, closings }: any) {
           </div>
         </>
       )}
-      <DayClosings rows={closings} money={money} />
     </>
   );
 }

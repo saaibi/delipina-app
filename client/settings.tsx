@@ -1,3 +1,7 @@
+import { MembersEditor } from "./members";
+import { ServerTable } from "./server-table";
+import { has } from "./access";
+import { ProductCatalog } from "./product-editor";
 import React, { useState } from "react";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
@@ -137,8 +141,9 @@ export function ScheduleEditor({ settings, onSaved }: any) {
         );
       })}
       <p>
-        El cierre es automático a la hora de cada día. La cartera y los pedidos
-        futuros se conservan; las jornadas ya cerradas mantienen su resumen.
+        El horario determina la recepción de pedidos. La jornada contable se
+        cierra automáticamente cuando terminan las entregas y administración
+        confirma todos los cuadres.
       </p>
       <Button type="submit" disabled={busy}>
         {busy ? "Guardando…" : "Guardar horario"}
@@ -182,7 +187,7 @@ export function SettingsView({
             </Tabs>
             <p>
               {userTab === "staff"
-                ? "Administrador, planta, mensajero y administrador de planta."
+                ? "Administrador, planta, mensajero y usuarios personalizados."
                 : "Clientes y acceso a sus pedidos."}
             </p>
             <Button
@@ -201,8 +206,9 @@ export function SettingsView({
                 .filter((u) =>
                   userTab === "clients"
                     ? u.role === "client"
-                    : u.role !== "client",
+                    : !["client", "client_member"].includes(u.role),
                 )}
+              onMembers={(u) => onAction({ kind: "members", clientId: u.id })}
               onPrices={(u) => onAction({ kind: "price", clientId: u.id })}
               onEdit={onEditUser}
               onRemove={onRemoveUser}
@@ -221,12 +227,10 @@ export function SettingsView({
                 Precios especiales por cliente
               </Button>
             </div>
-            <ManagementTable
-              kind="catalog"
-              rows={products}
+            <ProductCatalog
+              products={products}
               onEdit={onEditProduct}
-              onRemove={onToggleProduct}
-              onRestore={onToggleProduct}
+              onRefresh={onRefresh}
             />
           </Section>
           <Section title="Horario, cierre y anticipación">
@@ -235,6 +239,34 @@ export function SettingsView({
             )}
           </Section>
         </>
+      )}
+      {has(user, "audit") && (
+        <Section title="Trazabilidad">
+          <ServerTable kind="audit" />
+        </Section>
+      )}
+      {has(user, "days") && (
+        <Section title="Jornadas y cierre contable">
+          <ServerTable kind="days" />
+        </Section>
+      )}
+      {admin && (
+        <Section title="Pagos en línea">
+          <p>
+            PSE, Nequi y Bancolombia: cuenta de comercio pendiente. Los pagos
+            actuales son registros de cobro; las transferencias requieren
+            verificación administrativa. La aprobación automática estará
+            disponible cuando se configure una pasarela.
+          </p>
+          <a href="https://wompi.co" target="_blank" rel="noreferrer">
+            Consultar Wompi
+          </a>
+        </Section>
+      )}
+      {user.role === "client" && (
+        <Section title="Usuarios de mi cliente">
+          <MembersEditor />
+        </Section>
       )}
       {user.role === "client" && (
         <Section title="Sucursales y direcciones">

@@ -27,11 +27,16 @@ export class BusinessDayController {
       ).rows[0].time;
       return {
         day,
-        isOpen: schedule.enabled && !r.closed_at && localTime >= schedule.open,
-        closedAt: r.closed_at,
+        isOpen:
+          schedule.enabled &&
+          !r.intake_closed_at &&
+          localTime >= schedule.open &&
+          localTime < schedule.close,
+        closedAt: r.intake_closed_at,
+        accountingClosedAt: r.closed_at,
         cutoffAt: r.cutoff_at,
         nextOperatingDay: await operatingDate(c),
-        reason: r.closed_at
+        reason: r.intake_closed_at
           ? "daily_close"
           : !schedule.enabled || localTime < schedule.open
             ? "outside_hours"
@@ -43,11 +48,28 @@ export class BusinessDayController {
   @Get("business-days") @HttpCode(200) async list(@Req() req: any) {
     auth(req, ["admin"]);
     await ensureBusinessClock();
-    return (
+    const page = Number(req.query.page ?? 0),
+      pageSize = Number(req.query.pageSize ?? 25);
+    if (
+      !Number.isInteger(page) ||
+      page < 0 ||
+      !Number.isInteger(pageSize) ||
+      pageSize < 1 ||
+      pageSize > 100
+    )
+      fail(400, "Paginación inválida");
+    const where = "WHERE intake_closed_at IS NOT NULL OR closed_at IS NOT NULL";
+    const rows = (
       await pool.query(
-        "SELECT to_char(day,'YYYY-MM-DD') AS day,closed_at,processed_at,automatic,summary FROM business_days WHERE closed_at IS NOT NULL ORDER BY day DESC LIMIT 90",
+        `SELECT to_char(day,'YYYY-MM-DD') AS day,intake_closed_at,closed_at,processed_at,automatic,summary,(SELECT count(*)::int FROM (SELECT DISTINCT COALESCE(o.delivered_by,o.courier_id) id FROM orders o WHERE o.operation_day=d.day AND COALESCE(o.delivered_by,o.courier_id) IS NOT NULL UNION SELECT p.receiver_id FROM payments p WHERE p.business_day=d.day) actors JOIN users u ON u.id=actors.id AND u.role='courier' WHERE NOT EXISTS(SELECT 1 FROM settlements s WHERE s.day=d.day AND s.courier_id=actors.id AND s.status='confirmed')) pending_settlements FROM business_days d ${where} ORDER BY day DESC LIMIT $1 OFFSET $2`,
+        [pageSize, page * pageSize],
       )
     ).rows;
+    if (req.query.page === undefined) return rows;
+    const total = (
+      await pool.query(`SELECT count(*)::int n FROM business_days ${where}`)
+    ).rows[0].n;
+    return { rows, total, page, pageSize };
   }
   @Post("business-day/close") @HttpCode(200) async close(@Req() req: any) {
     auth(req, ["admin"]);
@@ -60,7 +82,7 @@ export class BusinessDayController {
       )
     ).rows[0];
     if (!r?.closed_at)
-      fail(409, "El cierre es automático a la hora configurada para este día");
+      fail(409, "El cierre contable espera entregas resueltas, transferencias verificadas y todos los cuadres confirmados");
     return { day, summary: r.summary, automatic: true };
   }
 }

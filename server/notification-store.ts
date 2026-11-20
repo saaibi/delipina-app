@@ -37,8 +37,8 @@ export async function notifyEvent(
 ) {
   const ids = (
     await c.query(
-      "SELECT id FROM users WHERE active AND (role=ANY($1::text[]) OR id=ANY($2::uuid[]))",
-      [roles, owners],
+      "SELECT id FROM users WHERE active AND (role=ANY($1::text[]) OR id=ANY($2::uuid[]) OR role='client_member' AND client_account_id=ANY($2::uuid[]) AND ($3<>'credits' OR can_view_portfolio))",
+      [roles, owners, notice.module],
     )
   ).rows.map((r) => r.id);
   await notifyRecipients(c, ids, notice);
@@ -70,7 +70,7 @@ export async function notifyOrder(
     .map((u) => u.id);
   const target = (
     await c.query(
-      "SELECT id FROM users WHERE active AND (role=ANY($1::text[]) OR id=$2) AND (role<>'courier' OR id=$3 OR $3::uuid IS NULL)",
+      "SELECT id FROM users WHERE active AND (role=ANY($1::text[]) OR id=$2 OR role='client_member' AND client_account_id=$2 OR role='custom' AND permissions ?| array['orders','plant']) AND (role<>'courier' OR id=$3 OR $3::uuid IS NULL)",
       [
         [
           ...roles.filter((r) => r !== "client"),
@@ -91,5 +91,5 @@ export async function notifyOrder(
   });
 }
 export function noticeVisibility() {
-  return `n.user_id=$1 AND (n.order_id IS NULL OR o.id IS NOT NULL AND ($2 IN ('admin','preparation','plant_admin') OR $2='client' AND o.client_id=$1 OR $2='courier' AND (o.courier_id=$1 OR o.courier_id IS NULL AND o.status NOT IN ('rejected','cancelled','delivered'))))`;
+  return `n.user_id=$1 AND (n.module<>'credits' OR NOT EXISTS(SELECT 1 FROM users a WHERE a.id=$1 AND a.role='client_member' AND NOT a.can_view_portfolio)) AND (n.order_id IS NULL OR o.id IS NOT NULL AND (($2 IN ('admin','preparation','plant_admin') OR $2='custom' AND EXISTS(SELECT 1 FROM users a WHERE a.id=$1 AND a.permissions ?| array['orders','plant'])) OR $2 IN ('client','client_member') AND o.client_id=COALESCE((SELECT a.client_account_id FROM users a WHERE a.id=$1),$1) OR $2='courier' AND (o.courier_id=$1 OR o.courier_id IS NULL AND o.status NOT IN ('rejected','cancelled','delivered'))))`;
 }

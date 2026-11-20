@@ -1,3 +1,7 @@
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import ExpandMore from "@mui/icons-material/ExpandMore";
 import React, { useEffect, useState } from "react";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
@@ -136,73 +140,109 @@ export function ClientPriceCatalog({
         value={q}
         onChange={(e) => Q(e.target.value)}
       />
-      <TableContainer>
-        <Table size="small" aria-label="Catálogo de precios por cliente">
-          <TableHead>
-            <TableRow>
-              {[
-                "Producto y presentación",
-                "Precio general",
-                "Precio del cliente (COP)",
-                "Acción",
-              ].map((c) => (
-                <TableCell key={c}>{c}</TableCell>
-              ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows
-              .filter(
-                (p) =>
-                  p.active &&
-                  (p.name + " " + p.presentation)
-                    .toLowerCase()
-                    .includes(q.toLowerCase()),
-              )
-              .map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <div className="price-product">
-                      <ProductPhoto product={p} small />
-                      <div>
-                        <strong>{p.name}</strong>
-                        <div>
-                          {p.presentation} · {unitNames[p.unit]}
-                        </div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell sx={{ whiteSpace: "nowrap" }}>
-                    {money(p.base_price)}
-                  </TableCell>
-                  <TableCell sx={{ minWidth: 160 }}>
-                    <Field
-                      label={"Precio " + p.name + " / " + unitNames[p.unit]}
-                      required={false}
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder={String(Number(p.base_price) / 100)}
-                      value={values[p.id] ?? ""}
-                      disabled={busy}
-                      onChange={(e) => change(p.id, e.target.value)}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      className="neutral"
-                      disabled={busy || !values[p.id]}
-                      onClick={() => change(p.id, "")}
-                    >
-                      Usar general
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      {(
+        Object.values(
+          rows.reduce((groups, p) => {
+            const id = p.catalog_product_id || p.id;
+            (groups[id] ??= {
+              id,
+              name: p.product_name || p.name,
+              rows: [],
+            }).rows.push(p);
+            return groups;
+          }, {}),
+        ) as any[]
+      )
+        .filter((g) =>
+          (g.name + " " + g.rows.map((p) => p.presentation).join(" "))
+            .toLowerCase()
+            .includes(q.toLowerCase()),
+        )
+        .map((g) => (
+          <Accordion key={g.id} defaultExpanded disableGutters>
+            <AccordionSummary expandIcon={<ExpandMore />}>
+              <strong>{g.name}</strong>
+            </AccordionSummary>
+            <AccordionDetails>
+              <TableContainer>
+                <Table size="small" aria-label={"Precios de " + g.name}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Presentación</TableCell>
+                      {Object.entries(unitNames).map(([unit, label]) => (
+                        <TableCell key={unit}>{label}</TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {[...new Set(g.rows.map((p) => p.presentation))].map(
+                      (label: string) => {
+                        const variants = g.rows.filter(
+                            (p) => p.presentation === label,
+                          ),
+                          photo = variants[0];
+                        return (
+                          <TableRow key={label}>
+                            <TableCell>
+                              <div className="price-product">
+                                <ProductPhoto product={photo} small />
+                                <strong>{label}</strong>
+                              </div>
+                            </TableCell>
+                            {Object.entries(unitNames).map(
+                              ([unit, unitLabel]) => {
+                                const p = variants.find((p) => p.unit === unit);
+                                return (
+                                  <TableCell key={unit} sx={{ minWidth: 165 }}>
+                                    {p ? (
+                                      <>
+                                        <Field
+                                          label={label + " / " + unitLabel}
+                                          type="number"
+                                          required={false}
+                                          min="0"
+                                          step="0.01"
+                                          value={values[p.id] ?? ""}
+                                          placeholder={String(
+                                            Number(p.base_price) / 100,
+                                          )}
+                                          disabled={busy}
+                                          onChange={(e) =>
+                                            change(p.id, e.target.value)
+                                          }
+                                          size="small"
+                                        />
+                                        <small>
+                                          General: {money(p.base_price)}
+                                        </small>
+                                        {values[p.id] !== "" && (
+                                          <Button
+                                            className="neutral"
+                                            disabled={busy}
+                                            onClick={() => change(p.id, "")}
+                                          >
+                                            Usar general
+                                          </Button>
+                                        )}
+                                      </>
+                                    ) : (
+                                      "—"
+                                    )}
+                                  </TableCell>
+                                );
+                              },
+                            )}
+                          </TableRow>
+                        );
+                      },
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </AccordionDetails>
+          </Accordion>
+        ))}
+
       {!clients.length && (
         <p>Crea un cliente en Ajustes para configurar sus precios.</p>
       )}

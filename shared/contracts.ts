@@ -1,5 +1,11 @@
 export type Role =
-  "admin" | "courier" | "client" | "preparation" | "plant_admin";
+  | "admin"
+  | "courier"
+  | "client"
+  | "preparation"
+  | "plant_admin"
+  | "custom"
+  | "client_member";
 export type OrderStatus =
   | "pending"
   | "confirmed"
@@ -18,6 +24,9 @@ export interface User {
   credit_limit: string;
   credit_used: string;
   google_sub?: string;
+  permissions?: string[];
+  clientId?: string;
+  canViewPortfolio?: boolean;
 }
 export interface OrderInput {
   clientId?: string;
@@ -25,6 +34,14 @@ export interface OrderInput {
   start: string;
   end: string;
   credit: boolean;
+  paymentMethod?: "cash" | "online" | "credit";
+  recurrence?: {
+    enabled: boolean;
+    frequency: "days" | "weekly";
+    intervalDays: number;
+    weekdays: number[];
+    endDay?: string;
+  };
   notes?: string;
   items: { productId: string; quantity: number }[];
 }

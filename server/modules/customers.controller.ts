@@ -1,3 +1,4 @@
+import { customerId, isCustomer, hasModule, modules } from "../access.js";
 import {
   Controller,
   Get,
@@ -34,7 +35,7 @@ export class CustomersController {
   @HttpCode(200)
   async getUsers(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     const actor = auth(req, ["admin", "plant_admin"]);
-    if (actor.role === "plant_admin")
+    if (actor.role === "plant_admin" || actor.role === "custom")
       return (
         await pool.query(
           "SELECT id,name,role FROM users WHERE role='client' AND active AND deleted_at IS NULL ORDER BY name",
@@ -42,7 +43,7 @@ export class CustomersController {
       ).rows;
     return (
       await pool.query(
-        "SELECT id,email,name,role,credit_limit,credit_used,active,deleted_at FROM users ORDER BY name",
+        "SELECT id,email,name,role,permissions,client_account_id,credit_limit,credit_used,active,deleted_at FROM users ORDER BY name",
       )
     ).rows;
   }
@@ -52,20 +53,30 @@ export class CustomersController {
     auth(req, ["admin"]);
     const b = req.body;
     if (
-      !["admin", "courier", "client", "preparation", "plant_admin"].includes(
-        b.role,
-      )
+      ![
+        "admin",
+        "courier",
+        "client",
+        "preparation",
+        "plant_admin",
+        "custom",
+      ].includes(b.role)
     )
       fail(400, "Rol inválido");
     return (
       await pool.query(
-        "INSERT INTO users(id,email,name,role,credit_limit) VALUES($1,$2,$3,$4,$5) RETURNING id,email,name,role",
+        "INSERT INTO users(id,email,name,role,credit_limit,permissions) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,email,name,role,permissions",
         [
           randomUUID(),
           text(b.email, 200).toLowerCase(),
           text(b.name, 100),
           b.role,
           b.role === "client" ? cents(b.creditLimit || 0) : 0,
+          JSON.stringify(
+            b.role === "custom"
+              ? validatePermissions(b.permissions ?? ["orders", "plant"])
+              : [],
+          ),
         ],
       )
     ).rows[0];
@@ -94,9 +105,14 @@ export class CustomersController {
         active = b.active === undefined ? u.active : b.active === true;
       if (
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-        !["admin", "courier", "client", "preparation", "plant_admin"].includes(
-          role,
-        )
+        ![
+          "admin",
+          "courier",
+          "client",
+          "preparation",
+          "plant_admin",
+          "custom",
+        ].includes(role)
       )
         fail(400, "Correo o rol inválido");
       if (u.id === admin.id && (!active || role !== "admin"))
@@ -147,6 +163,23 @@ export class CustomersController {
             "El cliente tiene saldos pendientes y debe conservar su rol",
           );
       }
+      if (u.role === "courier" && (!active || role !== u.role)) {
+        const unsettled = (
+          await c.query(
+            `SELECT 1 FROM business_days d
+          WHERE d.closed_at IS NULL AND EXISTS (
+            SELECT 1 FROM orders o WHERE o.operation_day=d.day AND (o.courier_id=$1 OR o.delivered_by=$1)
+            UNION ALL SELECT 1 FROM payments p WHERE p.business_day=d.day AND p.receiver_id=$1
+          ) AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.day=d.day AND s.courier_id=$1 AND s.status='confirmed') LIMIT 1`,
+            [u.id],
+          )
+        ).rowCount;
+        if (unsettled)
+          fail(
+            409,
+            "Confirma sus cuadres pendientes antes de cambiar el acceso del mensajero",
+          );
+      }
       const limit =
         role === "client"
           ? cents(
@@ -157,7 +190,20 @@ export class CustomersController {
           : 0;
       if (limit < Number(u.credit_used))
         fail(409, "El cupo no puede ser inferior al saldo reservado");
-      const changedIdentity = email !== u.email || role !== u.role;
+      const permissions =
+        role === "custom"
+          ? validatePermissions(
+              b.permissions ?? u.permissions ?? ["orders", "plant"],
+            )
+          : [];
+      const changedIdentity =
+        email !== u.email ||
+        role !== u.role ||
+        JSON.stringify(permissions) !== JSON.stringify(u.permissions);
+      await c.query("UPDATE users SET permissions=$2 WHERE id=$1", [
+        u.id,
+        JSON.stringify(permissions),
+      ]);
       await c.query(
         "UPDATE users SET name=$2,email=$3,role=$4,credit_limit=$5,active=$6,google_sub=CASE WHEN email<>$3 THEN NULL ELSE google_sub END,deleted_at=CASE WHEN $7 THEN now() WHEN $8 THEN NULL ELSE deleted_at END WHERE id=$1",
         [u.id, name, email, role, limit, active, deleting, !!b.restore],
@@ -182,8 +228,8 @@ export class CustomersController {
     const u = auth(req, ["admin", "client", "plant_admin"]);
     return (
       await pool.query("SELECT * FROM branches WHERE client_id=$1 OR $2", [
-        u.id,
-        ["admin", "plant_admin"].includes(u.role),
+        customerId(u),
+        !isCustomer(u),
       ])
     ).rows;
   }
@@ -198,10 +244,16 @@ export class CustomersController {
     return (
       await pool.query("INSERT INTO branches VALUES($1,$2,$3,$4) RETURNING *", [
         randomUUID(),
-        u.role === "client" ? u.id : b.clientId,
+        isCustomer(u) ? customerId(u) : b.clientId,
         text(b.address),
-        b.city,
+        text(b.city, 100),
       ])
     ).rows[0];
   }
+}
+
+function validatePermissions(value: any) {
+  if (!Array.isArray(value) || value.some((p) => !modules.includes(p)))
+    fail(400, "Permisos inválidos");
+  return [...new Set(value)];
 }

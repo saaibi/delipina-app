@@ -1,3 +1,5 @@
+import { ensureRecurrences } from "./recurrence.js";
+import { customerId, isCustomer, hasModule, canPortfolio } from "./access.js";
 import { notifyOrder } from "./notification-store.js";
 import { ensureBusinessClock } from "./business-day.js";
 import express from "express";
@@ -20,18 +22,49 @@ export const safeUser = (u) => ({
   name: u.name,
   role: u.role,
   email: u.email,
+  permissions: u.permissions || [],
+  clientId: customerId(u),
+  canViewPortfolio: canPortfolio(u),
 });
 export async function session(token) {
   return (
     await pool.query(
-      "SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=$1 AND s.expires_at>now() AND u.active",
+      "SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id LEFT JOIN users owner ON owner.id=u.client_account_id WHERE s.token=$1 AND s.expires_at>now() AND u.active AND (u.role<>'client_member' OR owner.active AND owner.role='client')",
       [token],
     )
   ).rows[0];
 }
 export const auth = (req, roles = undefined) => {
   if (!req.user) fail(401, "Inicia sesión");
-  if (roles && !roles.includes(req.user.role))
+  const customerGrant =
+    req.user.role === "client_member" && roles?.includes("client");
+  const path = req.path || req.url || "";
+  const customGrant =
+    req.user.role === "custom" &&
+    (path.includes("analytics")
+      ? hasModule(req.user, "analytics")
+      : path.includes("business-day")
+        ? hasModule(req.user, "days")
+        : path.includes("credit-accounts") || path.includes("invoices")
+          ? req.method === "GET" && hasModule(req.user, "portfolio")
+          : path.includes("orders") ||
+              path.includes("branches") ||
+              path.includes("users") ||
+              path.includes("products")
+            ? (req.method === "GET" &&
+                (hasModule(req.user, "orders") ||
+                  hasModule(req.user, "plant"))) ||
+              (path.endsWith("orders") &&
+                req.method === "POST" &&
+                hasModule(req.user, "orders"))
+            : false);
+  if (
+    isCustomer(req.user) &&
+    !canPortfolio(req.user) &&
+    /credit-accounts|invoices/.test(path)
+  )
+    fail(403, "No tienes permiso para ver cartera");
+  if (roles && !roles.includes(req.user.role) && !customerGrant && !customGrant)
     fail(403, "Acceso no autorizado");
   return req.user;
 };
@@ -77,7 +110,7 @@ export async function dispatchPush() {
     );
     const rows = (
       await pool.query(
-        "SELECT s.*,n.title,n.id AS notification_id,n.revision,n.module,n.target_id,n.status FROM subscriptions s JOIN users u ON u.id=s.user_id JOIN notifications n ON n.user_id=s.user_id WHERE u.active AND NOT n.read AND n.updated_at>now()-interval '1 day' AND NOT EXISTS(SELECT 1 FROM push_deliveries d WHERE d.notification_id=n.id AND d.endpoint=s.endpoint AND d.revision=n.revision)",
+        "SELECT s.*,n.title,n.id AS notification_id,n.revision,n.module,n.target_id,n.status FROM subscriptions s JOIN users u ON u.id=s.user_id JOIN notifications n ON n.user_id=s.user_id WHERE u.active AND (u.client_account_id IS NULL OR EXISTS(SELECT 1 FROM users owner WHERE owner.id=u.client_account_id AND owner.active)) AND NOT n.read AND n.updated_at>now()-interval '1 day' AND NOT EXISTS(SELECT 1 FROM push_deliveries d WHERE d.notification_id=n.id AND d.endpoint=s.endpoint AND d.revision=n.revision)",
       )
     ).rows;
     await Promise.allSettled(
@@ -118,7 +151,9 @@ export async function dispatchPush() {
 export const orderVisible = (u, o) =>
   u.role === "admin" ||
   ["preparation", "plant_admin"].includes(u.role) ||
-  (u.role === "client" && o.client_id === u.id) ||
+  hasModule(u, "orders") ||
+  hasModule(u, "plant") ||
+  (isCustomer(u) && o.client_id === customerId(u)) ||
   (u.role === "courier" &&
     (o.courier_id === u.id ||
       (!o.courier_id &&
@@ -151,7 +186,7 @@ export function configureApp(app: any) {
       crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     }),
   );
-  app.use(express.json({ limit: "2mb" }));
+  app.use(express.json({ limit: "12mb" }));
   app.use(cookieParser());
   app.use(async (req, res, next) => {
     try {
@@ -162,6 +197,7 @@ export function configureApp(app: any) {
         !req.path.startsWith("/api/health")
       ) {
         const changed = await ensureBusinessClock();
+        if(process.env.DISABLE_AUTOMATIC_JOBS!=='true')void ensureRecurrences().catch(() => {});
         if (changed) {
           io?.emit("refresh");
           void dispatchPush();
@@ -172,6 +208,16 @@ export function configureApp(app: any) {
         req.get("origin") !== process.env.APP_ORIGIN
       )
         fail(403, "Origen no permitido");
+      if (req.user && !["GET", "HEAD", "OPTIONS"].includes(req.method))
+        res.once("finish", () => {
+          if (res.statusCode < 400)
+            void pool
+              .query(
+                "INSERT INTO audit(actor_id,action,entity_type,entity_id,details) VALUES($1,$2,'api',$3,$4)",
+                [req.user.id, req.method, req.path, { status: res.statusCode }],
+              )
+              .catch(() => {});
+        });
       next();
     } catch (e) {
       next(e);

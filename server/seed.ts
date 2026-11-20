@@ -8,6 +8,7 @@ await tx(async (c) => {
     ["client", "Cliente demo"],
     ["preparation", "Planta demo"],
     ["plant_admin", "Administrador de planta demo"],
+    ["custom", "Personalizado demo"],
   ]) {
     const id = randomUUID();
     await c.query(
@@ -15,6 +16,7 @@ await tx(async (c) => {
       [id, `${role}@demo.test`, name, role, role === "client" ? 10000000 : 0],
     );
   }
+  await c.query("UPDATE users SET permissions='[\"orders\",\"plant\"]' WHERE email='custom@demo.test'");
   const u = (await c.query("SELECT id FROM users WHERE role='client' LIMIT 1"))
     .rows[0];
   if (!(await c.query("SELECT 1 FROM branches")).rowCount)

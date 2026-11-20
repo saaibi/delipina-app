@@ -31,6 +31,7 @@ export function validateSchedule(cfg: any) {
       typeof d.enabled !== "boolean" ||
       !Number.isFinite(d.leadHours) ||
       d.leadHours < 0 ||
+      d.leadHours > 720 ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(d.open) ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(d.close) ||
       (d.enabled && d.open >= d.close)
@@ -83,13 +84,13 @@ export async function operatingDate(c: PoolClient, at = new Date()) {
     const { schedule } = await prepareDay(c, day, cfg);
     const record = (
       await c.query(
-        "SELECT cutoff_at,closed_at FROM business_days WHERE day=$1",
+        "SELECT cutoff_at,closed_at,intake_closed_at FROM business_days WHERE day=$1",
         [day],
       )
     ).rows[0];
     if (
       schedule.enabled &&
-      !record.closed_at &&
+      !record.intake_closed_at &&
       +new Date(record.cutoff_at) > +at
     ) {
       await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
@@ -110,11 +111,15 @@ export async function assertBusinessDateOpen(c: PoolClient, day?: string) {
   ]);
   const r = (
     await c.query(
-      "SELECT closed_at,cutoff_at FROM business_days WHERE day=$1",
+      "SELECT closed_at,cutoff_at,intake_closed_at FROM business_days WHERE day=$1",
       [day],
     )
   ).rows[0];
-  if (!schedule.enabled || r.closed_at || +new Date(r.cutoff_at) <= Date.now())
+  if (
+    !schedule.enabled ||
+    r.intake_closed_at ||
+    +new Date(r.cutoff_at) <= Date.now()
+  )
     fail(
       409,
       "La jornada de entrega está cerrada. Reprograma para un día habilitado.",
@@ -125,11 +130,57 @@ export async function validateDeliveryWindow(
   c: PoolClient,
   startValue: any,
   endValue: any,
+  customer = false,
 ) {
   const cfg = (await c.query("SELECT data FROM settings WHERE id=1")).rows[0]
     .data;
-  const start = new Date(startValue),
+  let start = new Date(startValue),
     end = new Date(endValue);
+  if (customer && Number.isFinite(+start) && Number.isFinite(+end)) {
+    const duration = +end - +start;
+    let found = false;
+    for (let offset = 0; offset < 45; offset++) {
+      const info = (
+          await c.query(
+            "SELECT to_char($1::timestamptz AT TIME ZONE 'America/Bogota','YYYY-MM-DD') AS day,EXTRACT(ISODOW FROM $1::timestamptz AT TIME ZONE 'America/Bogota')::int dow",
+            [start],
+          )
+        ).rows[0],
+        d = weeklySchedule(cfg)[info.dow];
+      const cutoff = new Date(
+        (
+          await c.query(
+            "SELECT (($1::date+$2::time) AT TIME ZONE 'America/Bogota')-$3*interval '1 hour' AS t",
+            [info.day, d.close, d.leadHours],
+          )
+        ).rows[0].t,
+      );
+      const record = (
+        await c.query(
+          "SELECT intake_closed_at FROM business_days WHERE day=$1",
+          [info.day],
+        )
+      ).rows[0];
+      if (
+        d.enabled &&
+        Date.now() <= +cutoff &&
+        +start > Date.now() &&
+        !record?.intake_closed_at
+      ) {
+        found = true;
+        break;
+      }
+      const next = new Date(info.day + "T12:00:00Z");
+      next.setUTCDate(next.getUTCDate() + 1);
+      const day = next.toISOString().slice(0, 10),
+        dow = next.getUTCDay() || 7,
+        nextSchedule = weeklySchedule(cfg)[dow];
+      start = new Date(day + "T" + nextSchedule.open + ":00-05:00");
+      end = new Date(+start + duration);
+    }
+    if (!found)
+      fail(400, "No hay fecha disponible con la anticipación configurada");
+  }
   if (!Number.isFinite(+start) || !Number.isFinite(+end) || end <= start)
     fail(400, "Rango inválido o sin la anticipación requerida");
   const r = (
@@ -139,7 +190,7 @@ export async function validateDeliveryWindow(
     )
   ).rows[0];
   const schedule = weeklySchedule(cfg)[r.weekday];
-  if (+start < Date.now() + schedule.leadHours * 3600000)
+  if (!customer && +start < Date.now() + schedule.leadHours * 3600000)
     fail(400, "No cumple la anticipación del día de entrega");
   if (
     !schedule.enabled ||
@@ -166,7 +217,7 @@ export async function daySummary(c: PoolClient, day: string, cutoff: Date) {
   ).rows[0];
   const payments = (
     await c.query(
-      "SELECT COALESCE(sum(amount) FILTER(WHERE method='cash' AND business_day=$1),0) AS cash,COALESCE(sum(amount) FILTER(WHERE method<>'cash' AND verified AND verified_day=$1 AND verified_at<=$2),0) AS verified_transfers,COALESCE(sum(amount) FILTER(WHERE method<>'cash' AND (verified_at IS NULL OR verified_at>$2)),0) AS pending_transfers,count(*) FILTER(WHERE method<>'cash' AND (verified_at IS NULL OR verified_at>$2))::int AS unverified_count FROM payments WHERE created_at<=$2",
+      "SELECT COALESCE(sum(amount) FILTER(WHERE method='cash' AND business_day=$1),0) AS cash,COALESCE(sum(amount) FILTER(WHERE method<>'cash' AND verified AND verified_day=$1 AND verified_at<=$2),0) AS verified_transfers,COALESCE(sum(amount) FILTER(WHERE method<>'cash' AND business_day=$1 AND (verified_at IS NULL OR verified_at>$2)),0) AS pending_transfers,count(*) FILTER(WHERE method<>'cash' AND business_day=$1 AND (verified_at IS NULL OR verified_at>$2))::int AS unverified_count FROM payments WHERE created_at<=$2",
       [day, cutoff],
     )
   ).rows[0];
@@ -206,34 +257,84 @@ export async function ensureBusinessClock() {
     for (const { day } of missing) await prepareDay(c, day, cfg);
     const days = (
       await c.query(
-        "SELECT to_char(day,'YYYY-MM-DD') AS day,cutoff_at FROM business_days WHERE closed_at IS NULL AND cutoff_at<=now() ORDER BY day FOR UPDATE",
+        "SELECT to_char(day,'YYYY-MM-DD') AS day,cutoff_at FROM business_days WHERE intake_closed_at IS NULL AND cutoff_at<=now() ORDER BY day FOR UPDATE",
       )
     ).rows;
     for (const d of days) {
       await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
         "delipina:day:" + d.day,
       ]);
-      const summary = await daySummary(c, d.day, d.cutoff_at);
+      await c.query(
+        "UPDATE business_days SET intake_closed_at=cutoff_at WHERE day=$1",
+        [d.day],
+      );
+    }
+    const accounting = (
+      await c.query(
+        "SELECT to_char(day,'YYYY-MM-DD') AS day FROM business_days WHERE closed_at IS NULL AND intake_closed_at IS NOT NULL ORDER BY day FOR UPDATE",
+      )
+    ).rows;
+    let closed = 0;
+    for (const { day } of accounting) {
+      const pending = (
+        await c.query(
+          `SELECT count(*)::int n FROM (SELECT DISTINCT COALESCE(o.delivered_by,o.courier_id) id FROM orders o WHERE o.operation_day=$1 AND COALESCE(o.delivered_by,o.courier_id) IS NOT NULL UNION SELECT receiver_id FROM payments WHERE business_day=$1) couriers JOIN users u ON u.id=couriers.id AND u.role='courier' WHERE NOT EXISTS(SELECT 1 FROM settlements s WHERE s.courier_id=couriers.id AND s.day=$1 AND s.status='confirmed')`,
+          [day],
+        )
+      ).rows[0].n;
+      const unresolved = (
+        await c.query(
+          "SELECT count(*)::int n FROM orders WHERE operation_day=$1 AND status NOT IN ('delivered','cancelled','rejected')",
+          [day],
+        )
+      ).rows[0].n;
+      const transfers = (
+        await c.query(
+          "SELECT count(*)::int n FROM payments WHERE business_day=$1 AND NOT verified",
+          [day],
+        )
+      ).rows[0].n;
+      if (pending || unresolved || transfers) continue;
+      const cutoff = new Date();
+      const summary = await daySummary(c, day, cutoff);
+      await c.query(
+        "UPDATE business_days SET closed_at=$2,automatic=true,processed_at=now(),summary=$3 WHERE day=$1",
+        [day, cutoff, summary],
+      );
       await notifyEvent(c, ["admin"], [], {
-        key: "day:" + d.day,
+        key: "day:" + day,
         module: "analytics",
-        targetId: d.day,
-        title: summary.unresolved
-          ? `Jornada cerrada · ${summary.unresolved} pedidos por revisar`
-          : "Jornada cerrada",
+        targetId: day,
+        title: "Jornada cerrada · cuadres confirmados",
         status: "closed",
       });
       await c.query(
-        "UPDATE business_days SET closed_at=cutoff_at,automatic=true,processed_at=now(),summary=$2 WHERE day=$1",
-        [d.day, summary],
+        "INSERT INTO audit(action,entity_type,entity_id) VALUES('accounting-close','business_day',$1)",
+        [day],
       );
-      await c.query("INSERT INTO audit(action) VALUES($1)", [
-        "business-day:" + d.day + ":automatic-close",
-      ]);
+      closed++;
     }
-    return !!days.length;
+    return !!days.length || closed > 0;
   }).finally(() => {
     closing = null;
   });
   return closing;
+}
+
+export async function accountingDate(c: PoolClient, receiver?: string) {
+  const today = await businessDate(c);
+  const row = (
+    await c.query(
+      "SELECT to_char(d.day,'YYYY-MM-DD') AS day FROM business_days d WHERE d.closed_at IS NULL AND d.day<=$1 AND ($2::uuid IS NULL OR EXISTS(SELECT 1 FROM orders o WHERE o.operation_day=d.day AND (o.courier_id=$2 OR o.delivered_by=$2)) OR EXISTS(SELECT 1 FROM payments p WHERE p.business_day=d.day AND p.receiver_id=$2)) ORDER BY d.day LIMIT 1",
+      [today, receiver || null],
+    )
+  ).rows[0];
+  if (row) return row.day;
+  const cfg = (await c.query("SELECT data FROM settings WHERE id=1")).rows[0]
+    .data;
+  await prepareDay(c, today, cfg);
+  const record = (
+    await c.query("SELECT closed_at FROM business_days WHERE day=$1", [today])
+  ).rows[0];
+  return record.closed_at ? operatingDate(c) : today;
 }
