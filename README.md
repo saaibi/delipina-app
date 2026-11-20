@@ -67,8 +67,8 @@ La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, s
 - PWA con caché de aplicación y datos por usuario, cola IndexedDB y claves idempotentes. Solo creación de pedidos se encola offline; cobros, asignaciones y cambios de estado requieren conexión. En modo offline no se garantiza precio/cupo/horario hasta validar en servidor. Logout borra caché y cola local.
 - Android/iOS Capacitor generados, adaptador SQLite nativo para la misma caché/cola. **Proyecto preparado, no APK compilado, no app instalada.**
 - Selección visual de presentaciones con las fotos proporcionadas por el usuario (recorte CSS, sin redibujar los productos), cantidades directas y referencia visual configurable en catálogo.
-- Jornadas por fecha de Colombia con horarios por día y anticipación general en Ajustes. El cierre automático conserva resumen al corte, cartera, pedidos pendientes y futuros. Render Free puede dormir: el corte lógico se respeta y se materializa al despertar o recibir una consulta.
-- Pedidos y ventas unificados, tarjetas compactas con detalle en modal y vista de todos los aceptados. Créditos por cliente con abonos generales y distribución automática a facturas antiguas; transferencias pendientes reservan saldo.
+- Jornadas por fecha de Colombia con horarios por día y anticipación por día de entrega en Ajustes. El cierre automático conserva resumen al corte, cartera, pedidos pendientes y futuros. Render Free puede dormir: el corte lógico se respeta y se materializa al despertar o recibir una consulta.
+- Pedidos y ventas unificados, tarjetas compactas con detalle en modal y vista de todos los aceptados. Cartera por cliente con abonos generales y distribución automática a facturas antiguas; transferencias pendientes reservan saldo.
 - Productos genéricos con imágenes propias guardadas en PostgreSQL; usuarios y catálogo son secciones de Ajustes. Análisis con Google Charts y datos reales.
 - Un aviso por pedido y destinatario, actualizado por estado; lectura por revisión al abrir y contador en Pedidos. Push web usa la misma etiqueta y abre el pedido. Deslizar hacia abajo al inicio actualiza datos; doble toque en el módulo vuelve arriba.
 
@@ -125,3 +125,15 @@ xcodebuild -project ios/App/App.xcodeproj -scheme App -destination 'generic/plat
 ```
 
 Las apps nativas necesitan URL de API/CORS, OAuth de navegador de sistema, FCM/APNs y configuración de firma para distribución. Estos pasos no están conectados y no se afirma que el contenedor móvil sea una app productiva terminada.
+
+## Actualización de operación (19 noviembre 2026)
+
+Lema: «Piña lista para tu negocio». Subtítulo: «Calidad, frescura y diferentes presentaciones para tu operación comercial».
+
+Usuarios y acceso separa dos tablas: usuarios internos y clientes. Planta conserva el identificador técnico anterior para no romper cuentas existentes. El nuevo administrador de planta puede consultar clientes activos (sin correos/cupos), sucursales y precios, crear pedidos pendientes de revisión, y avanzar la preparación. No administra usuarios, catálogo, cupos, cartera ni confirma pedidos.
+
+El catálogo admite kilo, libra (500 g), arroba colombiana (25 libras / 12,5 kg) y empaque, cada combinación con precio independiente. La migración 010 agrega piña en cuatro presentaciones, panela y azúcar con precios ficticios explícitamente autorizados por el usuario; no modifica precios existentes. En pedidos, cada presentación se muestra en una sola tarjeta con selector de medida y cantidad; cambiar de medida conserva cantidades ya elegidas.
+
+Los precios especiales se editan desde el catálogo de un cliente, con búsqueda, precio general como referencia y guardado conjunto transaccional. Campo vacío restaura precio general. Los pedidos previos conservan sus importes. La tabla de clientes muestra cupo total, utilizado y saldo por cobrar, con acciones de edición y precios.
+
+Cada día del horario tiene su propia anticipación. Los valores anteriores se usan como respaldo hasta guardar la configuración semanal. La notificación tiene cierre en la esquina superior derecha. Firebase/FCM y APNs todavía no están configurados: la web usa Web Push/VAPID y la bandeja interna.

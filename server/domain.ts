@@ -117,7 +117,7 @@ export async function dispatchPush() {
 }
 export const orderVisible = (u, o) =>
   u.role === "admin" ||
-  u.role === "preparation" ||
+  ["preparation", "plant_admin"].includes(u.role) ||
   (u.role === "client" && o.client_id === u.id) ||
   (u.role === "courier" &&
     (o.courier_id === u.id ||

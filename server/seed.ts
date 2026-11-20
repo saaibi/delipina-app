@@ -6,7 +6,8 @@ await tx(async (c) => {
     ["admin", "Administración demo"],
     ["courier", "Mensajero demo"],
     ["client", "Cliente demo"],
-    ["preparation", "Preparación demo"],
+    ["preparation", "Planta demo"],
+    ["plant_admin", "Administrador de planta demo"],
   ]) {
     const id = randomUUID();
     await c.query(

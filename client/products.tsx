@@ -4,7 +4,7 @@ import CheckCircle from "@mui/icons-material/CheckCircle";
 import Add from "@mui/icons-material/Add";
 import Remove from "@mui/icons-material/Remove";
 import IconButton from "@mui/material/IconButton";
-import { Field } from "./ui";
+import { Field, Select } from "./ui";
 export const productImages = [
   ["entera", "Entera"],
   ["trozos", "En trozos"],
@@ -75,10 +75,25 @@ export function ProductPhoto({ product, small = false }: any) {
               backgroundRepeat: "no-repeat",
               backgroundPosition: "center",
               backgroundColor: "#143e2b",
+              aspectRatio: "1/1",
             }
       }
     />
   );
+}
+const unitNames = {
+  kg: "Kilo",
+  lb: "Libra",
+  arroba: "Arroba",
+  pack: "Empaque",
+};
+function presentationLabel(p: any) {
+  const label = p.presentation.trim();
+  return /^(por (kilogramo|kilo|libra)( \(500 g\))?|arroba colombiana \(25 libras \/ 12,5 kg\))$/i.test(
+    label,
+  )
+    ? ""
+    : label;
 }
 export function ProductChoices({
   products,
@@ -86,66 +101,148 @@ export function ProductChoices({
   onQuantity,
   money,
 }: any) {
+  const [chosen, C] = useState<Record<string, string>>({});
+  const groups = Object.values(
+    products
+      .filter((p) => p.active)
+      .reduce((groups, p) => {
+        const label = presentationLabel(p),
+          key = p.name.trim().toLowerCase() + "|" + label.toLowerCase();
+        (groups[key] ??= {
+          key,
+          name: p.name,
+          label,
+          variants: [],
+        }).variants.push(p);
+        return groups;
+      }, {}),
+  ) as any[];
   return (
     <div className="product-choices">
-      {products
-        .filter((p) => p.active)
-        .map((p) => {
-          const quantity = Number(quantities[p.id] || 0),
-            selected = quantity > 0;
-          return (
-            <article
-              className={"product-choice " + (selected ? "selected" : "")}
-              key={p.id}
+      {groups.map((group) => {
+        const p =
+          group.variants.find((p) => p.id === chosen[group.key]) ||
+          group.variants.find((p) => p.unit === "kg") ||
+          group.variants[0];
+        const quantity = Number(quantities[p.id] || 0),
+          selected = group.variants.some(
+            (p) => Number(quantities[p.id] || 0) > 0,
+          ),
+          photo = p.has_image
+            ? p
+            : group.variants.find((p) => p.has_image) || p;
+        return (
+          <article
+            className={"product-choice " + (selected ? "selected" : "")}
+            key={group.key}
+          >
+            <button
+              type="button"
+              className="product-choice-target"
+              aria-pressed={quantity > 0}
+              aria-label={
+                "Seleccionar " +
+                group.name +
+                (group.label ? " · " + group.label : "") +
+                " por " +
+                unitNames[p.unit]
+              }
+              onClick={() => onQuantity(p.id, quantity > 0 ? "" : 1)}
             >
-              <button
-                type="button"
-                className="product-choice-target"
-                aria-pressed={selected}
-                aria-label={"Seleccionar " + p.name + " · " + p.presentation}
-                onClick={() => onQuantity(p.id, selected ? "" : 1)}
-              >
-                <div className="product-photo-frame">
-                  <ProductPhoto product={p} />
-                </div>
-                <div className="product-choice-copy">
-                  <strong>{p.name}</strong>
-                  <span>{p.presentation}</span>
-                  <b>
-                    {money(p.price)} / {p.unit === "kg" ? "kg" : "empaque"}
-                  </b>
-                </div>
-                {selected && <CheckCircle className="product-choice-check" />}
-              </button>
-              <div className="quantity-controls">
-                <IconButton
-                  aria-label={"Quitar cantidad de " + p.name}
-                  disabled={!selected}
-                  onClick={() => onQuantity(p.id, Math.max(0, quantity - 1))}
-                >
-                  <Remove />
-                </IconButton>
-                <Field
-                  required={false}
-                  label={p.unit === "kg" ? "kg" : "uds."}
-                  type="number"
-                  min="0"
-                  step={p.unit === "kg" ? ".001" : "1"}
-                  value={quantities[p.id] || ""}
-                  onChange={(e) => onQuantity(p.id, e.target.value)}
-                  size="small"
-                  sx={{ my: 0.5 }}
-                />
-                <IconButton
-                  aria-label={"Agregar cantidad de " + p.name}
-                  onClick={() => onQuantity(p.id, quantity + 1)}
-                >
-                  <Add />
-                </IconButton>
+              <div className="product-photo-frame">
+                <ProductPhoto product={photo} />
               </div>
-            </article>
-          );
-        })}
+              <div className="product-choice-copy">
+                <strong>{group.name}</strong>
+                {group.label && <span>{group.label}</span>}
+                <b>
+                  {money(p.price)} / {unitNames[p.unit].toLowerCase()}
+                </b>
+              </div>
+              {selected && <CheckCircle className="product-choice-check" />}
+            </button>
+            <div className="measure-selector">
+              <Select
+                label="Medida"
+                size="small"
+                value={p.id}
+                onChange={(e) =>
+                  C((prev) => ({ ...prev, [group.key]: e.target.value }))
+                }
+              >
+                {group.variants.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {unitNames[v.unit]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="quantity-controls">
+              <IconButton
+                aria-label={
+                  "Quitar cantidad de " +
+                  group.name +
+                  " por " +
+                  unitNames[p.unit]
+                }
+                disabled={!quantity}
+                onClick={() => onQuantity(p.id, Math.max(0, quantity - 1))}
+              >
+                <Remove />
+              </IconButton>
+              <Field
+                required={false}
+                label={
+                  { kg: "kg", lb: "lb", arroba: "@", pack: "uds." }[p.unit]
+                }
+                type="number"
+                min="0"
+                step={p.unit === "pack" ? "1" : ".001"}
+                value={quantities[p.id] || ""}
+                onChange={(e) => onQuantity(p.id, e.target.value)}
+                size="small"
+                sx={{ my: 0.5 }}
+              />
+              <IconButton
+                aria-label={
+                  "Agregar cantidad de " +
+                  group.name +
+                  " por " +
+                  unitNames[p.unit]
+                }
+                onClick={() => onQuantity(p.id, quantity + 1)}
+              >
+                <Add />
+              </IconButton>
+            </div>
+            {selected && (
+              <div className="chosen-measures">
+                {group.variants
+                  .filter((v) => Number(quantities[v.id] || 0) > 0)
+                  .map((v) => (
+                    <button
+                      type="button"
+                      key={v.id}
+                      onClick={() =>
+                        C((prev) => ({ ...prev, [group.key]: v.id }))
+                      }
+                      aria-label={
+                        "Editar " +
+                        quantities[v.id] +
+                        " " +
+                        unitNames[v.unit] +
+                        " de " +
+                        group.name
+                      }
+                    >
+                      {quantities[v.id]} {unitNames[v.unit].toLowerCase()}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 }

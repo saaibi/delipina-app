@@ -40,9 +40,10 @@ export class CatalogController {
     const u = auth(req);
     return (
       await pool.query(
-        "SELECT p.*,EXISTS(SELECT 1 FROM product_photos f WHERE f.product_id=p.id) AS has_image,COALESCE(s.price,p.price) AS price FROM products p LEFT JOIN prices s ON s.product_id=p.id AND s.client_id=$1 WHERE p.active OR $2",
+        "SELECT p.*,p.price AS base_price,s.price AS special_price,EXISTS(SELECT 1 FROM product_photos f WHERE f.product_id=p.id) AS has_image,COALESCE(s.price,p.price) AS price FROM products p LEFT JOIN prices s ON s.product_id=p.id AND s.client_id=$1 WHERE p.active OR $2",
         [
-          u.role === "admin" && typeof req.query.clientId === "string"
+          ["admin", "plant_admin"].includes(u.role) &&
+          typeof req.query.clientId === "string"
             ? req.query.clientId
             : u.id,
           u.role === "admin",
@@ -58,7 +59,8 @@ export class CatalogController {
   ) {
     auth(req, ["admin"]);
     const b = req.body;
-    if (!["kg", "pack"].includes(b.unit)) fail(400, "Unidad inválida");
+    if (!["kg", "lb", "arroba", "pack"].includes(b.unit))
+      fail(400, "Unidad inválida");
     return (
       await pool.query(
         "INSERT INTO products(id,name,presentation,unit,price,active,image_key) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",
@@ -82,7 +84,8 @@ export class CatalogController {
   ) {
     auth(req, ["admin"]);
     const b = req.body;
-    if (!["kg", "pack"].includes(b.unit)) fail(400, "Unidad inválida");
+    if (!["kg", "lb", "arroba", "pack"].includes(b.unit))
+      fail(400, "Unidad inválida");
     return (
       await pool.query(
         "UPDATE products SET name=$2,presentation=$3,price=$4,active=$5,unit=$6,image_key=$7 WHERE id=$1 RETURNING *",
@@ -103,10 +106,43 @@ export class CatalogController {
   async putPrices(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     auth(req, ["admin"]);
     const b = req.body;
-    await pool.query(
-      "INSERT INTO prices VALUES($1,$2,$3) ON CONFLICT(client_id,product_id) DO UPDATE SET price=excluded.price",
-      [b.clientId, b.productId, cents(b.price)],
-    );
+    const changes = Array.isArray(b.prices)
+      ? b.prices
+      : [{ productId: b.productId, price: b.price }];
+    if (
+      !changes.length ||
+      changes.length > 1000 ||
+      new Set(changes.map((p) => p.productId)).size !== changes.length
+    )
+      fail(400, "Lista de precios inválida");
+    await tx(async (c) => {
+      const client = await c.query(
+        "SELECT id FROM users WHERE id=$1 AND role='client' AND active AND deleted_at IS NULL",
+        [b.clientId],
+      );
+      if (!client.rowCount) fail(400, "Cliente inválido");
+      for (const change of changes) {
+        if (
+          !(
+            await c.query("SELECT id FROM products WHERE id=$1", [
+              change.productId,
+            ])
+          ).rowCount
+        )
+          fail(400, "Producto inválido");
+        if (change.price === null)
+          await c.query(
+            "DELETE FROM prices WHERE client_id=$1 AND product_id=$2",
+            [b.clientId, change.productId],
+          );
+        else
+          await c.query(
+            "INSERT INTO prices VALUES($1,$2,$3) ON CONFLICT(client_id,product_id) DO UPDATE SET price=excluded.price",
+            [b.clientId, change.productId, cents(change.price)],
+          );
+      }
+    });
+    await broadcast();
     return { ok: true };
   }
   @Post("products/:id/photo") @HttpCode(200) async uploadPhoto(

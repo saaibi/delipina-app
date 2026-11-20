@@ -5,28 +5,32 @@ export interface DaySchedule {
   enabled: boolean;
   open: string;
   close: string;
+  leadHours: number;
 }
 export function weeklySchedule(cfg: any): Record<string, DaySchedule> {
   const out: Record<string, DaySchedule> = {};
   for (let d = 1; d <= 7; d++) {
     const base = cfg.weeklySchedule?.[d];
-    out[d] = base || {
-      enabled: true,
-      open: String(cfg.open ?? 6).padStart(2, "0") + ":00",
-      close: String(cfg.close ?? 18).padStart(2, "0") + ":00",
+    out[d] = {
+      ...(base || {
+        enabled: true,
+        open: String(cfg.open ?? 6).padStart(2, "0") + ":00",
+        close: String(cfg.close ?? 18).padStart(2, "0") + ":00",
+      }),
+      leadHours: base?.leadHours ?? cfg.leadHours ?? 2,
     };
   }
   return out;
 }
 export function validateSchedule(cfg: any) {
-  if (!Number.isFinite(cfg.leadHours) || cfg.leadHours < 0)
-    fail(400, "Anticipación inválida");
   const week = weeklySchedule(cfg);
   if (!Object.values(week).some((d) => d.enabled))
     fail(400, "Habilita al menos un día de operación");
   for (const d of Object.values(week)) {
     if (
       typeof d.enabled !== "boolean" ||
+      !Number.isFinite(d.leadHours) ||
+      d.leadHours < 0 ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(d.open) ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(d.close) ||
       (d.enabled && d.open >= d.close)
@@ -126,12 +130,7 @@ export async function validateDeliveryWindow(
     .data;
   const start = new Date(startValue),
     end = new Date(endValue);
-  if (
-    !Number.isFinite(+start) ||
-    !Number.isFinite(+end) ||
-    end <= start ||
-    +start < Date.now() + cfg.leadHours * 3600000
-  )
+  if (!Number.isFinite(+start) || !Number.isFinite(+end) || end <= start)
     fail(400, "Rango inválido o sin la anticipación requerida");
   const r = (
     await c.query(
@@ -140,6 +139,8 @@ export async function validateDeliveryWindow(
     )
   ).rows[0];
   const schedule = weeklySchedule(cfg)[r.weekday];
+  if (+start < Date.now() + schedule.leadHours * 3600000)
+    fail(400, "No cumple la anticipación del día de entrega");
   if (
     !schedule.enabled ||
     r.day !== r.end_day ||

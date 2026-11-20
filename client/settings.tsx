@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
 import AccordionDetails from "@mui/material/AccordionDetails";
@@ -50,6 +52,7 @@ export function ScheduleEditor({ settings, onSaved }: any) {
             enabled: true,
             open: "06:00",
             close: "18:00",
+            leadHours: settings.leadHours ?? 2,
           },
         ]),
       ),
@@ -70,7 +73,6 @@ export function ScheduleEditor({ settings, onSaved }: any) {
             method: "PUT",
             body: {
               origin: b.origin,
-              leadHours: Number(b.leadHours),
               weeklySchedule: week,
             },
           });
@@ -87,14 +89,6 @@ export function ScheduleEditor({ settings, onSaved }: any) {
         label="Origen del reparto"
         name="origin"
         defaultValue={settings.origin}
-      />
-      <Field
-        label="Anticipación general (horas)"
-        name="leadHours"
-        type="number"
-        min="0"
-        step="0.25"
-        defaultValue={settings.leadHours}
       />
       {days.map((name, i) => {
         const d = week[i + 1];
@@ -123,6 +117,22 @@ export function ScheduleEditor({ settings, onSaved }: any) {
                 slotProps={{ textField: { size: "small", fullWidth: true } }}
               />
             ))}
+            <Field
+              label="Anticipación (horas)"
+              type="number"
+              min="0"
+              step="0.25"
+              value={d.leadHours ?? settings.leadHours ?? 2}
+              onChange={(e) =>
+                change(
+                  i + 1,
+                  "leadHours",
+                  e.target.value === "" ? "" : Number(e.target.value),
+                )
+              }
+              size="small"
+              disabled={!d.enabled}
+            />
           </div>
         );
       })}
@@ -141,6 +151,7 @@ export function SettingsView({
   push,
   settings,
   users,
+  accounts = [],
   products,
   branches,
   onAction,
@@ -152,6 +163,7 @@ export function SettingsView({
   onRefresh,
 }: any) {
   const admin = user.role === "admin";
+  const [userTab, UT] = useState("staff");
   return (
     <div className="settings-sections">
       <Section title="Notificaciones">
@@ -160,17 +172,55 @@ export function SettingsView({
       {admin && (
         <>
           <Section title="Usuarios y acceso">
-            <Button onClick={() => onAction("user")}>Crear usuario</Button>
+            <Tabs
+              value={userTab}
+              onChange={(_, v) => UT(v)}
+              aria-label="Tipo de usuarios"
+            >
+              <Tab value="staff" label="Usuarios internos" />
+              <Tab value="clients" label="Clientes" />
+            </Tabs>
+            <p>
+              {userTab === "staff"
+                ? "Administrador, planta, mensajero y administrador de planta."
+                : "Clientes y acceso a sus pedidos."}
+            </p>
+            <Button
+              onClick={() => onAction({ kind: "createUser", group: userTab })}
+            >
+              {userTab === "staff" ? "Crear usuario interno" : "Crear cliente"}
+            </Button>
             <ManagementTable
-              kind="users"
-              rows={users}
+              kind={userTab === "clients" ? "clients" : "users"}
+              key={userTab}
+              rows={users
+                .map((u) => ({
+                  ...u,
+                  balance: accounts.find((a) => a.id === u.id)?.balance || 0,
+                }))
+                .filter((u) =>
+                  userTab === "clients"
+                    ? u.role === "client"
+                    : u.role !== "client",
+                )}
+              onPrices={(u) => onAction({ kind: "price", clientId: u.id })}
               onEdit={onEditUser}
               onRemove={onRemoveUser}
               onRestore={onRestoreUser}
             />
           </Section>
           <Section title="Productos y presentaciones">
-            <Button onClick={() => onAction("catalog")}>Crear producto</Button>
+            <div className="actions">
+              <Button onClick={() => onAction("catalog")}>
+                Crear producto
+              </Button>
+              <Button
+                className="neutral"
+                onClick={() => onAction({ kind: "price" })}
+              >
+                Precios especiales por cliente
+              </Button>
+            </div>
             <ManagementTable
               kind="catalog"
               rows={products}

@@ -39,7 +39,14 @@ test("Flujo, permisos, crédito, abonos, sincronización y toma concurrente", as
     start: start.toISOString(),
     end: new Date(+start + 3600000).toISOString(),
     credit: true,
-    items: [{ productId: products.body[0].id, quantity: 1 }],
+    items: [
+      {
+        productId: products.body.find(
+          (p) => p.name === "Entera" && p.unit === "kg",
+        ).id,
+        quantity: 1,
+      },
+    ],
   };
   assert.equal(
     (await call("client", "post", "/products", { name: "x" })).status,
@@ -448,7 +455,7 @@ test("Horario semanal y anticipación se validan en el servidor", async () => {
   const week = Object.fromEntries(
     Array.from({ length: 7 }, (_, i) => [
       i + 1,
-      { enabled: true, open: "06:00", close: "18:00" },
+      { enabled: true, open: "06:00", close: "18:00", leadHours: 2 },
     ]),
   );
   const weekday = Number(
@@ -475,6 +482,7 @@ test("Horario semanal y anticipación se validan en el servidor", async () => {
       400,
     );
     week[weekday].enabled = true;
+    week[weekday].leadHours = 200;
     assert.equal(
       (
         await call("admin", "put", "/settings", {
@@ -489,6 +497,20 @@ test("Horario semanal y anticipación se validan en el servidor", async () => {
       (await call("client", "post", "/orders", body, randomUUID())).status,
       400,
     );
+    const other = new Date(body.start);
+    other.setUTCDate(other.getUTCDate() + 1);
+    const allowed = await call(
+      "client",
+      "post",
+      "/orders",
+      {
+        ...body,
+        start: other.toISOString(),
+        end: new Date(+other + 3600000).toISOString(),
+      },
+      randomUUID(),
+    );
+    assert.equal(allowed.status, 200, JSON.stringify(allowed.body));
   } finally {
     await call("admin", "put", "/settings", previous);
   }
@@ -538,6 +560,189 @@ test("Fotos de productos genéricos se guardan con permisos y tipo de imagen", a
     (p) => p.id === product.body.id,
   );
   assert.equal(listed.has_image, true);
+});
+test("Administrador de planta crea pedidos para revisión y no administra accesos ni cartera", async () => {
+  await login("plant_admin");
+  const people = await call("plant_admin", "get", "/users");
+  assert.equal(people.status, 200);
+  assert.ok(people.body.length);
+  assert.ok(
+    people.body.every(
+      (u) => u.role === "client" && !("email" in u) && !("credit_limit" in u),
+    ),
+  );
+  assert.equal((await call("plant_admin", "get", "/branches")).status, 200);
+  assert.equal((await call("plant_admin", "get", "/invoices")).status, 403);
+  assert.equal(
+    (
+      await call("plant_admin", "post", "/users", {
+        name: "No",
+        email: "no@test.test",
+        role: "admin",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await call("preparation", "post", "/orders", body, randomUUID())).status,
+    403,
+  );
+  const created = await call(
+    "plant_admin",
+    "post",
+    "/orders",
+    { ...body, clientId: users.client.id, credit: false },
+    randomUUID(),
+  );
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  assert.equal(created.body.status, "pending");
+  assert.equal(
+    (
+      await call(
+        "plant_admin",
+        "post",
+        "/orders/" + created.body.id + "/action",
+        { action: "confirm" },
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call("admin", "post", "/orders/" + created.body.id + "/action", {
+        action: "confirm",
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await call(
+        "plant_admin",
+        "post",
+        "/orders/" + created.body.id + "/action",
+        { action: "prepare" },
+      )
+    ).status,
+    200,
+  );
+});
+test("Libra, kilo y arroba conservan precio independiente y unidad en el pedido", async () => {
+  const items = [];
+  let total = 0;
+  for (const [unit, price, quantity] of [
+    ["lb", 250000, 2],
+    ["kg", 500000, 1.25],
+    ["arroba", 6000000, 0.5],
+  ] as const) {
+    const p = await call("admin", "post", "/products", {
+      name: "Unidad de prueba",
+      presentation: "Venta por " + unit,
+      unit,
+      price,
+    });
+    assert.equal(p.status, 200);
+    items.push({ productId: p.body.id, quantity });
+    total += Math.round(price * quantity);
+  }
+  const created = await call(
+    "client",
+    "post",
+    "/orders",
+    { ...body, credit: false, items },
+    randomUUID(),
+  );
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  assert.equal(Number(created.body.total), total);
+  const saved = await call("client", "get", "/orders/" + created.body.id);
+  assert.ok(saved.body.items.some((i) => i.name.includes("libra")));
+  assert.ok(saved.body.items.some((i) => i.name.includes("arroba")));
+  const cfg = (await call("admin", "get", "/settings")).body;
+  assert.equal(Object.keys(cfg.weeklySchedule).length, 7);
+  assert.ok(
+    Object.values(cfg.weeklySchedule).every((d: any) =>
+      Number.isFinite(d.leadHours),
+    ),
+  );
+});
+test("Precios por cliente se guardan desde el catálogo en una transacción y pueden volver al general", async () => {
+  const catalog = (
+    await call("admin", "get", "/products?clientId=" + users.client.id)
+  ).body;
+  const selected = catalog
+    .filter((p) => p.active && p.name === "Entera")
+    .slice(0, 2);
+  assert.equal(selected.length, 2);
+  const changes = selected.map((p, i) => ({
+    productId: p.id,
+    price: 123400 + i * 100,
+  }));
+  assert.equal(
+    (
+      await call("plant_admin", "put", "/prices", {
+        clientId: users.client.id,
+        prices: changes,
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call("admin", "put", "/prices", {
+        clientId: users.client.id,
+        prices: changes,
+      })
+    ).status,
+    200,
+  );
+  let priced = (await call("client", "get", "/products")).body;
+  for (const change of changes) {
+    const p = priced.find((p) => p.id === change.productId);
+    assert.equal(Number(p.price), change.price);
+    assert.equal(Number(p.special_price), change.price);
+    assert.ok(p.base_price);
+  }
+  const invalid = await call("admin", "put", "/prices", {
+    clientId: users.client.id,
+    prices: [
+      { productId: selected[0].id, price: 999999 },
+      { productId: randomUUID(), price: 1 },
+    ],
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal(
+    Number(
+      (await call("client", "get", "/products")).body.find(
+        (p) => p.id === selected[0].id,
+      ).price,
+    ),
+    changes[0].price,
+  );
+  const input = {
+    ...body,
+    credit: false,
+    items: [{ productId: selected[0].id, quantity: 1 }],
+  };
+  const created = await call("client", "post", "/orders", input, randomUUID());
+  assert.equal(created.status, 200);
+  assert.equal(
+    (
+      await call("admin", "put", "/prices", {
+        clientId: users.client.id,
+        prices: changes.map((p) => ({ ...p, price: null })),
+      })
+    ).status,
+    200,
+  );
+  priced = (await call("client", "get", "/products")).body;
+  assert.equal(priced.find((p) => p.id === selected[0].id).special_price, null);
+  assert.equal(
+    Number(
+      (await call("client", "get", "/orders/" + created.body.id)).body.items[0]
+        .price,
+    ),
+    changes[0].price,
+  );
 });
 test("Socket exige sesión y solo transmite invalidaciones sin datos privados", async () => {
   const { createRealtime } = await import("../dist-server/realtime.js");

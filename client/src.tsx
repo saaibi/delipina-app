@@ -1,3 +1,4 @@
+import { ClientPriceCatalog } from "./special-prices";
 import { SettingsView } from "./settings";
 import { ProductEditor } from "./product-editor";
 import { CreditsView, CreditDetails, GeneralPaymentForm } from "./credits";
@@ -5,6 +6,8 @@ import { AnalyticsView } from "./analytics";
 import { OrderCards, OrderDetails } from "./orders";
 import { NotificationList } from "./notifications";
 import { usePullRefresh, PullIndicator, scrollModuleTop } from "./interactions";
+import IconButton from "@mui/material/IconButton";
+import Close from "@mui/icons-material/Close";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import { ProductChoices, productImages } from "./products";
@@ -55,10 +58,11 @@ const labels = {
     cancelled: "Cancelado",
   },
   roles = {
-    admin: "Administración",
+    admin: "Administrador",
     courier: "Mensajero",
     client: "Cliente",
-    preparation: "Preparación",
+    preparation: "Planta",
+    plant_admin: "Administrador de planta",
   };
 const money = (n) =>
   new Intl.NumberFormat("es-CO", {
@@ -267,14 +271,15 @@ function App() {
       cached("/business-day").then(guard(BD)),
       queued().then((q) => guard(PN)(q.length)),
     ];
-    if (["admin", "client"].includes(u.role))
+    if (["admin", "client", "plant_admin"].includes(u.role))
       tasks.push(cached("/branches").then(guard(B)));
+    if (u.role === "plant_admin") tasks.push(cached("/users").then(guard(US)));
     if (u.role === "admin")
       tasks.push(
         cached("/users").then(guard(US)),
         cached("/business-days").then(guard(CL)),
       );
-    if (u.role !== "preparation")
+    if (!["preparation", "plant_admin"].includes(u.role))
       tasks.push(
         cached("/invoices").then(guard(I)),
         cached("/credit-accounts").then(guard(AC)),
@@ -379,7 +384,8 @@ function App() {
     });
   }
   const admin = user?.role === "admin",
-    prep = user?.role === "preparation",
+    plantAdmin = user?.role === "plant_admin",
+    prep = ["preparation", "plant_admin"].includes(user?.role),
     client = user?.role === "client",
     delivery = user?.role === "courier";
   const editUser = (u) => M({ kind: "editUser", user: u });
@@ -559,8 +565,11 @@ function App() {
     return (
       <main className="login">
         <img src="/logo.png" alt="Delipiña" />
-        <h1>Del campo a tu negocio.</h1>
-        <p>Pedidos, preparación y entregas en un mismo lugar.</p>
+        <h1>Piña lista para tu negocio</h1>
+        <p>
+          Calidad, frescura y diferentes presentaciones para tu operación
+          comercial.
+        </p>
         <div id="google" />
         {!config?.googleClientId && (
           <p>El ingreso con Google requiere configurar el proyecto OAuth.</p>
@@ -669,7 +678,7 @@ function App() {
             <small>DELIPIÑA / OPERACIÓN</small>
             <h1>
               {view === "payments"
-                ? "Créditos de clientes"
+                ? "Cartera de clientes"
                 : view === "analytics"
                   ? "Inteligencia de negocio"
                   : view === "accepted"
@@ -681,7 +690,9 @@ function App() {
                         : view === "settings"
                           ? "Ajustes"
                           : prep
-                            ? "Preparación"
+                            ? plantAdmin
+                              ? "Pedidos de planta"
+                              : "Planta"
                             : client
                               ? "Mis pedidos"
                               : delivery
@@ -696,9 +707,10 @@ function App() {
                   : "Cada pedido, en su momento."}
             </p>
           </div>
-          {(admin || client) && ["orders", "accepted"].includes(view) && (
-            <Button onClick={() => M("order")}>＋ Crear pedido</Button>
-          )}
+          {(admin || plantAdmin || client) &&
+            ["orders", "accepted"].includes(view) && (
+              <Button onClick={() => M("order")}>＋ Crear pedido</Button>
+            )}
           <Button
             className="neutral"
             aria-label="Actualizar módulo"
@@ -732,7 +744,7 @@ function App() {
         )}
         {view === "settings" ? (
           <SettingsView
-            {...{ user, push, settings, users, products, branches }}
+            {...{ user, push, settings, users, products, branches, accounts }}
             onAction={M}
             onEditUser={editUser}
             onRemoveUser={deleteUser}
@@ -925,16 +937,15 @@ function App() {
       </main>
       {drawer && (
         <NoticeDrawer onClose={() => D(false)}>
-          <header>
+          <div className="notice-heading">
             <h2>Notificaciones</h2>
-            <Button
-              className="neutral"
+            <IconButton
               aria-label="Cerrar notificaciones"
               onClick={() => D(false)}
             >
-              ✕
-            </Button>
-          </header>
+              <Close />
+            </IconButton>
+          </div>
           <Button
             className="neutral"
             onClick={() =>
@@ -960,7 +971,8 @@ function App() {
             modal === "users" ||
             modal === "catalogList" ||
             modal === "order" ||
-            modal.kind === "creditDetail"
+            modal.kind === "creditDetail" ||
+            modal.kind === "price"
           }
           onClose={() => M(null)}
           title={
@@ -987,6 +999,10 @@ function App() {
                   settlement: "Confirmar cuadre diario",
                   credit: "Autorizar cupo",
                   price: "Precio especial por cliente",
+                  createUser:
+                    modal.group === "clients"
+                      ? "Crear cliente"
+                      : "Crear usuario interno",
                   editUser: "Editar usuario",
                   deleteUser: "Eliminar usuario",
                   editProduct: "Editar producto",
@@ -1040,8 +1056,8 @@ function App() {
           )}
           {modal === "order" && (
             <OrderForm
+              admin={admin || plantAdmin}
               {...{
-                admin,
                 users,
                 branches,
                 products,
@@ -1167,7 +1183,7 @@ function App() {
               }}
             />
           )}
-          {modal === "user" && (
+          {(modal === "user" || modal.kind === "createUser") && (
             <Form
               onSubmit={(b) =>
                 run(async () => {
@@ -1175,7 +1191,7 @@ function App() {
                     method: "POST",
                     body: {
                       ...b,
-                      creditLimit: Math.round(Number(b.creditLimit) * 100),
+                      creditLimit: Math.round(Number(b.creditLimit || 0) * 100),
                     },
                   });
                   M(null);
@@ -1186,19 +1202,29 @@ function App() {
               <Field label="Nombre" name="name" />
               <Field label="Correo Google" name="email" type="email" />
               <Select label="Rol" name="role">
-                {Object.entries(roles).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
+                {Object.entries(roles)
+                  .filter(
+                    ([k]) =>
+                      modal.kind !== "createUser" ||
+                      (modal.group === "clients"
+                        ? k === "client"
+                        : k !== "client"),
+                  )
+                  .map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
               </Select>
-              <Field
-                label="Cupo autorizado COP (0 sin crédito)"
-                name="creditLimit"
-                type="number"
-                defaultValue="0"
-                min="0"
-              />
+              {(modal === "user" || modal.group === "clients") && (
+                <Field
+                  label="Cupo autorizado COP (0 sin crédito)"
+                  name="creditLimit"
+                  type="number"
+                  defaultValue="0"
+                  min="0"
+                />
+              )}
               <Button type="submit">Crear usuario</Button>
             </Form>
           )}
@@ -1323,42 +1349,12 @@ function App() {
             </Form>
           )}
           {modal.kind === "price" && (
-            <Form
-              onSubmit={(b) =>
-                run(async () => {
-                  await api("/prices", {
-                    method: "PUT",
-                    body: { ...b, price: Math.round(Number(b.price) * 100) },
-                  });
-                  M(null);
-                  await refresh();
-                })
-              }
-            >
-              <Select label="Cliente" name="clientId">
-                {users
-                  .filter((u) => u.role === "client")
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-              </Select>
-              <Select label="Producto" name="productId">
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} · {p.presentation}
-                  </option>
-                ))}
-              </Select>
-              <Field
-                name="price"
-                label="Precio especial COP · todas las sucursales"
-                type="number"
-                min="0"
-              />
-              <Button type="submit">Guardar precio</Button>
-            </Form>
+            <ClientPriceCatalog
+              users={users}
+              initialClientId={modal.clientId}
+              money={money}
+              onSaved={() => refresh()}
+            />
           )}
           {modal.kind === "settlement" && (
             <Form
@@ -1658,7 +1654,8 @@ function OrderForm({
         />
       </div>
       <p>
-        Hora de Colombia · mínimo 2 horas de anticipación según configuración.
+        Hora de Colombia · la anticipación depende del día de entrega
+        configurado en Ajustes.
       </p>
       <ProductChoices
         products={priced}
@@ -1680,7 +1677,9 @@ function OrderForm({
         />
       </label>
       <Button type="submit">
-        Confirmar pedido{admin ? "" : " para revisión"}
+        {user.role === "admin"
+          ? "Confirmar pedido"
+          : "Enviar pedido para revisión"}
       </Button>
     </Form>
   );

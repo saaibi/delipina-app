@@ -33,7 +33,13 @@ export class CustomersController {
   @Get("users")
   @HttpCode(200)
   async getUsers(@Req() req: any, @Res({ passthrough: true }) res: Response) {
-    auth(req, ["admin"]);
+    const actor = auth(req, ["admin", "plant_admin"]);
+    if (actor.role === "plant_admin")
+      return (
+        await pool.query(
+          "SELECT id,name,role FROM users WHERE role='client' AND active AND deleted_at IS NULL ORDER BY name",
+        )
+      ).rows;
     return (
       await pool.query(
         "SELECT id,email,name,role,credit_limit,credit_used,active,deleted_at FROM users ORDER BY name",
@@ -45,7 +51,11 @@ export class CustomersController {
   async postUsers(@Req() req: any, @Res({ passthrough: true }) res: Response) {
     auth(req, ["admin"]);
     const b = req.body;
-    if (!["admin", "courier", "client", "preparation"].includes(b.role))
+    if (
+      !["admin", "courier", "client", "preparation", "plant_admin"].includes(
+        b.role,
+      )
+    )
       fail(400, "Rol inválido");
     return (
       await pool.query(
@@ -55,7 +65,7 @@ export class CustomersController {
           text(b.email, 200).toLowerCase(),
           text(b.name, 100),
           b.role,
-          cents(b.creditLimit || 0),
+          b.role === "client" ? cents(b.creditLimit || 0) : 0,
         ],
       )
     ).rows[0];
@@ -84,7 +94,9 @@ export class CustomersController {
         active = b.active === undefined ? u.active : b.active === true;
       if (
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-        !["admin", "courier", "client", "preparation"].includes(role)
+        !["admin", "courier", "client", "preparation", "plant_admin"].includes(
+          role,
+        )
       )
         fail(400, "Correo o rol inválido");
       if (u.id === admin.id && (!active || role !== "admin"))
@@ -167,11 +179,11 @@ export class CustomersController {
     @Req() req: any,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const u = auth(req, ["admin", "client"]);
+    const u = auth(req, ["admin", "client", "plant_admin"]);
     return (
       await pool.query("SELECT * FROM branches WHERE client_id=$1 OR $2", [
         u.id,
-        u.role === "admin",
+        ["admin", "plant_admin"].includes(u.role),
       ])
     ).rows;
   }

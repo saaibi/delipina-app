@@ -1,3 +1,4 @@
+import PriceChange from "@mui/icons-material/PriceChange";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Switch from "@mui/material/Switch";
 import React, { useState } from "react";
@@ -17,10 +18,11 @@ import Restore from "@mui/icons-material/Restore";
 import Block from "@mui/icons-material/Block";
 import { Field } from "./ui";
 const roles = {
-  admin: "Administración",
+  admin: "Administrador",
   courier: "Mensajero",
   client: "Cliente",
-  preparation: "Preparación",
+  preparation: "Planta",
+  plant_admin: "Administrador de planta",
 };
 const money = (n) =>
   new Intl.NumberFormat("es-CO", {
@@ -34,11 +36,13 @@ export function ManagementTable({
   onEdit,
   onRemove,
   onRestore,
+  onPrices,
 }: any) {
   const [archived, SA] = useState(false);
   const [search, S] = useState(""),
     [page, P] = useState(0);
-  const users = kind === "users";
+  const clients = kind === "clients";
+  const users = kind === "users" || clients;
   const filtered = rows
     .filter((r) => !users || archived || !r.deleted_at)
     .filter((r) =>
@@ -56,7 +60,9 @@ export function ManagementTable({
         required={false}
         label={
           users
-            ? "Buscar por nombre, correo o rol"
+            ? clients
+              ? "Buscar cliente por nombre o correo"
+              : "Buscar por nombre, correo o rol"
             : "Buscar producto o presentación"
         }
         value={search}
@@ -76,19 +82,39 @@ export function ManagementTable({
               }}
             />
           }
-          label="Mostrar usuarios eliminados"
+          label={
+            clients
+              ? "Mostrar clientes eliminados"
+              : "Mostrar usuarios eliminados"
+          }
         />
       )}
       <TableContainer sx={{ maxHeight: 440 }}>
         <Table
           size="small"
           stickyHeader
-          aria-label={users ? "Listado de usuarios" : "Listado de catálogo"}
+          aria-label={
+            clients
+              ? "Listado de clientes"
+              : users
+                ? "Listado de usuarios"
+                : "Listado de catálogo"
+          }
         >
           <TableHead>
             <TableRow>
               {(users
-                ? ["Nombre", "Correo", "Rol", "Estado", "Acciones"]
+                ? clients
+                  ? [
+                      "Cliente",
+                      "Correo",
+                      "Cupo total",
+                      "Cupo utilizado",
+                      "Saldo por cobrar",
+                      "Estado",
+                      "Acciones",
+                    ]
+                  : ["Nombre", "Correo", "Rol", "Estado", "Acciones"]
                 : [
                     "Producto",
                     "Presentación",
@@ -114,13 +140,28 @@ export function ManagementTable({
                 {users ? (
                   <>
                     <TableCell>{r.email}</TableCell>
-                    <TableCell>{roles[r.role]}</TableCell>
+                    {clients ? (
+                      <>
+                        <TableCell>{money(r.credit_limit)}</TableCell>
+                        <TableCell>{money(r.credit_used)}</TableCell>
+                        <TableCell>{money(r.balance || 0)}</TableCell>
+                      </>
+                    ) : (
+                      <TableCell>{roles[r.role]}</TableCell>
+                    )}
                   </>
                 ) : (
                   <>
                     <TableCell>{r.presentation}</TableCell>
                     <TableCell>
-                      {r.unit === "kg" ? "Kilogramos" : "Empaques"}
+                      {
+                        {
+                          kg: "Kilogramos",
+                          lb: "Libras",
+                          arroba: "Arrobas (25 lb)",
+                          pack: "Empaques",
+                        }[r.unit]
+                      }
                     </TableCell>
                     <TableCell sx={{ whiteSpace: "nowrap" }}>
                       {money(r.price)}
@@ -142,6 +183,16 @@ export function ManagementTable({
                   />
                 </TableCell>
                 <TableCell sx={{ whiteSpace: "nowrap" }}>
+                  {clients && onPrices && (
+                    <Tooltip title="Precios del catálogo">
+                      <IconButton
+                        aria-label={"Precios de " + r.name}
+                        onClick={() => onPrices(r)}
+                      >
+                        <PriceChange />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   <Tooltip title="Editar">
                     <IconButton
                       aria-label={"Editar " + r.name}

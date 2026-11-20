@@ -241,7 +241,7 @@ const navFor = (role: string) =>
     ? [
         ["orders", "Pedidos", ReceiptLong],
         ["analytics", "Análisis", Insights],
-        ["payments", "Créditos", Payments],
+        ["payments", "Cartera", Payments],
 
         ["settings", "Ajustes", Settings],
       ]
@@ -249,17 +249,21 @@ const navFor = (role: string) =>
       ? [
           ["mine", "Mis entregas", LocalShipping],
           ["available", "Disponibles", ReceiptLong],
-          ["payments", "Créditos", Payments],
+          ["payments", "Cartera", Payments],
           ["settings", "Ajustes", Settings],
         ]
-      : role === "preparation"
+      : ["preparation", "plant_admin"].includes(role)
         ? [
-            ["orders", "Preparación", Restaurant],
+            [
+              "orders",
+              role === "plant_admin" ? "Pedidos" : "Planta",
+              Restaurant,
+            ],
             ["settings", "Ajustes", Settings],
           ]
         : [
             ["orders", "Mis pedidos", ReceiptLong],
-            ["payments", "Mi crédito", Payments],
+            ["payments", "Mi cartera", Payments],
             ["settings", "Ajustes", Settings],
           ];
 export function Navigation({
@@ -477,12 +481,14 @@ export function SecondaryActions({ role, onAction }: any) {
           ],
           ["Precio especial", PriceChange, () => onAction({ kind: "price" })],
         ]
-      : role === "client"
-        ? [
-            ["Crear pedido", ReceiptLong, () => onAction("order")],
-            ["Crear sucursal", AddLocationAlt, () => onAction("branch")],
-          ]
-        : [];
+      : role === "plant_admin"
+        ? [["Crear pedido", ReceiptLong, () => onAction("order")]]
+        : role === "client"
+          ? [
+              ["Crear pedido", ReceiptLong, () => onAction("order")],
+              ["Crear sucursal", AddLocationAlt, () => onAction("branch")],
+            ]
+          : [];
   if (!actions.length) return null;
   actions.push(["Restablecer posición", RestorePosition, reset]);
   return (
@@ -577,22 +583,31 @@ export function NoticeDrawer({ onClose, children }: any) {
 }
 
 export function suggestedDelivery(settings: any, business: any) {
-  let start = dayjs()
-    .tz("America/Bogota")
-    .add(settings?.leadHours ?? 2, "hour")
-    .add(1, "minute")
-    .second(0)
-    .millisecond(0);
+  const now = dayjs().tz("America/Bogota");
+  let start = now.startOf("day");
   for (let i = 0; i < 15; i++) {
     const weekday = start.day() || 7;
     const d = settings?.weeklySchedule?.[weekday] || {
       enabled: true,
       open: "06:00",
       close: "18:00",
+      leadHours: settings?.leadHours ?? 2,
     };
     if (!d.enabled) {
       start = start.add(1, "day").startOf("day");
       continue;
+    }
+    const earliest = now
+      .add(d.leadHours ?? settings?.leadHours ?? 2, "hour")
+      .add(1, "minute")
+      .second(0)
+      .millisecond(0);
+    if (start.isBefore(earliest)) {
+      if (earliest.format("YYYY-MM-DD") !== start.format("YYYY-MM-DD")) {
+        start = start.add(1, "day").startOf("day");
+        continue;
+      }
+      start = earliest;
     }
     const open = start
       .startOf("day")

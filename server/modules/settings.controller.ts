@@ -58,7 +58,6 @@ export class SettingsController {
     const week = validateSchedule(b),
       cfg = {
         origin: text(b.origin),
-        leadHours: b.leadHours,
         weeklySchedule: week,
       };
     await tx(async (c) => {

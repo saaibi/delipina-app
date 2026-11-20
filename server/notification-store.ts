@@ -72,7 +72,10 @@ export async function notifyOrder(
     await c.query(
       "SELECT id FROM users WHERE active AND (role=ANY($1::text[]) OR id=$2) AND (role<>'courier' OR id=$3 OR $3::uuid IS NULL)",
       [
-        roles.filter((r) => r !== "client"),
+        [
+          ...roles.filter((r) => r !== "client"),
+          ...(roles.includes("preparation") ? ["plant_admin"] : []),
+        ],
         current.client_id,
         current.courier_id,
       ],
@@ -88,5 +91,5 @@ export async function notifyOrder(
   });
 }
 export function noticeVisibility() {
-  return `n.user_id=$1 AND (n.order_id IS NULL OR o.id IS NOT NULL AND ($2 IN ('admin','preparation') OR $2='client' AND o.client_id=$1 OR $2='courier' AND (o.courier_id=$1 OR o.courier_id IS NULL AND o.status NOT IN ('rejected','cancelled','delivered'))))`;
+  return `n.user_id=$1 AND (n.order_id IS NULL OR o.id IS NOT NULL AND ($2 IN ('admin','preparation','plant_admin') OR $2='client' AND o.client_id=$1 OR $2='courier' AND (o.courier_id=$1 OR o.courier_id IS NULL AND o.status NOT IN ('rejected','cancelled','delivered'))))`;
 }

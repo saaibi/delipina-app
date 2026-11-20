@@ -69,11 +69,13 @@ export function ProductEditor({ product, onSaved }: any) {
         defaultValue={product?.unit || "pack"}
       >
         <option value="pack">Unidades / empaques (enteros)</option>
-        <option value="kg">Kilogramos (decimales)</option>
+        <option value="kg">Kilogramos</option>
+        <option value="lb">Libras</option>
+        <option value="arroba">Arrobas (25 libras)</option>
       </Select>
       <Field
         name="price"
-        label="Precio COP"
+        label="Precio de esta unidad / presentación (COP)"
         type="number"
         min="0"
         defaultValue={product ? Number(product.price) / 100 : ""}
@@ -118,7 +120,11 @@ export function ProductEditor({ product, onSaved }: any) {
         }
         label="Disponible para pedidos"
       />
-      <p>Los pedidos registrados conservan su precio y presentación.</p>
+      <p>
+        Cada presentación y unidad tiene su propio precio; crea una entrada por
+        combinación (libra, kilo o arroba). Los pedidos registrados conservan su
+        precio y presentación.
+      </p>
       <Button type="submit" disabled={busy}>
         {busy ? "Guardando…" : product ? "Guardar producto" : "Crear producto"}
       </Button>

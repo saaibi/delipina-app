@@ -75,7 +75,7 @@ export class OrdersController {
   @Post("orders")
   @HttpCode(200)
   async postOrders(@Req() req: any, @Res({ passthrough: true }) res: Response) {
-    const u = auth(req, ["admin", "client"]);
+    const u = auth(req, ["admin", "client", "plant_admin"]);
     const b = req.body;
     const key = req.get("Idempotency-Key");
     if (!key || key.length > 100) fail(400, "Falta clave de sincronización");
@@ -166,7 +166,7 @@ export class OrdersController {
         await c.query("INSERT INTO items VALUES($1,$2,$3,$4,$5)", [
           o.id,
           p.id,
-          `${p.name} · ${p.presentation}`,
+          `${p.name} · ${p.presentation} (${p.unit === "kg" ? "kg" : p.unit === "lb" ? "libra" : p.unit === "arroba" ? "arroba" : "empaque"})`,
           q,
           price,
         ]);
@@ -293,9 +293,9 @@ export class OrdersController {
           if (
             ["prepare", "ready"].includes(b.action) &&
             !admin &&
-            u.role !== "preparation"
+            !["preparation", "plant_admin"].includes(u.role)
           )
-            fail(403, "Solo preparación");
+            fail(403, "Solo planta");
           if (
             ["depart", "deliver"].includes(b.action) &&
             !admin &&

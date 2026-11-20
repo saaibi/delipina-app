@@ -1,4 +1,5 @@
-export type Role = "admin" | "courier" | "client" | "preparation";
+export type Role =
+  "admin" | "courier" | "client" | "preparation" | "plant_admin";
 export type OrderStatus =
   | "pending"
   | "confirmed"
