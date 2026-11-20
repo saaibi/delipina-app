@@ -1,3 +1,4 @@
+import { FeedbackSnackbar } from "./feedback";
 import { BranchManager } from "./branches";
 import { MembersEditor } from "./members";
 import { ServerTable } from "./server-table";
@@ -63,6 +64,7 @@ export function ScheduleEditor({ settings, onSaved }: any) {
       ),
     ),
     [error, E] = useState(""),
+    [message, MSG] = useState(""),
     [busy, B] = useState(false);
   const change = (day, field, value) =>
     W((prev) => ({ ...prev, [day]: { ...prev[day], [field]: value } }));
@@ -83,6 +85,7 @@ export function ScheduleEditor({ settings, onSaved }: any) {
             },
           });
           await onSaved();
+          MSG("Horario actualizado");
         } catch (e) {
           E(e.message);
         } finally {
@@ -90,7 +93,14 @@ export function ScheduleEditor({ settings, onSaved }: any) {
         }
       }}
     >
-      {error && <Alert severity="error">{error}</Alert>}
+      <FeedbackSnackbar
+        message={error || message}
+        severity={error ? "error" : "success"}
+        onClose={() => {
+          E("");
+          MSG("");
+        }}
+      />
       <Field
         label="Origen del reparto"
         name="origin"

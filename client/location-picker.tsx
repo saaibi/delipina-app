@@ -68,7 +68,9 @@ export function LocationPicker({ address, city, point, onChange }: any) {
     try {
       const found = await api(
         "/geocode?q=" +
-          encodeURIComponent(address + ", " + city + ", Colombia"),
+          encodeURIComponent(address + ", " + city + ", Colombia") +
+          "&city=" +
+          encodeURIComponent(city),
       );
       if (requestVersion !== version.current) return;
       R(
@@ -121,7 +123,7 @@ export function LocationPicker({ address, city, point, onChange }: any) {
         {busy ? "Buscando…" : "Buscar dirección en el mapa"}
       </Button>
       <small className="address-search-hint">
-        Escribe la dirección completa, por ejemplo Carrera 23 #6-68. Buscaremos
+        Escribe la dirección completa, por ejemplo Calle 45 #18-32. Buscaremos
         al terminar la numeración; también puedes buscar manualmente.
       </small>
       <div className="address-results">

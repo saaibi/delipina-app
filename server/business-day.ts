@@ -190,7 +190,16 @@ export async function validateDeliveryWindow(
     )
   ).rows[0];
   const schedule = weeklySchedule(cfg)[r.weekday];
-  if (!customer && +start < Date.now() + schedule.leadHours * 3600000)
+  if (
+    Date.now() >
+    +new Date(`${r.day}T${schedule.close}:00-05:00`) -
+      schedule.leadHours * 3600000
+  )
+    fail(
+      400,
+      "Ya pasó la hora de cierre menos la anticipación; elige el siguiente día habilitado",
+    );
+  if (+start < Date.now() + schedule.leadHours * 3600000)
     fail(400, "No cumple la anticipación del día de entrega");
   if (
     !schedule.enabled ||

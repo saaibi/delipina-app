@@ -1,3 +1,5 @@
+import Autocomplete from "@mui/material/Autocomplete";
+import TextField from "@mui/material/TextField";
 import React, { useState } from "react";
 import Alert from "@mui/material/Alert";
 import { Field, Button, Select, Modal } from "./ui";
@@ -11,7 +13,7 @@ export function BranchEditor({
   onCancel,
 }: any) {
   const [address, A] = useState(branch?.address || ""),
-    [city, C] = useState(branch?.city || "Bucaramanga"),
+    [city, C] = useState(branch?.city || ""),
     [point, P] = useState(
       branch?.lat != null
         ? { lat: Number(branch.lat), lng: Number(branch.lng) }
@@ -63,19 +65,40 @@ export function BranchEditor({
             ))}
         </Select>
       )}
+      <Autocomplete
+        freeSolo
+        options={[
+          "Bucaramanga",
+          "Floridablanca",
+          "Girón",
+          "Piedecuesta",
+          "Bogotá",
+          "Medellín",
+          "Cúcuta",
+        ]}
+        inputValue={city}
+        onInputChange={(_, value) => {
+          C(value);
+          P(null);
+        }}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Ciudad / municipio"
+            required
+            margin="normal"
+            helperText="Primero selecciona o escribe el municipio de entrega"
+            slotProps={{ ...params.slotProps, inputLabel: { shrink: true } }}
+          />
+        )}
+      />
       <Field
         label="Dirección"
         value={address}
+        disabled={!city.trim()}
+        placeholder="Ej. Calle 45 #18-32"
         onChange={(e) => {
           A(e.target.value);
-          P(null);
-        }}
-      />
-      <Field
-        label="Ciudad / municipio"
-        value={city}
-        onChange={(e) => {
-          C(e.target.value);
           P(null);
         }}
       />

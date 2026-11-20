@@ -223,7 +223,12 @@ export class CustomersController {
   }
   @Get("geocode") @HttpCode(200) async searchLocation(@Req() req: any) {
     auth(req, ["admin", "client"]);
-    return geocode(text(req.query.q, 200));
+    return geocode(
+      text(req.query.q, 200),
+      undefined,
+      true,
+      req.query.city ? text(req.query.city, 100) : "",
+    );
   }
   @Patch("branches/:id") @HttpCode(200) async editBranch(@Req() req: any) {
     const u = auth(req, ["admin", "client"]),

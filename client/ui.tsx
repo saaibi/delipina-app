@@ -77,6 +77,22 @@ const theme = createTheme({
   },
   shape: { borderRadius: 10 },
   components: {
+    MuiTabs: {
+      defaultProps: { textColor: "primary", indicatorColor: "primary" },
+      styleOverrides: { indicator: { height: 3 } },
+    },
+    MuiTab: {
+      styleOverrides: {
+        root: {
+          "&.Mui-selected": {
+            backgroundColor: "#e6eee1",
+            color: "#143e2b",
+            fontWeight: 700,
+            borderRadius: "8px 8px 0 0",
+          },
+        },
+      },
+    },
     MuiButton: {
       defaultProps: { disableElevation: true },
       styleOverrides: { root: { borderRadius: 9 } },
@@ -654,67 +670,4 @@ export function NoticeDrawer({ onClose, children }: any) {
   );
 }
 
-export function suggestedDelivery(
-  settings: any,
-  business: any,
-  customerMode = false,
-) {
-  const now = dayjs().tz("America/Bogota");
-  let start = now.startOf("day");
-  for (let i = 0; i < 15; i++) {
-    const weekday = start.day() || 7;
-    const d = settings?.weeklySchedule?.[weekday] || {
-      enabled: true,
-      open: "06:00",
-      close: "18:00",
-      leadHours: settings?.leadHours ?? 2,
-    };
-    if (!d.enabled) {
-      start = start.add(1, "day").startOf("day");
-      continue;
-    }
-    const earliest = customerMode
-      ? now.add(1, "minute").second(0).millisecond(0)
-      : now
-          .add(d.leadHours ?? settings?.leadHours ?? 2, "hour")
-          .add(1, "minute")
-          .second(0)
-          .millisecond(0);
-    if (start.isBefore(earliest)) {
-      if (earliest.format("YYYY-MM-DD") !== start.format("YYYY-MM-DD")) {
-        start = start.add(1, "day").startOf("day");
-        continue;
-      }
-      start = earliest;
-    }
-    const open = start
-      .startOf("day")
-      .hour(Number(d.open.split(":")[0]))
-      .minute(Number(d.open.split(":")[1]));
-    const close = start
-      .startOf("day")
-      .hour(Number(d.close.split(":")[0]))
-      .minute(Number(d.close.split(":")[1]));
-    if (
-      customerMode &&
-      start.format("YYYY-MM-DD") === now.format("YYYY-MM-DD") &&
-      now.isAfter(close.subtract(d.leadHours ?? 2, "hour"))
-    ) {
-      start = start.add(1, "day").startOf("day");
-      continue;
-    }
-    if (start.isBefore(open)) start = open;
-    if (
-      start.add(1, "hour").isAfter(close) ||
-      (business?.closedAt && start.format("YYYY-MM-DD") === business.day)
-    ) {
-      start = start.add(1, "day").startOf("day");
-      continue;
-    }
-    return {
-      start: start.toISOString(),
-      end: start.add(1, "hour").toISOString(),
-    };
-  }
-  return { start: "", end: "" };
-}
+export { suggestedDelivery } from "../shared/delivery-window";

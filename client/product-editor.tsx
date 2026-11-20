@@ -1,3 +1,4 @@
+import { FeedbackSnackbar } from "./feedback";
 import React, { useEffect, useState, useRef } from "react";
 import Alert from "@mui/material/Alert";
 import Checkbox from "@mui/material/Checkbox";
@@ -134,7 +135,11 @@ export function ProductEditor({ product, onSaved }: any) {
         }
       }}
     >
-      {error && <Alert severity="error">{error}</Alert>}
+      <FeedbackSnackbar
+        message={error}
+        severity="error"
+        onClose={() => E("")}
+      />
       <Field
         label="Producto"
         value={name}
@@ -361,7 +366,11 @@ export function ProductCatalog({ products, onEdit, onRefresh }: any) {
   ) as any[];
   return (
     <>
-      {error && <Alert severity="error">{error}</Alert>}
+      <FeedbackSnackbar
+        message={error}
+        severity="error"
+        onClose={() => E("")}
+      />
       <Field
         required={false}
         label="Buscar producto"

@@ -1,3 +1,6 @@
+import { FeedbackSnackbar } from "./feedback";
+import { comparePlantOrders } from "../shared/plant-priority";
+import { deliveryClosing, deliveryDay } from "../shared/delivery-window";
 import { mapsUrl, localDelivery } from "../shared/routes";
 import { BranchEditor, BranchManager } from "./branches";
 import { DeliveryConfirm } from "./delivery-confirm";
@@ -113,6 +116,7 @@ function App() {
     [deliveryFilter, DF] = useState("mine"),
     [error, E] = useState(""),
     [notice, S] = useState(""),
+    [clockTick, CLOCK] = useState(0),
     [status, ST] = useState(""),
     [search, Q] = useState(""),
     [courier, CR] = useState(""),
@@ -123,6 +127,10 @@ function App() {
     [business, BD] = useState(null),
     [closings, CL] = useState([]),
     [settlements, SS] = useState([]);
+  useEffect(() => {
+    const timer = setInterval(() => CLOCK((n) => n + 1), 30000);
+    return () => clearInterval(timer);
+  }, []);
   const authEpoch = useRef(0),
     subject = useRef<string | null>(null);
   function clearData() {
@@ -657,14 +665,15 @@ function App() {
   );
   const selected = scoped
     .filter((o) => (prep && full) || !status || o.status === status)
-    .sort(
-      (a, b) =>
-        (a.status === "pending" ? -1 : a.status === "ready" && prep ? 1 : 0) -
-          (b.status === "pending"
-            ? -1
-            : b.status === "ready" && prep
-              ? 1
-              : 0) || +new Date(a.window_start) - +new Date(b.window_start),
+    .sort((a, b) =>
+      prep
+        ? comparePlantOrders(a, b)
+        : (a.status === "pending" ? -1 : a.status === "ready" && prep ? 1 : 0) -
+            (b.status === "pending"
+              ? -1
+              : b.status === "ready" && prep
+                ? 1
+                : 0) || +new Date(a.window_start) - +new Date(b.window_start),
     );
   function urgency(o) {
     const left = +new Date(o.window_end) - Date.now();
@@ -678,6 +687,14 @@ function App() {
   return (
     <>
       <PullIndicator controller={pull} />
+      <FeedbackSnackbar
+        message={error || notice}
+        severity={error ? "error" : "success"}
+        onClose={() => {
+          E("");
+          S("");
+        }}
+      />
       <PushPermissionPrompt controller={push} />
       <Navigation
         user={user}
@@ -776,18 +793,6 @@ function App() {
                   </Button>
                 )}
               </div>
-            </div>
-          )}
-          {error && (
-            <div className="alert" role="alert">
-              {error}
-              <Button onClick={() => E("")}>✕</Button>
-            </div>
-          )}
-          {notice && (
-            <div className="success" role="status">
-              {notice}
-              <Button onClick={() => S("")}>✕</Button>
             </div>
           )}
           {!online && (
@@ -1254,6 +1259,7 @@ function App() {
               product={modal.product}
               onSaved={async () => {
                 M(null);
+                S("Producto guardado");
                 await refresh();
               }}
             />
@@ -1314,6 +1320,7 @@ function App() {
             <ProductEditor
               onSaved={async () => {
                 M(null);
+                S("Producto guardado");
                 await refresh();
               }}
             />
@@ -1625,10 +1632,15 @@ function OrderForm({
   useEffect(() => {
     PAYMETHOD(cashAllowed ? "cash" : "online");
   }, [branchId, cashAllowed]);
-  const [suggested] = useState(() =>
-    suggestedDelivery(settings, business, customer(user)),
-  );
+  const [suggested] = useState(() => suggestedDelivery(settings, business));
   const [orderStart, OS] = useState(suggested.start);
+  const [orderEnd, OE] = useState(suggested.end);
+  const scheduleKey = JSON.stringify(settings?.weeklySchedule);
+  useEffect(() => {
+    const next = suggestedDelivery(settings, business);
+    OS(next.start);
+    OE(next.end);
+  }, [scheduleKey, business?.day, business?.closedAt]);
   const [priced, PR] = useState(products);
   useEffect(() => {
     let valid = true;
@@ -1696,18 +1708,27 @@ function OrderForm({
           label="Entrega desde"
           type="datetime-local"
           value={orderStart}
-          onChange={(e) => OS(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (
+              next &&
+              (!orderStart || deliveryDay(next) !== deliveryDay(orderStart))
+            )
+              OE(deliveryClosing(settings, next));
+            OS(next);
+          }}
         />
         <Field
           name="end"
           label="Hasta"
           type="datetime-local"
-          defaultValue={suggested.end}
+          value={orderEnd}
+          onChange={(e) => OE(e.target.value)}
         />
       </div>
       <p>
-        Hora de Colombia · la anticipación depende del día de entrega
-        configurado en Ajustes.
+        Hora de Colombia · Desde: hora actual más anticipación. Hasta por
+        defecto: cierre menos anticipación del día de entrega.
       </p>
       <ProductChoices
         products={priced}
@@ -1732,7 +1753,7 @@ function OrderForm({
       <RecurrenceEditor
         value={recurrence}
         onChange={RC}
-        baseDay={orderStart?.slice(0, 10)}
+        baseDay={orderStart ? deliveryDay(orderStart) : undefined}
       />
       <label className="check">
         <input name="credit" type="checkbox" /> Solicitar crédito autorizado

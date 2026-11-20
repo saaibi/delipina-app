@@ -923,3 +923,14 @@ test('Rol personalizado con Pedidos acepta y rechaza; sin módulo no puede hacer
  assert.equal((await pool.query('SELECT status FROM orders WHERE id=$1',[denied.id])).rows[0].status,'pending');
  await call('admin','patch','/users/'+users.custom.id,{permissions:['orders','plant']});await login('custom');
 });
+test('Cliente y administración deben sumar las horas de anticipación al inicio',async()=>{
+ const previous=(await call('admin','get','/settings')).body, oldNow=Date.now;
+ const day=new Date();day.setUTCDate(day.getUTCDate()+20);const key=day.toISOString().slice(0,10);
+ try {
+  const week=Object.fromEntries(Array.from({length:7},(_,i)=>[i+1,{enabled:true,open:'06:00',close:'18:00',leadHours:2}]));
+  assert.equal((await call('admin','put','/settings',{...previous,weeklySchedule:week})).status,200);
+  Date.now=()=>+new Date(key+'T08:00:00-05:00');
+  const early={...body,clientId:users.client.id,start:key+'T09:00:00-05:00',end:key+'T16:00:00-05:00',credit:false,paymentMethod:'online'};
+  for(const role of ['client','admin']) { assert.equal((await call(role,'post','/orders',early,randomUUID())).status,400);assert.equal((await call(role,'post','/orders',{...early,start:key+'T10:05:00-05:00'},randomUUID())).status,200); }
+ } finally {Date.now=oldNow;await call('admin','put','/settings',previous);}
+});

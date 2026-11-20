@@ -183,3 +183,12 @@ Clientes y administración pueden eliminar sucursales con confirmación y restau
 La búsqueda espera una dirección colombiana con placa completa (p. ej. Carrera 23 #6-68) y 1,2 segundos sin escribir. Conserva la búsqueda manual para lugares sin nomenclatura. Normaliza abreviaturas comunes, incluye municipio y país, descarta respuestas de consultas anteriores y prioriza coincidencias de calle y placa. Photon/OpenStreetMap no cubre todas las placas: los resultados sin coincidencia se identifican como aproximados y requieren confirmar el punto en el mapa.
 
 Las tarjetas de pedidos abren el detalle al seleccionarlas. Solo los pendientes muestran Aceptar/Rechazar para administración o roles personalizados con Pedidos. Las acciones de preparación y entrega, y «Ver mapa», están en el detalle.
+
+### Horarios y señales de operación
+Al crear pedidos, clientes y administración reciben Desde = hora actual + anticipación del día y Hasta por defecto = cierre − anticipación. Se respeta la apertura y se propone otro día habilitado cuando no hay rango. Cambiar el día actualiza Hasta; guardar horarios actualiza los formularios abiertos sin recargar. El servidor exige la anticipación para ambos roles y rechaza la recepción después de cierre menos anticipación.
+
+Planta coloca primero pedidos aceptados/en preparación, prioriza atrasados o próximos a salir y luego el orden de llegada. Usa acomodo por altura conservando el orden de lectura. Los estados y urgencia son chips Material UI; Próximo a salir indica que queda hasta una hora para terminar el rango. Confirmado es violeta; En reparto es azul y Asignado a ti verde.
+
+Los avisos generales, de horarios y del catálogo usan Snackbar arriba a la derecha, con cierre a los cinco segundos. Las pestañas seleccionadas usan el color primario. La cabecera no añade margen inferior.
+
+Al crear una sucursal se elige primero el municipio. La búsqueda descarta coincidencias ubicadas por el proveedor en otro municipio y exige confirmar manualmente las ubicaciones aproximadas; no inventa coordenadas para placas ausentes.

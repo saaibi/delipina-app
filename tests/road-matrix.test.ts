@@ -153,3 +153,8 @@ test("Búsqueda espera numeración completa y prioriza números coincidentes",as
  await new Promise<void>(r=>server.listen(0,"127.0.0.1",r));
  try {const found=await geocode("carrea 23 #6-68, Bucaramanga, Colombia","http://127.0.0.1:"+(server.address() as any).port,false);assert.equal(found[0].precision,"number");assert.equal(found[1].precision,"approximate");}finally{await new Promise<void>(r=>server.close(()=>r()));}
 });
+test('Búsqueda de sucursal descarta resultados de otro municipio',async()=>{
+ const server=createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({features:['Bogotá','Bucaramanga'].map(city=>({geometry:{type:'Point',coordinates:[-73.1,7.1]},properties:{street:'Calle 45',housenumber:'18-32',city}}))}));});
+ await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
+ try {const found=await geocode('Calle 45 #18-32, Bucaramanga, Colombia','http://127.0.0.1:'+(server.address() as any).port,false,'Bucaramanga');assert.equal(found.length,1);assert.equal(found[0].numberMatch,true);assert.ok(found[0].label.includes('Bucaramanga'));}finally{await new Promise<void>(r=>server.close(()=>r()));}
+});

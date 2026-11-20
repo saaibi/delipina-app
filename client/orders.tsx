@@ -1,7 +1,8 @@
+import { StatusChip, TimingChip, AssignmentChip } from "./order-badges";
 import LocalShippingOutlined from "@mui/icons-material/LocalShippingOutlined";
 import PlaceOutlined from "@mui/icons-material/PlaceOutlined";
 import ArrowForward from "@mui/icons-material/ArrowForward";
-import React from "react";
+import React, { useRef, useLayoutEffect } from "react";
 export function OrderCards({
   orders,
   userRole,
@@ -12,8 +13,37 @@ export function OrderCards({
   money,
   date,
 }: any) {
+  const grid = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (userRole !== "preparation" || !grid.current) return;
+    const host = grid.current;
+    let frame = 0;
+    const layout = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        for (const card of Array.from(host.children) as HTMLElement[]) {
+          const span = Math.ceil(
+            (card.getBoundingClientRect().height + 13) / 2,
+          );
+          const value = `span ${span}`;
+          if (card.style.gridRowEnd !== value) card.style.gridRowEnd = value;
+        }
+      });
+    };
+    const observer = new ResizeObserver(layout);
+    observer.observe(host);
+    for (const card of Array.from(host.children)) observer.observe(card);
+    layout();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      for (const card of Array.from(host.children) as HTMLElement[])
+        card.style.gridRowEnd = "";
+    };
+  }, [orders, userRole]);
   return (
     <div
+      ref={grid}
       className={
         userRole === "preparation"
           ? "orders plant-order-grid"
@@ -55,12 +85,8 @@ export function OrderCards({
                     <strong className="plant-order-number">
                       {o.client_name || "Cliente"}
                     </strong>
-                    <span className={"status " + o.status}>
-                      {labels[o.status]}
-                    </span>
-                    <span className={"urgency " + color}>
-                      {!terminal && urg}
-                    </span>
+                    <StatusChip status={o.status} />
+                    <TimingChip order={o} />
                   </div>
                   <div className="plant-window">
                     {new Date(o.window_start).toLocaleTimeString("es-CO", {
@@ -101,19 +127,7 @@ export function OrderCards({
                 }
               >
                 <div className="courier-card-top">
-                  <span
-                    className={
-                      "courier-assignment " +
-                      (!o.courier_id ? "available" : "assigned")
-                    }
-                  >
-                    <LocalShippingOutlined fontSize="small" />
-                    {!o.courier_id
-                      ? "Disponible"
-                      : o.status === "enroute"
-                        ? "En reparto"
-                        : "Asignado a ti"}
-                  </span>
+                  <AssignmentChip order={o} />
                 </div>
                 <h2>{o.client_name}</h2>
                 <div className="courier-city">
@@ -135,9 +149,8 @@ export function OrderCards({
                       timeZone: "America/Bogota",
                     })}
                   </span>
-                  <span className={"status " + o.status}>
-                    {labels[o.status]}
-                  </span>
+                  <StatusChip status={o.status} />
+                  <TimingChip order={o} />
                 </div>
                 <div className="courier-products">
                   {o.items?.slice(0, 2).map((item, i) => (
@@ -170,13 +183,9 @@ export function OrderCards({
                   }
                 >
                   <div className="orderhead">
-                    <span className={"status " + o.status}>
-                      {labels[o.status]}
-                    </span>
+                    <StatusChip status={o.status} />
 
-                    <span className={"urgency " + color}>
-                      {!terminal && urg}
-                    </span>
+                    <TimingChip order={o} />
                   </div>
                   <h2>{o.client_name}</h2>
                   <p className="compact-address">
@@ -221,7 +230,8 @@ export function OrderDetails({
   return (
     <section className="order-details">
       <div className="orderhead">
-        <span className={"status " + o.status}>{labels[o.status]}</span>
+        <StatusChip status={o.status} />
+        <TimingChip order={o} />
         <small>#{o.id.slice(0, 6)}</small>
       </div>
       {userRole === "preparation" && <h3>{o.client_name}</h3>}

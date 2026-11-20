@@ -6,9 +6,10 @@ export async function geocode(
   q: string,
   base = process.env.GEOCODER_URL || "https://photon.komoot.io/api/",
   cache = true,
+  city = "",
 ) {
   const parsed = numberedAddress(q);
-  const cacheKey = "numbered-v2:" + q;
+  const cacheKey = "city-v3:" + city + ":" + q;
   const task = queue.then(async () => {
     if (cache) {
       const old = (
@@ -47,6 +48,16 @@ export async function geocode(
     if (!Array.isArray(data.features))
       fail(503, "Respuesta de ubicación inválida");
     const results = data.features
+      .filter(
+        (f) =>
+          !city ||
+          numberKey(
+            f.properties?.city ||
+              f.properties?.town ||
+              f.properties?.municipality ||
+              "",
+          ) === numberKey(city),
+      )
       .filter(
         (f) =>
           f.geometry?.type === "Point" &&

@@ -1,3 +1,4 @@
+import { StatusChip } from "./order-badges";
 import { mapsUrl, localDelivery } from "../shared/routes";
 import IconButton from "@mui/material/IconButton";
 import MapOutlined from "@mui/icons-material/MapOutlined";
@@ -104,19 +105,7 @@ export function DeliveryRoute({
                   <span>{o.address}</span>
                   <small>{o.city}</small>
                 </div>
-                <span className={"status " + o.status}>
-                  {
-                    {
-                      ready: "Listo",
-                      preparing: "En preparación",
-                      confirmed: "Confirmado",
-                      enroute: "En camino",
-                      delivered: "Entregado",
-                      cancelled: "Cancelado",
-                      rejected: "Rechazado",
-                    }[o.status]
-                  }
-                </span>
+                <StatusChip status={o.status} />
                 {localDelivery(o.city) && (
                   <IconButton
                     component="a"

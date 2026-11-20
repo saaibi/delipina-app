@@ -83,3 +83,5 @@ Proveedor gratuito: OSRM/FOSSGIS Table API, configurable por `OSRM_BASE_URL` (so
 `DELETE /branches/:id` elimina de forma recuperable (propietario/administración), conserva pedidos y desactiva frecuencias de esa sucursal. `GET /branches?includeDeleted=true` incluye eliminadas respetando el alcance del usuario. `POST /branches/:id/restore` restaura la sucursal sin activar frecuencias. La creación de pedidos rechaza sucursales eliminadas y toma un bloqueo compartido para coordinar eliminaciones concurrentes.
 
 La búsqueda devuelve `precision` (`number` cuando coinciden calle y placa, `approximate` en otro caso) y `numberMatch`. No estima placas ausentes ni selecciona coordenadas automáticamente. Caché versionada y respuestas obsoletas descartadas en cliente.
+
+La anticipación mínima del día de entrega se valida para clientes y administración. El límite de recepción es cierre menos anticipación; las sugerencias de interfaz no sustituyen la validación del servidor. `GET /geocode` admite `city` y filtra los resultados por el municipio informado por el proveedor. Las respuestas siguen distinguiendo coincidencias de calle/placa y aproximaciones.
