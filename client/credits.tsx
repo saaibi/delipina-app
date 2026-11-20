@@ -162,6 +162,12 @@ export function CreditsView({
   );
 }
 export function CreditDetails({ client, money, onPay, canPay }: any) {
+  const [revision, RV] = useState(0);
+  useEffect(() => {
+    const handler = () => RV((n) => n + 1);
+    window.addEventListener("delipina:refresh", handler);
+    return () => window.removeEventListener("delipina:refresh", handler);
+  }, []);
   const [orders, O] = useState([]),
     [total, T] = useState(0),
     [page, PAGE] = useState(0),
@@ -186,7 +192,7 @@ export function CreditDetails({ client, money, onPay, canPay }: any) {
     return () => {
       live = false;
     };
-  }, [client.id, page, size]);
+  }, [client.id, page, size, revision]);
   return (
     <>
       {error && <Alert severity="error">{error}</Alert>}

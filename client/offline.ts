@@ -21,6 +21,7 @@ export async function api(
   options: Omit<RequestInit, "body"> & { body?: unknown } = {},
 ) {
   const r = await fetch("/api" + path, {
+    cache: "no-store",
     ...options,
     headers: { "Content-Type": "application/json", ...options.headers },
     body: options.body ? JSON.stringify(options.body) : undefined,
@@ -90,4 +91,23 @@ export async function queued() {
   return (await (await db).getAll("queue")).filter((i) => i.uid === uid);
 }
 
-export async function cachedProductImage(id:string,version:string){const key=uid+'/product-image/'+id+'/'+version;try{const r=await fetch('/api/products/'+id+'/photo');if(!r.ok)throw Error('Imagen no disponible');const blob=await r.blob();const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob)});await(await db).put('cache',data,key);return data}catch(e){const stored=await(await db).get('cache',key);if(stored)return stored;throw e}}
+export async function cachedProductImage(id: string, version: string) {
+  const key = uid + "/product-image/" + id + "/" + version;
+  try {
+    const r = await fetch("/api/products/" + id + "/photo");
+    if (!r.ok) throw Error("Imagen no disponible");
+    const blob = await r.blob();
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    await (await db).put("cache", data, key);
+    return data;
+  } catch (e) {
+    const stored = await (await db).get("cache", key);
+    if (stored) return stored;
+    throw e;
+  }
+}

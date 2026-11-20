@@ -1,9 +1,10 @@
+import { groupOrders } from "../shared/order-groups";
 import { StatusChip } from "./order-badges";
 import { mapsUrl, localDelivery, routeOrigin } from "../shared/routes";
 import IconButton from "@mui/material/IconButton";
 import MapOutlined from "@mui/icons-material/MapOutlined";
 import Chip from "@mui/material/Chip";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Alert from "@mui/material/Alert";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -16,6 +17,7 @@ export function DeliveryRoute({
   day,
   scope = "mine",
   onRefresh,
+  refreshToken,
 }: any) {
   const [data, S] = useState<any>(null),
     [error, E] = useState(""),
@@ -44,7 +46,7 @@ export function DeliveryRoute({
     return () => {
       live = false;
     };
-  }, [key]);
+  }, [key, refreshToken]);
   const run = async (fn) => {
     B(true);
     E("");
@@ -85,27 +87,36 @@ export function DeliveryRoute({
           <p>
             {g.mode === "carrier"
               ? "Envío por transportadora · no aplica mapa local."
-              : g.mode === "road"
-                ? "Orden optimizado por vías, sin tráfico en tiempo real."
-                : g.mode === "distance"
-                  ? "Orden aproximado por cercanía: servicio vial no disponible."
-                  : g.mode === "unreachable"
-                    ? "Revisa las ubicaciones: no hay conexión vial."
-                    : "Ubicaciones pendientes de completar."}
+              : g.mode === "rescheduled"
+                ? "Entrega reprogramada · conserva mensajero asignado."
+                : g.mode === "road"
+                  ? "Orden optimizado por vías, sin tráfico en tiempo real."
+                  : g.mode === "distance"
+                    ? "Orden aproximado por cercanía: servicio vial no disponible."
+                    : g.mode === "unreachable"
+                      ? "Revisa las ubicaciones: no hay conexión vial."
+                      : "Ubicaciones pendientes de completar."}
           </p>
           {g.demo && (
             <small className="demo-warning">DEMO · puntos ficticios</small>
           )}
           <ol className="route-stop-list">
-            {g.stops.map((o, n) => (
+            {groupOrders(g.stops).map(({ summary: o, members }, n) => (
               <li key={o.id} className="route-stop-row">
                 <span className="route-stop-number">{n + 1}</span>
                 <div className="route-stop-copy">
-                  <strong>{o.client_name || "Cliente"}</strong>
+                  <strong>
+                    {o.client_name || "Cliente"}
+                    {members.length > 1 ? ` · ${members.length} pedidos` : ""}
+                  </strong>
                   <span>{o.address}</span>
                   <small>{o.city}</small>
                 </div>
-                <StatusChip status={o.status} />
+                <div className="group-statuses">
+                  {[...new Set(members.map((m) => m.status))].map((status) => (
+                    <StatusChip key={status} status={status} />
+                  ))}
+                </div>
                 {localDelivery(o.city) && (
                   <IconButton
                     component="a"
@@ -291,13 +302,22 @@ export function DeliveryRoute({
 export function RouteRequests({ onRefresh, day }: any) {
   const [rows, R] = useState([]),
     [error, E] = useState("");
-  const load = () =>
-    api("/delivery-route-requests" + (day ? "?day=" + day : "")).then(R);
+  const requestVersion = useRef(0);
+  const load = async () => {
+    const revision = ++requestVersion.current;
+    const data = await api(
+      "/delivery-route-requests" + (day ? "?day=" + day : ""),
+    );
+    if (revision === requestVersion.current) R(data);
+  };
   useEffect(() => {
     load().catch((e) => E(e.message));
     const f = () => load().catch(() => {});
     window.addEventListener("delipina:refresh", f);
-    return () => window.removeEventListener("delipina:refresh", f);
+    return () => {
+      requestVersion.current++;
+      window.removeEventListener("delipina:refresh", f);
+    };
   }, [day]);
   if (!rows.length && !error) return null;
   return (
@@ -311,15 +331,24 @@ export function RouteRequests({ onRefresh, day }: any) {
               {r.courier_name} · {r.order_ids.length} pedidos
             </strong>
             <ul className="route-request-stops">
-              {r.stops?.map((o) => (
+              {groupOrders(r.stops || []).map(({ summary: o, members }) => (
                 <li key={o.id}>
                   <div className="route-request-copy">
-                    <strong>{o.client_name || "Cliente"}</strong>
+                    <strong>
+                      {o.client_name || "Cliente"}
+                      {members.length > 1 ? ` · ${members.length} pedidos` : ""}
+                    </strong>
                     <small>
                       {o.address} · {o.city}
                     </small>
                   </div>
-                  <StatusChip status={o.status} />
+                  <div className="group-statuses">
+                    {[...new Set(members.map((m) => m.status))].map(
+                      (status) => (
+                        <StatusChip key={status} status={status} />
+                      ),
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

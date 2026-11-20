@@ -73,7 +73,7 @@ export class RouteActionsController {
       fail(400, "Fecha inválida");
     const rows = (
       await pool.query(
-        `SELECT r.*,u.name courier_name,(SELECT json_agg(json_build_object('id',o.id,'status',o.status,'client_name',(SELECT name FROM users WHERE id=o.client_id),'address',COALESCE(o.delivery_address,b.address),'city',COALESCE(o.delivery_city,b.city))) FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.id=ANY(r.order_ids) AND o.courier_id IS NULL AND o.status IN ('confirmed','preparing','ready')) stops FROM delivery_runs r JOIN users u ON u.id=r.courier_id WHERE r.status='requested' AND ($1 OR r.courier_id=$2) AND ($3::date IS NULL OR r.day=$3::date) ORDER BY r.created_at`,
+        `SELECT r.*,u.name courier_name,(SELECT json_agg(json_build_object('id',o.id,'client_id',o.client_id,'status',o.status,'client_name',(SELECT name FROM users WHERE id=o.client_id),'address',COALESCE(o.delivery_address,b.address),'city',COALESCE(o.delivery_city,b.city))) FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.id=ANY(r.order_ids) AND o.courier_id IS NULL AND o.status IN ('confirmed','preparing','ready')) stops FROM delivery_runs r JOIN users u ON u.id=r.courier_id WHERE r.status='requested' AND ($1 OR r.courier_id=$2) AND ($3::date IS NULL OR r.day=$3::date) ORDER BY r.created_at`,
         [u.role === "admin", u.id, req.query.day || null],
       )
     ).rows;

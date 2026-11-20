@@ -208,3 +208,10 @@ Las solicitudes muestran solo pedidos que siguen disponibles. Asignar un pedido 
 El comprobante al confirmar entrega tiene un campo para cargar imagen y cámara integrada a la derecha. En móvil, la cámara solicita captura posterior mediante el selector nativo; la carga normal mantiene la galería disponible. La foto sigue siendo obligatoria si el mensajero recibe dinero. La apertura real de cámara depende del navegador y sus permisos.
 
 Los enlaces de navegación de pedidos y paradas incluyen el origen de reparto configurado, preferentemente sus coordenadas, en vez de depender de la ubicación actual del teléfono.
+
+### Agrupar pedidos y reprogramar entregas fallidas
+Las tarjetas agrupan al mismo cliente y dirección dentro de la fecha/filtros elegidos. El resumen suma cantidades y muestra los estados y número de pedidos; el detalle permite revisar y actuar sobre cada pedido por separado. La agrupación no fusiona facturas, pagos ni estados. Planta utiliza una clave de agrupación opaca sin recibir la dirección y muestra un subtotal de productos por preparar cuando hay pedidos confirmados/en preparación. Las paradas y solicitudes también compactan destinos repetidos.
+
+Registrar una entrega fallida cambia a Rechazado y conserva mensajero, factura y crédito. Reprogramar una entrega fallida la devuelve a En camino, actualiza la jornada de entrega y conserva la asignación; exige mensajero activo. Los rechazos de pedidos sin aceptar no se convierten en entregas. Los motivos quedan en trazabilidad. Los recorridos actualizan sus paradas para no mostrar una entrega trasladada a otra jornada.
+
+Recargar fuerza consultas sin caché HTTP, actualiza recorridos aunque no cambien los IDs y comparte clics simultáneos. Las respuestas antiguas no sobrescriben la última actualización; la cartera y solicitudes se vuelven a consultar mediante la invalidación del módulo. La interfaz indica cuándo está actualizando y confirma la recarga.

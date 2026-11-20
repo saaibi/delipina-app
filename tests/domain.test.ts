@@ -944,9 +944,9 @@ test('Pedidos y saldo: paginación del servidor conserva alcance y no repite fil
 test('Entrega fallida permite administración y mensajero asignado, pero protege estado y propiedad',async()=>{
  const o=(await pool.query("SELECT id,courier_id FROM orders WHERE status='enroute' AND courier_id=$1 LIMIT 1",[users.courier.id])).rows[0];assert.ok(o);
  assert.equal((await call('admin','post','/orders/'+o.id+'/action',{action:'failed',reason:'No abrieron la puerta'})).status,200);
- assert.equal((await call('courier','post','/orders/'+o.id+'/action',{action:'failed',reason:'Cliente no responde'})).status,200);
+ assert.equal((await call('courier','post','/orders/'+o.id+'/action',{action:'failed',reason:'Cliente no responde'})).status,409);
  assert.equal((await call('courier2','post','/orders/'+o.id+'/action',{action:'failed',reason:'No autorizado'})).status,404);
- const saved=(await pool.query('SELECT reason,status FROM orders WHERE id=$1',[o.id])).rows[0];assert.equal(saved.reason,'Cliente no responde');assert.equal(saved.status,'enroute');
+ const saved=(await pool.query('SELECT reason,status FROM orders WHERE id=$1',[o.id])).rows[0];assert.equal(saved.reason,'No abrieron la puerta');assert.equal(saved.status,'rejected');
  const ready=(await pool.query("SELECT id FROM orders WHERE status='ready' LIMIT 1")).rows[0];assert.equal((await call('admin','post','/orders/'+ready.id+'/action',{action:'failed',reason:'Aún no sale'})).status,409);
 });
 test('Asignación parcial retira pedidos de solicitudes y aprobar conserva únicamente disponibles',async()=>{
@@ -960,4 +960,19 @@ test('Asignación parcial retira pedidos de solicitudes y aprobar conserva únic
  assert.equal((await pool.query('SELECT courier_id FROM orders WHERE id=$1',[list[0]])).rows[0].courier_id,users.courier2.id);
  assert.equal((await pool.query('SELECT courier_id FROM orders WHERE id=$1',[list[1]])).rows[0].courier_id,users.courier.id);
  assert.ok(!(await call('admin','get','/delivery-route-requests')).body.some(r=>r.id===requested.body.id));
+});
+test('Entrega fallida pasa a rechazado; reprogramar recupera En camino, mensajero, factura y crédito',async()=>{
+ await pool.query('UPDATE users SET credit_limit=credit_used+100000000 WHERE id=$1',[users.client.id]);
+ const r=await call('client','post','/orders',{...body,credit:true},randomUUID());assert.equal(r.status,200,JSON.stringify(r.body));const id=r.body.id;
+ for(const action of ['confirm','prepare','ready'])assert.equal((await call('admin','post','/orders/'+id+'/action',{action})).status,200);
+ await call('admin','post','/orders/'+id+'/action',{action:'assign',courierId:users.courier.id});await call('admin','post','/orders/'+id+'/action',{action:'depart'});
+ const invoice=(await pool.query('SELECT * FROM invoices WHERE order_id=$1',[id])).rows[0],credit=(await pool.query('SELECT credit_used FROM users WHERE id=$1',[users.client.id])).rows[0].credit_used;
+ assert.equal((await call('courier','post','/orders/'+id+'/action',{action:'failed',reason:'Local cerrado'})).status,200);
+ const failed=(await pool.query('SELECT * FROM orders WHERE id=$1',[id])).rows[0];assert.equal(failed.status,'rejected');assert.ok(failed.delivery_failed_at);assert.equal(failed.courier_id,users.courier.id);
+ const start=new Date(body.start);start.setUTCDate(start.getUTCDate()+1);const end=new Date(+start+3600000);
+ const scheduled=await call('admin','post','/orders/'+id+'/action',{action:'reschedule',start:start.toISOString(),end:end.toISOString()});assert.equal(scheduled.status,200,JSON.stringify(scheduled.body));
+ const resumed=(await pool.query('SELECT * FROM orders WHERE id=$1',[id])).rows[0];assert.equal(resumed.status,'enroute');assert.equal(resumed.courier_id,users.courier.id);assert.equal(resumed.delivery_failed_at,null);
+ assert.equal((await pool.query('SELECT id FROM invoices WHERE order_id=$1',[id])).rows[0].id,invoice.id);assert.equal((await pool.query('SELECT credit_used FROM users WHERE id=$1',[users.client.id])).rows[0].credit_used,credit);
+ assert.ok((await pool.query("SELECT 1 FROM delivery_runs WHERE courier_id=$1 AND status='enroute' AND $2=ANY(order_ids)",[users.courier.id,id])).rowCount);
+ const notes=(await pool.query("SELECT details FROM audit WHERE order_id=$1 AND action='failed'",[id])).rows;assert.ok(notes.some(a=>a.details.reason==='Local cerrado'));
 });

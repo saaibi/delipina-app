@@ -1,3 +1,8 @@
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import ExpandMore from "@mui/icons-material/ExpandMore";
+import { StatusChip } from "./order-badges";
 import Switch from "@mui/material/Switch";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import { FeedbackSnackbar } from "./feedback";
@@ -134,6 +139,8 @@ function App() {
     const timer = setInterval(() => CLOCK((n) => n + 1), 30000);
     return () => clearInterval(timer);
   }, []);
+  const refreshVersion = useRef(0);
+  const [refreshToken, REFRESHED] = useState(0);
   const authEpoch = useRef(0),
     subject = useRef<string | null>(null);
   function clearData() {
@@ -185,7 +192,10 @@ function App() {
   }
   const pull = usePullRefresh(
     async () => {
-      await run(() => refresh());
+      await run(async () => {
+        await refresh();
+        S("Información actualizada");
+      });
     },
     !user || !!modal || drawer,
   );
@@ -278,8 +288,13 @@ function App() {
   async function refresh(u = user) {
     if (!u || subject.current !== u.id) return;
     const epoch = authEpoch.current;
+    const revision = ++refreshVersion.current;
     const guard = (setter: any) => (value: any) => {
-      if (epoch === authEpoch.current && subject.current === u.id)
+      if (
+        epoch === authEpoch.current &&
+        subject.current === u.id &&
+        revision === refreshVersion.current
+      )
         setter(value);
     };
     setOfflineUser(u.id);
@@ -290,7 +305,11 @@ function App() {
         : cached("/orders")
       ).then((value) => {
         guard(O)(value);
-        if (epoch === authEpoch.current && subject.current === u.id)
+        if (
+          epoch === authEpoch.current &&
+          subject.current === u.id &&
+          revision === refreshVersion.current
+        )
           setModal((prev) =>
             prev?.kind === "orderDetail"
               ? {
@@ -327,8 +346,17 @@ function App() {
         cached("/payments").then(guard(PAY)),
         cached("/settlements").then(guard(SS)),
       );
-    await Promise.all(tasks);
+    const results = await Promise.allSettled(tasks);
+    if (
+      revision !== refreshVersion.current ||
+      epoch !== authEpoch.current ||
+      subject.current !== u.id
+    )
+      return;
+    REFRESHED((n) => n + 1);
     window.dispatchEvent(new Event("delipina:refresh"));
+    const failure = results.find((r) => r.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
   }
   useEffect(() => {
     (async () => {
@@ -498,14 +526,16 @@ function App() {
             </Button>
           </>
         )}
-      {admin && ["confirmed", "preparing", "ready"].includes(o.status) && (
-        <Button
-          className="neutral"
-          onClick={() => M({ kind: "assign", order: o })}
-        >
-          {o.courier_id ? "Reasignar mensajero" : "Asignar mensajero"}
-        </Button>
-      )}
+      {admin &&
+        (["confirmed", "preparing", "ready"].includes(o.status) ||
+          (o.status === "rejected" && o.delivery_failed_at)) && (
+          <Button
+            className="neutral"
+            onClick={() => M({ kind: "assign", order: o })}
+          >
+            {o.courier_id ? "Reasignar mensajero" : "Asignar mensajero"}
+          </Button>
+        )}
       {!prep && localDelivery(o.city) && (
         <Button
           className="neutral"
@@ -558,14 +588,16 @@ function App() {
             </Button>
           </>
         )}
-      {admin && !["delivered", "cancelled", "rejected"].includes(o.status) && (
-        <Button
-          className="neutral"
-          onClick={() => M({ kind: "reschedule", order: o })}
-        >
-          Reprogramar
-        </Button>
-      )}
+      {admin &&
+        !["delivered", "cancelled"].includes(o.status) &&
+        (o.status !== "rejected" || o.delivery_failed_at) && (
+          <Button
+            className="neutral"
+            onClick={() => M({ kind: "reschedule", order: o })}
+          >
+            Reprogramar
+          </Button>
+        )}
     </div>
   );
   if (loading)
@@ -737,6 +769,7 @@ function App() {
               <Button
                 className="neutral"
                 aria-label="Actualizar módulo"
+                disabled={pull.busy}
                 onClick={() => pull.refresh()}
               >
                 ↻
@@ -791,6 +824,7 @@ function App() {
                 <Button
                   className="neutral"
                   aria-label="Actualizar módulo"
+                  disabled={pull.busy}
                   onClick={() => pull.refresh()}
                 >
                   ↻
@@ -970,6 +1004,7 @@ function App() {
               {delivery && (
                 <DeliveryRoute
                   orders={orders}
+                  refreshToken={refreshToken}
                   scope={deliveryFilter}
                   onRefresh={refresh}
                   day={currentDay}
@@ -986,6 +1021,9 @@ function App() {
               )}
               <OrderCards
                 orders={selected}
+                onSelectGroup={(members) =>
+                  M({ kind: "orderGroup", orderIds: members.map((o) => o.id) })
+                }
                 userRole={prep ? "preparation" : user.role}
                 actionsFor={prep ? () => null : quickActionsFor}
                 urgency={urgency}
@@ -1071,6 +1109,7 @@ function App() {
               : {
                   reject: "Revisar rechazo",
                   failed: "Entrega fallida",
+                  orderGroup: "Pedidos del cliente",
                   assign: modal.order?.courier_id
                     ? "Reasignar mensajero"
                     : "Asignar mensajero",
@@ -1508,6 +1547,39 @@ function App() {
               canPay={admin || delivery}
               onPay={(client) => M({ kind: "payment", client })}
             />
+          )}
+          {modal.kind === "orderGroup" && (
+            <section>
+              {modal.orderIds.map((id, n) => {
+                const o = orders.find((o) => o.id === id);
+                return (
+                  o && (
+                    <Accordion
+                      key={id}
+                      defaultExpanded={modal.orderIds.length === 1}
+                    >
+                      <AccordionSummary expandIcon={<ExpandMore />}>
+                        <div className="group-detail-heading">
+                          <strong>Pedido {n + 1}</strong>
+                          <StatusChip status={o.status} />
+                          <small>{date(o.window_start)}</small>
+                        </div>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        <OrderDetails
+                          order={o}
+                          userRole={prep ? "preparation" : user.role}
+                          actions={actionsFor(o)}
+                          labels={labels}
+                          money={money}
+                          date={date}
+                        />
+                      </AccordionDetails>
+                    </Accordion>
+                  )
+                );
+              })}
+            </section>
           )}
           {modal.kind === "orderDetail" && (
             <OrderDetails

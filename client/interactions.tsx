@@ -1,3 +1,4 @@
+import { singleFlight } from "../shared/refresh-task";
 import React, { useEffect, useRef, useState } from "react";
 import CircularProgress from "@mui/material/CircularProgress";
 import Refresh from "@mui/icons-material/Refresh";
@@ -15,6 +16,16 @@ export function usePullRefresh(refresh: () => Promise<any>, blocked: boolean) {
     action = useRef(refresh),
     disabled = useRef(blocked),
     drag = useRef<any>(null);
+  const perform = useRef<() => Promise<any>>(null);
+  if (!perform.current)
+    perform.current = singleFlight(async () => {
+      B(true);
+      try {
+        return await action.current();
+      } finally {
+        B(false);
+      }
+    });
   action.current = refresh;
   disabled.current = blocked;
   useEffect(() => {
@@ -48,8 +59,7 @@ export function usePullRefresh(refresh: () => Promise<any>, blocked: boolean) {
       drag.current = null;
       D(0);
       if (p?.distance >= 65) {
-        B(true);
-        Promise.resolve(action.current()).finally(() => B(false));
+        void perform.current().catch(() => {});
       }
     };
     window.addEventListener("touchstart", start, { passive: true });
@@ -64,14 +74,7 @@ export function usePullRefresh(refresh: () => Promise<any>, blocked: boolean) {
   return {
     distance,
     busy,
-    refresh: async () => {
-      B(true);
-      try {
-        await action.current();
-      } finally {
-        B(false);
-      }
-    },
+    refresh: () => perform.current(),
   };
 }
 export function PullIndicator({ controller: p }: any) {

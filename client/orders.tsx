@@ -1,3 +1,4 @@
+import { groupOrders } from "../shared/order-groups";
 import { StatusChip, TimingChip, AssignmentChip } from "./order-badges";
 import LocalShippingOutlined from "@mui/icons-material/LocalShippingOutlined";
 import PlaceOutlined from "@mui/icons-material/PlaceOutlined";
@@ -7,6 +8,7 @@ export function OrderCards({
   orders,
   userRole,
   onSelect,
+  onSelectGroup,
   actionsFor,
   urgency,
   labels,
@@ -52,7 +54,103 @@ export function OrderCards({
             : "orders order-grid-compact"
       }
     >
-      {orders.map((o) => {
+      {groupOrders(orders).map(({ key: groupKey, members, summary: o }) => {
+        const preparing = members.filter((m) =>
+          ["confirmed", "preparing"].includes(m.status),
+        );
+        const visibleItems =
+          userRole === "preparation" && preparing.length
+            ? groupOrders(preparing)[0].summary.items
+            : o.items;
+        if (members.length > 1)
+          return (
+            <article
+              key={groupKey}
+              className={
+                "order grouped-order " +
+                (userRole === "preparation" ? "plant-order" : "compact-order")
+              }
+            >
+              {members.some((m) => m.demo_batch_id) && (
+                <small className="demo-warning">
+                  {userRole === "preparation"
+                    ? "Incluye demo"
+                    : "Incluye pedidos de demostración"}
+                </small>
+              )}
+              <button
+                type="button"
+                className={
+                  userRole === "preparation"
+                    ? "plant-card-main"
+                    : "compact-order-main"
+                }
+                onClick={() => onSelectGroup(members)}
+                aria-label={`Ver ${members.length} pedidos de ${o.client_name}`}
+              >
+                <div className="orderhead">
+                  <strong>{o.client_name}</strong>
+                  <small>{members.length} pedidos</small>
+                  <TimingChip order={o} />
+                </div>
+                {userRole !== "preparation" && (
+                  <p className="compact-address">
+                    {o.address} · {o.city}
+                  </p>
+                )}
+                <div className="group-statuses">
+                  {[...new Set(members.map((m) => m.status))].map((status) => (
+                    <span key={status}>
+                      <StatusChip status={status} />
+                      <small>
+                        ×{members.filter((m) => m.status === status).length}
+                      </small>
+                    </span>
+                  ))}
+                </div>
+                <small className="group-due">
+                  Primer vencimiento: {date(o.window_end)}
+                </small>
+                {userRole === "preparation" && (
+                  <small>
+                    {preparing.length
+                      ? "Productos por preparar"
+                      : "Productos de estos pedidos"}
+                  </small>
+                )}
+                <ul className="items plant-items grouped-items">
+                  {visibleItems.map((i, n) => (
+                    <li key={n}>
+                      <strong>{Number(i.quantity)}</strong>
+                      <span>{i.name}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="compact-summary">
+                  <span>Ver detalle de los pedidos</span>
+                  {userRole !== "preparation" && (
+                    <strong>{money(o.total)}</strong>
+                  )}
+                </div>
+              </button>
+              {userRole !== "preparation" &&
+                members
+                  .filter((m) => m.status === "pending")
+                  .map((m, n) => {
+                    const actions = actionsFor(m);
+                    return actions ? (
+                      <div className="group-quick-actions" key={m.id}>
+                        <small>
+                          Pedido {members.indexOf(m) + 1} ·{" "}
+                          {date(m.window_start)} · {money(m.total)}
+                        </small>
+                        {actions}
+                      </div>
+                    ) : null;
+                  })}
+            </article>
+          );
+
         const [color, urg] = urgency(o);
         const terminal = ["delivered", "cancelled", "rejected"].includes(
           o.status,

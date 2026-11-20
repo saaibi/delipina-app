@@ -54,6 +54,23 @@ export class OrdersController {
       )
     ).rows.filter((o) => orderVisible(u, o));
     return rows.map((o) => {
+      o.delivery_group = createHash("sha256")
+        .update(
+          JSON.stringify([
+            o.client_id,
+            (o.address || "")
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase()
+              .replace(/[^a-z0-9]/g, ""),
+            (o.city || "")
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase()
+              .replace(/[^a-z0-9]/g, ""),
+          ]),
+        )
+        .digest("hex");
       if (
         u.role === "preparation" ||
         (u.role === "custom" && !hasModule(u, "orders"))
@@ -70,6 +87,7 @@ export class OrdersController {
         } = o;
         return {
           id,
+          delivery_group: o.delivery_group,
           client_name,
           operation_day,
           status,
@@ -272,7 +290,10 @@ export class OrdersController {
         await notify(c, o, "Mensajero tomó un pedido", ["admin"]);
       } else if (b.action === "assign") {
         if (!admin) fail(403, "Solo administración");
-        if (!["confirmed", "preparing", "ready"].includes(status))
+        if (
+          !["confirmed", "preparing", "ready"].includes(status) &&
+          !(status === "rejected" && o.delivery_failed_at)
+        )
           fail(409, "Estado no asignable");
         const courier = (
           await c.query(
@@ -286,14 +307,67 @@ export class OrdersController {
           b.courierId,
         ]);
       } else if (b.action === "reschedule") {
-        if (!admin || ["delivered", "cancelled", "rejected"].includes(status))
+        if (
+          !admin ||
+          ["delivered", "cancelled"].includes(status) ||
+          (status === "rejected" && !o.delivery_failed_at)
+        )
           fail(403, "No se puede reprogramar");
         const next = await validateDeliveryWindow(c, b.start, b.end);
-        status = o.status === "pending" ? "pending" : "confirmed";
+        const resume =
+          o.status === "enroute" ||
+          (o.status === "rejected" && !!o.delivery_failed_at);
+        if (
+          resume &&
+          !(
+            await c.query(
+              "SELECT 1 FROM users WHERE id=$1 AND role='courier' AND active",
+              [o.courier_id],
+            )
+          ).rowCount
+        )
+          fail(
+            409,
+            "Asigna un mensajero activo antes de reprogramar la entrega",
+          );
+        status = resume
+          ? "enroute"
+          : o.status === "pending"
+            ? "pending"
+            : "confirmed";
         await c.query(
-          "UPDATE orders SET window_start=$2,window_end=$3,status=$4,courier_id=NULL,reason=NULL WHERE id=$1",
-          [o.id, next.start, next.end, status],
+          "UPDATE orders SET window_start=$2,window_end=$3,operation_day=$4,status=$5,courier_id=CASE WHEN $6 THEN courier_id ELSE NULL END,reason=NULL,delivery_failed_at=NULL WHERE id=$1",
+          [o.id, next.start, next.end, next.day, status, resume],
         );
+        if (resume) {
+          const active = (
+            await c.query(
+              "SELECT 1 FROM delivery_runs WHERE courier_id=$1 AND day=$2 AND status='enroute' AND $3=ANY(order_ids)",
+              [o.courier_id, next.day, o.id],
+            )
+          ).rowCount;
+          if (!active) {
+            const stop = (
+              await c.query(
+                "SELECT o.id,o.status,COALESCE(o.delivery_address,b.address) address,COALESCE(o.delivery_city,b.city) city,COALESCE(o.delivery_lat,b.lat) lat,COALESCE(o.delivery_lng,b.lng) lng,(SELECT name FROM users WHERE id=o.client_id) client_name FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.id=$1",
+                [o.id],
+              )
+            ).rows[0];
+            await c.query(
+              "INSERT INTO delivery_runs(id,courier_id,day,status,order_ids,manual,started_at,snapshot) VALUES($1,$2,$3,'enroute',$4,true,now(),$5)",
+              [
+                randomUUID(),
+                o.courier_id,
+                next.day,
+                [o.id],
+                {
+                  stops: [stop],
+                  mode: metropolitan(stop.city) ? "rescheduled" : "carrier",
+                },
+              ],
+            );
+          }
+        }
         await notify(c, o, "Pedido reprogramado", [
           "client",
           "courier",
@@ -325,10 +399,11 @@ export class OrdersController {
             409,
             "Solo puedes registrar entrega fallida cuando el pedido está en camino",
           );
-        await c.query("UPDATE orders SET reason=$2 WHERE id=$1", [
-          o.id,
-          text(b.reason),
-        ]);
+        status = "rejected";
+        await c.query(
+          "UPDATE orders SET reason=$2,status='rejected',delivery_failed_at=now() WHERE id=$1",
+          [o.id, text(b.reason)],
+        );
         await notify(c, o, "Entrega fallida: requiere revisión", ["admin"]);
       } else {
         const transitions = {
@@ -427,8 +502,14 @@ export class OrdersController {
         );
       }
       await c.query(
-        "INSERT INTO audit(order_id,actor_id,action,next_status) VALUES($1,$2,$3,$4)",
-        [o.id, u.id, b.action, status],
+        "INSERT INTO audit(order_id,actor_id,action,next_status,details) VALUES($1,$2,$3,$4,$5)",
+        [
+          o.id,
+          u.id,
+          b.action,
+          status,
+          { reason: b.reason || null, previousStatus: o.status },
+        ],
       );
       return { ok: true };
     });

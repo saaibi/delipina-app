@@ -90,6 +90,10 @@ La anticipación mínima del día de entrega se valida para clientes y administr
 
 `GET /delivery-route-requests?day=YYYY-MM-DD` filtra las solicitudes por jornada y agrega `client_name` a las paradas. El filtro de fecha en Pedidos y Planta corresponde a `operation_day`.
 
-`POST /orders/:id/action` con `action:failed` permite administración o mensajero asignado; requiere estado `enroute` y motivo. Otros mensajeros no pueden registrar la incidencia. El estado permanece en reparto.
+`POST /orders/:id/action` con `action:failed` permite administración o mensajero asignado; requiere estado `enroute` y motivo. Otros mensajeros no pueden registrar la incidencia. El estado pasa a `rejected` y se guarda `delivery_failed_at`, conservando mensajero y factura.
 
 El listado de solicitudes filtra las paradas asignadas o no disponibles, recalcula `order_ids` y oculta solicitudes vacías. Aprobar una solicitud parcial mantiene los bloqueos de pedidos y reduce el recorrido a los restantes; si no queda ninguno devuelve 409. Se conserva el registro de la solicitud y la trazabilidad de la decisión.
+
+`reschedule` sobre una entrega fallida vuelve a `enroute`, conserva un mensajero activo, actualiza `operation_day` y limpia la incidencia vigente. Mantiene la factura y la reserva de crédito sin duplicarlas. El historial conserva el motivo original de fallo. La migración 018 agrega el indicador de fallo para distinguirlo de un rechazo inicial.
+
+Los pedidos incluyen `delivery_group`, una clave opaca del cliente y dirección para agrupación visual. La proyección de Planta conserva esa clave sin exponer dirección o precios. Las operaciones continúan recibiendo el ID de cada pedido individual.

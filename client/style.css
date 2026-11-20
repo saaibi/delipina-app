@@ -1731,3 +1731,14 @@ footer {
 .route-request-stops .route-request-copy {display:grid;gap:3px;flex:1;min-width:0;font-size:12px;}
 .route-request-stops small {font-size:11px;color:#68775f;overflow-wrap:anywhere;}
 .route-request-card .actions {margin-top:10px;}
+
+.group-statuses {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0;}
+.group-statuses>span {display:flex;align-items:center;gap:3px;}
+.group-statuses small,.group-due {font-size:11px;color:#65745e;}
+.grouped-items {margin:10px 0;padding:0;list-style:none;}
+.grouped-items li {display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;border-bottom:1px solid #e8eddf;}
+.grouped-items li strong {min-width:28px;border-radius:6px;background:#f1f4e8;text-align:center;padding:4px;}
+.group-quick-actions {border-top:1px solid #e8eddf;padding-top:8px;}
+.group-quick-actions>small {display:block;padding:0 14px;font-size:11px;color:#65745e;}
+.group-detail-heading {display:flex;align-items:center;flex-wrap:wrap;gap:8px;}
+.group-detail-heading small {font-size:11px;color:#65745e;}

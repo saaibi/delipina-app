@@ -25,7 +25,7 @@ export class DeliveryRoutesController {
       deadline = Date.now() + 10000;
     const all = (
       await pool.query(
-        "SELECT o.id,o.courier_id,o.status,o.window_start,o.demo_batch_id,COALESCE(o.delivery_address,b.address) address,COALESCE(o.delivery_city,b.city) city,b.id branch_id,COALESCE(o.delivery_lat,b.lat) lat,COALESCE(o.delivery_lng,b.lng) lng,b.location_source,(SELECT name FROM users WHERE id=o.client_id) client_name FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.operation_day=$1 AND (o.courier_id=$2 OR o.courier_id IS NULL) ORDER BY o.created_at,o.id",
+        "SELECT o.id,o.client_id,o.courier_id,o.status,o.window_start,o.demo_batch_id,COALESCE(o.delivery_address,b.address) address,COALESCE(o.delivery_city,b.city) city,b.id branch_id,COALESCE(o.delivery_lat,b.lat) lat,COALESCE(o.delivery_lng,b.lng) lng,b.location_source,(SELECT name FROM users WHERE id=o.client_id) client_name FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.operation_day=$1 AND (o.courier_id=$2 OR o.courier_id IS NULL) ORDER BY o.created_at,o.id",
         [day, u.id],
       )
     ).rows;
@@ -93,13 +93,15 @@ export class DeliveryRoutesController {
         r.status === "enroute"
           ? {
               ...r.snapshot,
-              stops: (r.snapshot.stops || stops).map((s) => ({
-                ...s,
-                client_name:
-                  stops.find((o) => o.id === s.id)?.client_name ||
-                  s.client_name,
-                status: stops.find((o) => o.id === s.id)?.status || s.status,
-              })),
+              stops: (r.snapshot.stops || stops)
+                .filter((s) => stops.some((o) => o.id === s.id))
+                .map((s) => ({
+                  ...s,
+                  client_name:
+                    stops.find((o) => o.id === s.id)?.client_name ||
+                    s.client_name,
+                  status: stops.find((o) => o.id === s.id)?.status || s.status,
+                })),
             }
           : await decorate(stops);
       if (r.status !== "enroute")
