@@ -1096,3 +1096,5 @@ footer {
 .route-planner .MuiFormControlLabel-root{flex-direction:row!important;align-items:center!important;justify-content:flex-start!important}.route-planner .MuiFormControlLabel-label{text-align:left}.route-planner li .neutral{padding:8px 12px}
 
 .plant-workspace-full{width:100%;max-width:none!important;margin:0!important;box-sizing:border-box;min-height:100dvh}.plant-fullscreen .heading{position:sticky;top:0;background:#f4f6f1;z-index:2;padding-top:12px}.plant-fullscreen .workspace{margin-left:0!important}
+
+.plant-focus-controls{display:flex;justify-content:flex-end;position:sticky;top:0;z-index:2;padding:8px 0;background:#f4f6f1}.plant-workspace-full{padding-top:8px}.plant-workspace-full .orders{margin-top:8px}

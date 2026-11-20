@@ -629,14 +629,15 @@ function App() {
         : new Date(o.window_start).toLocaleDateString("en-CA", {
             timeZone: "America/Bogota",
           })) === currentDay &&
-      (!search ||
+      ((prep && full) ||
+        !search ||
         o.client_name?.toLowerCase().includes(search.toLowerCase())) &&
-      (!courier || o.courier_id === courier) &&
+      (prep || !courier || o.courier_id === courier) &&
       (view !== "deliveries" ||
         (deliveryFilter === "mine" ? o.courier_id === user.id : !o.courier_id)),
   );
   const selected = scoped
-    .filter((o) => !status || o.status === status)
+    .filter((o) => (prep && full) || !status || o.status === status)
     .sort(
       (a, b) =>
         (a.status === "pending" ? -1 : a.status === "ready" && prep ? 1 : 0) -
@@ -687,60 +688,68 @@ function App() {
             prep && full ? "workspace plant-workspace-full" : "workspace"
           }
         >
-          <div className="heading">
-            <div>
-              <small>DELIPIÑA / OPERACIÓN</small>
-              <h1>
-                {view === "payments"
-                  ? "Cartera de clientes"
-                  : view === "recurrences"
-                    ? "Frecuencias"
-                    : view === "audit"
-                      ? "Trazabilidad"
-                      : view === "days"
-                        ? "Jornadas"
-                        : view === "analytics"
-                          ? "Inteligencia de negocio"
-                          : view === "users"
-                            ? "Usuarios"
-                            : view === "catalog"
-                              ? "Catálogo"
-                              : view === "settings"
-                                ? "Ajustes"
-                                : prep
-                                  ? plantAdmin
-                                    ? "Pedidos de planta"
-                                    : "Planta"
-                                  : client
-                                    ? "Mis pedidos"
-                                    : delivery
-                                      ? "Entregas"
-                                      : "Pedidos del día"}
-              </h1>
-              <p>
-                {prep
-                  ? "Cantidades claras, entregas a tiempo."
-                  : client
-                    ? "Organiza tu próxima entrega."
-                    : "Cada pedido, en su momento."}
-              </p>
-            </div>
-            {(admin || plantAdmin || client) && view === "orders" && (
-              <Button onClick={() => M("order")}>＋ Crear pedido</Button>
-            )}
-            <Button
-              className="neutral"
-              aria-label="Actualizar módulo"
-              onClick={() => pull.refresh()}
-            >
-              ↻
-            </Button>
-            {prep && (
-              <Button className="neutral" onClick={() => F(!full)}>
-                {full ? "Minimizar" : "Maximizar"}
+          {prep && full ? (
+            <div className="plant-focus-controls">
+              <Button className="neutral" onClick={() => F(false)}>
+                Minimizar
               </Button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="heading">
+              <div>
+                <small>DELIPIÑA / OPERACIÓN</small>
+                <h1>
+                  {view === "payments"
+                    ? "Cartera de clientes"
+                    : view === "recurrences"
+                      ? "Frecuencias"
+                      : view === "audit"
+                        ? "Trazabilidad"
+                        : view === "days"
+                          ? "Jornadas"
+                          : view === "analytics"
+                            ? "Inteligencia de negocio"
+                            : view === "users"
+                              ? "Usuarios"
+                              : view === "catalog"
+                                ? "Catálogo"
+                                : view === "settings"
+                                  ? "Ajustes"
+                                  : prep
+                                    ? plantAdmin
+                                      ? "Pedidos de planta"
+                                      : "Planta"
+                                    : client
+                                      ? "Mis pedidos"
+                                      : delivery
+                                        ? "Entregas"
+                                        : "Pedidos del día"}
+                </h1>
+                <p>
+                  {prep
+                    ? "Cantidades claras, entregas a tiempo."
+                    : client
+                      ? "Organiza tu próxima entrega."
+                      : "Cada pedido, en su momento."}
+                </p>
+              </div>
+              {(admin || plantAdmin || client) && view === "orders" && (
+                <Button onClick={() => M("order")}>＋ Crear pedido</Button>
+              )}
+              <Button
+                className="neutral"
+                aria-label="Actualizar módulo"
+                onClick={() => pull.refresh()}
+              >
+                ↻
+              </Button>
+              {prep && (
+                <Button className="neutral" onClick={() => F(!full)}>
+                  {full ? "Minimizar" : "Maximizar"}
+                </Button>
+              )}
+            </div>
+          )}
           {error && (
             <div className="alert" role="alert">
               {error}
@@ -821,10 +830,12 @@ function App() {
                   <Tab value="available" label="Disponibles" />
                 </Tabs>
               )}
-              <p className="current-day">
-                Jornada: {currentDay.split("-").reverse().join("/")} · Solo
-                pedidos de esta jornada
-              </p>
+              {!(prep && full) && (
+                <p className="current-day">
+                  Jornada: {currentDay.split("-").reverse().join("/")} · Solo
+                  pedidos de esta jornada
+                </p>
+              )}
               {!client && !prep && (
                 <div className="stats">
                   {[
@@ -848,54 +859,59 @@ function App() {
                   ))}
                 </div>
               )}
-              <div className="toolbar">
-                {delivery && (
-                  <GPS
-                    active={orders.some(
-                      (o) => o.courier_id === user.id && o.status === "enroute",
-                    )}
-                    onError={E}
-                  />
-                )}
-                {admin && (
-                  <>
-                    <Field
-                      required={false}
-                      label="Buscar cliente"
-                      value={search}
-                      onChange={(e) => Q(e.target.value)}
-                      sx={{ m: 0, minWidth: 170, flex: 1 }}
+              {!(prep && full) && (
+                <div className="toolbar">
+                  {delivery && (
+                    <GPS
+                      active={orders.some(
+                        (o) =>
+                          o.courier_id === user.id && o.status === "enroute",
+                      )}
+                      onError={E}
                     />
-                    <Select
-                      aria-label="Mensajero"
-                      value={courier}
-                      onChange={(e) => CR(e.target.value)}
-                    >
-                      <option value="">Todos los mensajeros</option>
-                      {users
-                        .filter((u) => u.role === "courier")
-                        .map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.name}
-                          </option>
-                        ))}
-                    </Select>
-                  </>
-                )}
-                <Select
-                  aria-label="Estado"
-                  value={status}
-                  onChange={(e) => ST(e.target.value)}
-                >
-                  <option value="">Todos los estados</option>
-                  {Object.entries(labels).map(([s, l]) => (
-                    <option value={s} key={s}>
-                      {l}
-                    </option>
-                  ))}
-                </Select>
-                <span>{selected.length} pedidos</span>
-              </div>
+                  )}
+                  {admin && (
+                    <>
+                      <Field
+                        required={false}
+                        label="Buscar cliente"
+                        value={search}
+                        onChange={(e) => Q(e.target.value)}
+                        sx={{ m: 0, minWidth: 170, flex: 1 }}
+                      />
+                      {!prep && (
+                        <Select
+                          aria-label="Mensajero"
+                          value={courier}
+                          onChange={(e) => CR(e.target.value)}
+                        >
+                          <option value="">Todos los mensajeros</option>
+                          {users
+                            .filter((u) => u.role === "courier")
+                            .map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.name}
+                              </option>
+                            ))}
+                        </Select>
+                      )}
+                    </>
+                  )}
+                  <Select
+                    aria-label="Estado"
+                    value={status}
+                    onChange={(e) => ST(e.target.value)}
+                  >
+                    <option value="">Todos los estados</option>
+                    {Object.entries(labels).map(([s, l]) => (
+                      <option value={s} key={s}>
+                        {l}
+                      </option>
+                    ))}
+                  </Select>
+                  <span>{selected.length} pedidos</span>
+                </div>
+              )}
               {delivery && (
                 <DeliveryRoute
                   orders={selected}
@@ -909,7 +925,24 @@ function App() {
               <OrderCards
                 orders={selected}
                 userRole={prep ? "preparation" : user.role}
-                actionsFor={actionsFor}
+                actionsFor={
+                  prep
+                    ? (o) => (
+                        <div className="actions">
+                          {o.status === "confirmed" && (
+                            <Button onClick={() => action(o, "prepare")}>
+                              Iniciar preparación
+                            </Button>
+                          )}
+                          {o.status === "preparing" && (
+                            <Button onClick={() => action(o, "ready")}>
+                              Marcar listo
+                            </Button>
+                          )}
+                        </div>
+                      )
+                    : actionsFor
+                }
                 urgency={urgency}
                 labels={labels}
                 money={money}
@@ -925,14 +958,16 @@ function App() {
               )}
             </>
           )}
-          <footer>
-            Plaza San Francisco · Bucaramanga{" "}
-            <span>
-              {config?.devAuth
-                ? "Datos de demostración solo en el entorno local"
-                : "Delipiña · Pedidos y entregas"}
-            </span>
-          </footer>
+          {!(prep && full) && (
+            <footer>
+              Plaza San Francisco · Bucaramanga{" "}
+              <span>
+                {config?.devAuth
+                  ? "Datos de demostración solo en el entorno local"
+                  : "Delipiña · Pedidos y entregas"}
+              </span>
+            </footer>
+          )}
         </main>
       </WorkspaceDialog>
       {drawer && (
