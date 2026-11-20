@@ -150,7 +150,11 @@ export function DateInput({
   required = false,
 }: any) {
   const parse = (v: any) =>
-    type === "date" ? dayjs.tz(v, "America/Bogota") : type==='time'&&/^\d{2}:\d{2}$/.test(v)?dayjs.tz('2026-01-01T'+v,'America/Bogota'):dayjs(v);
+    type === "date"
+      ? dayjs.tz(v, "America/Bogota")
+      : type === "time" && /^\d{2}:\d{2}$/.test(v)
+        ? dayjs.tz("2026-01-01T" + v, "America/Bogota")
+        : dayjs(v);
   const [internal, S] = useState(defaultValue ? parse(defaultValue) : null);
   const controlled = value !== undefined;
   const current = controlled ? (value ? parse(value) : null) : internal;
@@ -174,7 +178,9 @@ export function DateInput({
                 value: v?.isValid()
                   ? type === "date"
                     ? v.format("YYYY-MM-DD")
-                    : type==='time'?v.format('HH:mm'):v.toISOString()
+                    : type === "time"
+                      ? v.format("HH:mm")
+                      : v.toISOString()
                   : "",
               },
             });
@@ -189,7 +195,9 @@ export function DateInput({
             current?.isValid()
               ? type === "date"
                 ? current.format("YYYY-MM-DD")
-                : type==='time'?current.format('HH:mm'):current.toISOString()
+                : type === "time"
+                  ? current.format("HH:mm")
+                  : current.toISOString()
               : ""
           }
         />
@@ -210,6 +218,32 @@ export function Select({ children, label, ...props }: any) {
     >
       {children}
     </TextField>
+  );
+}
+export function WorkspaceDialog({ full, onClose, children }: any) {
+  return full ? (
+    <Dialog
+      open
+      fullScreen
+      onClose={onClose}
+      aria-label="Planta en pantalla completa"
+      className="plant-fullscreen"
+      sx={{
+        "& .MuiDialog-paper": {
+          margin: "0!important",
+          width: "100vw!important",
+          maxWidth: "none!important",
+          height: "100dvh!important",
+          maxHeight: "none!important",
+          borderRadius: 0,
+          background: "#f4f6f1",
+        },
+      }}
+    >
+      {children}
+    </Dialog>
+  ) : (
+    children
   );
 }
 export function Modal({ title, children, onClose, wide = false }: any) {
@@ -265,9 +299,12 @@ const navFor = (user: any) => {
         ["payments", "Cartera", Payments, "portfolio"],
         ["analytics", "Análisis", Insights, "analytics"],
         ["audit", "Trazabilidad", ReceiptLong, "audit"],
-        ["days", "Jornadas", ReceiptLong, "days"],
       ]
-        .filter((r) => has(user, r[3] as string))
+        .filter(
+          (r) =>
+            has(user, r[3] as string) ||
+            (r[0] === "payments" && has(user, "days")),
+        )
         .map((r) => r.slice(0, 3)),
       ["settings", "Ajustes", Settings],
     ];
@@ -378,7 +415,11 @@ export function Navigation({
           {nav.map(([id, label, Icon]: any) => (
             <ListItemButton
               key={id}
-              selected={(["accepted","recurrences"].includes(view) ? "orders" : view) === id}
+              selected={
+                (["accepted", "recurrences"].includes(view)
+                  ? "orders"
+                  : view) === id
+              }
               onClick={() => onNavigate(id)}
               sx={{ mx: 1, my: 0.5, borderRadius: 2 }}
             >
@@ -408,7 +449,7 @@ export function Navigation({
         }}
       >
         <BottomNavigation
-          value={["accepted","recurrences"].includes(view) ? "orders" : view}
+          value={["accepted", "recurrences"].includes(view) ? "orders" : view}
           showLabels
           sx={{
             height: 68,

@@ -59,10 +59,7 @@ sw.addEventListener("push", (e) => {
   e.waitUntil(
     sw.registration.showNotification(d.title || "Delipiña", {
       body: "Toca para consultar el detalle.",
-      icon: "/logo.png",
-          "/icon-192.png",
-          "/icon-512.png",
-          "/icon-180.png",
+      icon: "/icon-192.png",
       tag: d.id || "delipina-update",
       data: { url: "/?" + query, id: d.id, revision: d.revision },
     }),

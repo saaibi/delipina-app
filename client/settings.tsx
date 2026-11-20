@@ -246,11 +246,6 @@ export function SettingsView({
           <ServerTable kind="audit" />
         </Section>
       )}
-      {has(user, "days") && (
-        <Section title="Jornadas y cierre contable">
-          <ServerTable kind="days" />
-        </Section>
-      )}
       {admin && (
         <Section title="Datos demo para rutas">
           <DemoData users={users} onRefresh={onRefresh} />

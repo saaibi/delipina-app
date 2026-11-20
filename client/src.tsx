@@ -1,3 +1,4 @@
+import { WorkspaceDialog } from "./ui";
 import { DeliveryRoute } from "./delivery-route";
 import { SettlementsView } from "./settlements";
 import { has, customer, portfolio, moduleLabels } from "./access";
@@ -117,6 +118,7 @@ function App() {
     [historyEnd, HE] = useState(""),
     [courier, CR] = useState(""),
     [full, F] = useState(false),
+    [plantAccepted, PA] = useState(false),
     [online, ON] = useState(navigator.onLine),
     [pending, PN] = useState(0),
     [settings, SET] = useState(null),
@@ -632,15 +634,16 @@ function App() {
         {error && <p role="alert">{error}</p>}
       </main>
     );
+  const showingAccepted = view === "accepted" || (prep && plantAccepted);
   const scoped = orders.filter(
     (o) =>
-      (view !== "accepted" ||
+      (!showingAccepted ||
         !["pending", "cancelled", "rejected"].includes(o.status)) &&
       (!search ||
         o.client_name?.toLowerCase().includes(search.toLowerCase())) &&
       (!admin ||
         !filterDate ||
-        (view === "accepted"
+        (showingAccepted
           ? new Date(o.window_start).toLocaleDateString("en-CA", {
               timeZone: "America/Bogota",
             }) >= filterDate
@@ -649,7 +652,7 @@ function App() {
               timeZone: "America/Bogota",
             }) === filterDate)) &&
       (!admin ||
-        view !== "accepted" ||
+        !showingAccepted ||
         !historyEnd ||
         new Date(o.window_start).toLocaleDateString("en-CA", {
           timeZone: "America/Bogota",
@@ -704,277 +707,287 @@ function App() {
         }
       />
       <SecondaryActions role={user.role} user={user} onAction={M} />
-      <main className={full ? "workspace maximized" : "workspace"}>
-        <div className="heading">
-          <div>
-            <small>DELIPIÑA / OPERACIÓN</small>
-            <h1>
-              {view === "payments"
-                ? "Cartera de clientes"
-                : view === "recurrences"
-                  ? "Frecuencias"
-                  : view === "audit"
-                    ? "Trazabilidad"
-                    : view === "days"
-                      ? "Jornadas"
-                      : view === "analytics"
-                        ? "Inteligencia de negocio"
-                        : view === "accepted"
-                          ? "Pedidos aceptados"
-                          : view === "users"
-                            ? "Usuarios"
-                            : view === "catalog"
-                              ? "Catálogo"
-                              : view === "settings"
-                                ? "Ajustes"
-                                : prep
-                                  ? plantAdmin
-                                    ? "Pedidos de planta"
-                                    : "Planta"
-                                  : client
-                                    ? "Mis pedidos"
-                                    : delivery
-                                      ? "Entregas"
-                                      : "Pedidos del día"}
-            </h1>
-            <p>
-              {prep
-                ? "Cantidades claras, entregas a tiempo."
-                : client
-                  ? "Organiza tu próxima entrega."
-                  : "Cada pedido, en su momento."}
-            </p>
-          </div>
-          {(admin || plantAdmin || client) &&
-            ["orders", "accepted"].includes(view) && (
-              <Button onClick={() => M("order")}>＋ Crear pedido</Button>
-            )}
-          <Button
-            className="neutral"
-            aria-label="Actualizar módulo"
-            onClick={() => pull.refresh()}
-          >
-            ↻
-          </Button>
-          {prep && (
-            <Button className="neutral" onClick={() => F(!full)}>
-              {full ? "Minimizar" : "Maximizar"}
-            </Button>
-          )}
-        </div>
-        {error && (
-          <div className="alert" role="alert">
-            {error}
-            <Button onClick={() => E("")}>✕</Button>
-          </div>
-        )}
-        {notice && (
-          <div className="success" role="status">
-            {notice}
-            <Button onClick={() => S("")}>✕</Button>
-          </div>
-        )}
-        {!online && (
-          <div className="banner">
-            Consulta guardada en este dispositivo. Los pedidos nuevos se envían
-            al reconectar y vuelven a validar horario, precios y cupo.
-          </div>
-        )}
-        {(client || has(user, "orders")) &&
-          ["orders", "accepted", "recurrences"].includes(view) && (
-            <Tabs
-              value={view === "recurrences" ? "recurrences" : "orders"}
-              onChange={(_, v) => V(v)}
+      <WorkspaceDialog full={prep && full} onClose={() => F(false)}>
+        <main
+          className={
+            prep && full ? "workspace plant-workspace-full" : "workspace"
+          }
+        >
+          <div className="heading">
+            <div>
+              <small>DELIPIÑA / OPERACIÓN</small>
+              <h1>
+                {view === "payments"
+                  ? "Cartera de clientes"
+                  : view === "recurrences"
+                    ? "Frecuencias"
+                    : view === "audit"
+                      ? "Trazabilidad"
+                      : view === "days"
+                        ? "Jornadas"
+                        : view === "analytics"
+                          ? "Inteligencia de negocio"
+                          : view === "accepted"
+                            ? "Pedidos aceptados"
+                            : view === "users"
+                              ? "Usuarios"
+                              : view === "catalog"
+                                ? "Catálogo"
+                                : view === "settings"
+                                  ? "Ajustes"
+                                  : prep
+                                    ? plantAdmin
+                                      ? "Pedidos de planta"
+                                      : "Planta"
+                                    : client
+                                      ? "Mis pedidos"
+                                      : delivery
+                                        ? "Entregas"
+                                        : "Pedidos del día"}
+              </h1>
+              <p>
+                {prep
+                  ? "Cantidades claras, entregas a tiempo."
+                  : client
+                    ? "Organiza tu próxima entrega."
+                    : "Cada pedido, en su momento."}
+              </p>
+            </div>
+            {(admin || plantAdmin || client) &&
+              ["orders", "accepted"].includes(view) && (
+                <Button onClick={() => M("order")}>＋ Crear pedido</Button>
+              )}
+            <Button
+              className="neutral"
+              aria-label="Actualizar módulo"
+              onClick={() => pull.refresh()}
             >
-              <Tab value="orders" label="Pedidos" />
-              <Tab value="recurrences" label="Frecuencias" />
-            </Tabs>
+              ↻
+            </Button>
+            {prep && (
+              <Button className="neutral" onClick={() => F(!full)}>
+                {full ? "Minimizar" : "Maximizar"}
+              </Button>
+            )}
+          </div>
+          {error && (
+            <div className="alert" role="alert">
+              {error}
+              <Button onClick={() => E("")}>✕</Button>
+            </div>
           )}
-        {view === "settings" ? (
-          <SettingsView
-            {...{ user, push, settings, users, products, branches, accounts }}
-            onAction={M}
-            onEditUser={editUser}
-            onRemoveUser={deleteUser}
-            onRestoreUser={restoreUser}
-            onEditProduct={editProduct}
-            onToggleProduct={toggleProduct}
-            onRefresh={() => run(() => refresh())}
-          />
-        ) : view === "recurrences" ? (
-          <SchedulesView products={products} money={money} />
-        ) : view === "audit" ? (
-          <ServerTable kind="audit" />
-        ) : view === "days" ? (
-          <ServerTable kind="days" />
-        ) : view === "analytics" && has(user, "analytics") ? (
-          <AnalyticsView money={money} labels={labels} closings={closings} />
-        ) : view === "payments" ? (
-          <>
-            <CreditsView
-              accounts={accounts}
-              user={user}
-              payments={payments}
-              money={money}
-              onReview={(client) => M({ kind: "creditDetail", client })}
-              onPay={(client) => M({ kind: "payment", client })}
-              onVerify={(p) =>
-                run(async () => {
-                  await api("/payments/" + p.id + "/verify", {
-                    method: "POST",
-                  });
-                  await refresh();
-                })
-              }
-            />
-            {(admin || delivery) && (
-              <SettlementsView user={user} money={money} />
-            )}
-          </>
-        ) : (
-          <>
-            {delivery && (
-              <Tabs value={deliveryFilter} onChange={(_, v) => DF(v)}>
-                <Tab value="mine" label="Mis entregas" />
-                <Tab value="available" label="Disponibles" />
-              </Tabs>
-            )}
-            {admin && (
+          {notice && (
+            <div className="success" role="status">
+              {notice}
+              <Button onClick={() => S("")}>✕</Button>
+            </div>
+          )}
+          {!online && (
+            <div className="banner">
+              Consulta guardada en este dispositivo. Los pedidos nuevos se
+              envían al reconectar y vuelven a validar horario, precios y cupo.
+            </div>
+          )}
+          {(client || has(user, "orders")) &&
+            ["orders", "accepted", "recurrences"].includes(view) && (
               <Tabs
-                value={view === "accepted" ? "accepted" : "orders"}
-                onChange={(_, value) => {
-                  V(value);
-                  ST("");
-                  FD(value === "accepted" ? "" : business?.day || "");
-                  HE("");
-                }}
-                aria-label="Vista de pedidos"
+                value={view === "recurrences" ? "recurrences" : "orders"}
+                onChange={(_, v) => V(v)}
               >
-                <Tab label="Operación del día" value="orders" />
-                <Tab label="Todos los aceptados" value="accepted" />
+                <Tab value="orders" label="Pedidos" />
+                <Tab value="recurrences" label="Frecuencias" />
               </Tabs>
             )}
-            {!client && !prep && (
-              <div className="stats">
-                {[
-                  ["", "Todos"],
-                  ["pending", "Por confirmar"],
-                  ["preparing", "En preparación"],
-                  ["ready", "Listos"],
-                  ["enroute", "En camino"],
-                  ["delivered", "Entregados"],
-                ].map(([s, l]) => (
-                  <Button
-                    className={status === s ? "active" : ""}
-                    key={s}
-                    onClick={() => ST(s)}
-                  >
-                    <span>{l}</span>
-                    <strong>
-                      {scoped.filter((o) => !s || o.status === s).length}
-                    </strong>
-                  </Button>
-                ))}
-              </div>
-            )}
-            <div className="toolbar">
-              {delivery && (
-                <GPS
-                  active={orders.some(
-                    (o) => o.courier_id === user.id && o.status === "enroute",
-                  )}
-                  onError={E}
+          {view === "settings" ? (
+            <SettingsView
+              {...{ user, push, settings, users, products, branches, accounts }}
+              onAction={M}
+              onEditUser={editUser}
+              onRemoveUser={deleteUser}
+              onRestoreUser={restoreUser}
+              onEditProduct={editProduct}
+              onToggleProduct={toggleProduct}
+              onRefresh={() => run(() => refresh())}
+            />
+          ) : view === "recurrences" ? (
+            <SchedulesView products={products} money={money} />
+          ) : view === "audit" ? (
+            <ServerTable kind="audit" />
+          ) : view === "days" ? (
+            <ServerTable kind="days" />
+          ) : view === "analytics" && has(user, "analytics") ? (
+            <AnalyticsView money={money} labels={labels} closings={closings} />
+          ) : view === "payments" ? (
+            <>
+              {portfolio(user) && (
+                <CreditsView
+                  accounts={accounts}
+                  user={user}
+                  payments={payments}
+                  money={money}
+                  onReview={(client) => M({ kind: "creditDetail", client })}
+                  onPay={(client) => M({ kind: "payment", client })}
+                  onVerify={(p) =>
+                    run(async () => {
+                      await api("/payments/" + p.id + "/verify", {
+                        method: "POST",
+                      });
+                      await refresh();
+                    })
+                  }
                 />
               )}
-              {admin && (
-                <>
-                  <Field
-                    required={false}
-                    label="Buscar cliente"
-                    value={search}
-                    onChange={(e) => Q(e.target.value)}
-                    sx={{ m: 0, minWidth: 170, flex: 1 }}
-                  />
-                  <DateInput
-                    label="Fecha de entrega"
-                    value={filterDate}
-                    onChange={(e) => FD(e.target.value)}
-                  />
-                  {view === "accepted" && (
-                    <DateInput
-                      label="Hasta fecha"
-                      value={historyEnd}
-                      onChange={(e) => HE(e.target.value)}
-                    />
-                  )}
-                  <Select
-                    aria-label="Mensajero"
-                    value={courier}
-                    onChange={(e) => CR(e.target.value)}
-                  >
-                    <option value="">Todos los mensajeros</option>
-                    {users
-                      .filter((u) => u.role === "courier")
-                      .map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                  </Select>
-                </>
+              {has(user, "days") && <ServerTable kind="days" />}
+              {(admin || delivery) && (
+                <SettlementsView user={user} money={money} />
               )}
-              <Select
-                aria-label="Estado"
-                value={status}
-                onChange={(e) => ST(e.target.value)}
-              >
-                <option value="">Todos los estados</option>
-                {Object.entries(labels).map(([s, l]) => (
-                  <option value={s} key={s}>
-                    {l}
-                  </option>
-                ))}
-              </Select>
-              <span>{selected.length} pedidos</span>
-            </div>
-            {delivery && (
-              <DeliveryRoute
-                orders={selected}
-                user={user}
-                origin={
-                  settings?.origin ||
-                  "Plaza San Francisco, Bucaramanga, Colombia"
-                }
-              />
-            )}
-            <OrderCards
-              orders={selected}
-              userRole={prep ? "preparation" : user.role}
-              actionsFor={actionsFor}
-              urgency={urgency}
-              labels={labels}
-              money={money}
-              date={date}
-              onSelect={(o) => M({ kind: "orderDetail", order: o })}
-            />
-            {!selected.length && (
-              <div className="empty">
-                <span>✧</span>
-                <h2>Todo despejado por aquí</h2>
-                <p>Los pedidos aparecerán cuando se registren.</p>
+            </>
+          ) : (
+            <>
+              {delivery && (
+                <Tabs value={deliveryFilter} onChange={(_, v) => DF(v)}>
+                  <Tab value="mine" label="Mis entregas" />
+                  <Tab value="available" label="Disponibles" />
+                </Tabs>
+              )}
+              {(admin || prep) && (
+                <Tabs
+                  value={showingAccepted ? "accepted" : "orders"}
+                  onChange={(_, value) => {
+                    if (prep) PA(value === "accepted");
+                    else V(value);
+                    ST("");
+                    FD(value === "accepted" ? "" : business?.day || "");
+                    HE("");
+                  }}
+                  aria-label="Vista de pedidos"
+                >
+                  <Tab label="Operación del día" value="orders" />
+                  <Tab label="Todos los aceptados" value="accepted" />
+                </Tabs>
+              )}
+              {!client && !prep && (
+                <div className="stats">
+                  {[
+                    ["", "Todos"],
+                    ["pending", "Por confirmar"],
+                    ["preparing", "En preparación"],
+                    ["ready", "Listos"],
+                    ["enroute", "En camino"],
+                    ["delivered", "Entregados"],
+                  ].map(([s, l]) => (
+                    <Button
+                      className={status === s ? "active" : ""}
+                      key={s}
+                      onClick={() => ST(s)}
+                    >
+                      <span>{l}</span>
+                      <strong>
+                        {scoped.filter((o) => !s || o.status === s).length}
+                      </strong>
+                    </Button>
+                  ))}
+                </div>
+              )}
+              <div className="toolbar">
+                {delivery && (
+                  <GPS
+                    active={orders.some(
+                      (o) => o.courier_id === user.id && o.status === "enroute",
+                    )}
+                    onError={E}
+                  />
+                )}
+                {admin && (
+                  <>
+                    <Field
+                      required={false}
+                      label="Buscar cliente"
+                      value={search}
+                      onChange={(e) => Q(e.target.value)}
+                      sx={{ m: 0, minWidth: 170, flex: 1 }}
+                    />
+                    <DateInput
+                      label="Fecha de entrega"
+                      value={filterDate}
+                      onChange={(e) => FD(e.target.value)}
+                    />
+                    {showingAccepted && (
+                      <DateInput
+                        label="Hasta fecha"
+                        value={historyEnd}
+                        onChange={(e) => HE(e.target.value)}
+                      />
+                    )}
+                    <Select
+                      aria-label="Mensajero"
+                      value={courier}
+                      onChange={(e) => CR(e.target.value)}
+                    >
+                      <option value="">Todos los mensajeros</option>
+                      {users
+                        .filter((u) => u.role === "courier")
+                        .map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))}
+                    </Select>
+                  </>
+                )}
+                <Select
+                  aria-label="Estado"
+                  value={status}
+                  onChange={(e) => ST(e.target.value)}
+                >
+                  <option value="">Todos los estados</option>
+                  {Object.entries(labels).map(([s, l]) => (
+                    <option value={s} key={s}>
+                      {l}
+                    </option>
+                  ))}
+                </Select>
+                <span>{selected.length} pedidos</span>
               </div>
-            )}
-          </>
-        )}
-        <footer>
-          Plaza San Francisco · Bucaramanga{" "}
-          <span>
-            {config?.devAuth
-              ? "Datos de demostración solo en el entorno local"
-              : "Delipiña · Pedidos y entregas"}
-          </span>
-        </footer>
-      </main>
+              {delivery && (
+                <DeliveryRoute
+                  orders={selected}
+                  user={user}
+                  origin={
+                    settings?.origin ||
+                    "Plaza San Francisco, Bucaramanga, Colombia"
+                  }
+                />
+              )}
+              <OrderCards
+                orders={selected}
+                userRole={prep ? "preparation" : user.role}
+                actionsFor={actionsFor}
+                urgency={urgency}
+                labels={labels}
+                money={money}
+                date={date}
+                onSelect={(o) => M({ kind: "orderDetail", order: o })}
+              />
+              {!selected.length && (
+                <div className="empty">
+                  <span>✧</span>
+                  <h2>Todo despejado por aquí</h2>
+                  <p>Los pedidos aparecerán cuando se registren.</p>
+                </div>
+              )}
+            </>
+          )}
+          <footer>
+            Plaza San Francisco · Bucaramanga{" "}
+            <span>
+              {config?.devAuth
+                ? "Datos de demostración solo en el entorno local"
+                : "Delipiña · Pedidos y entregas"}
+            </span>
+          </footer>
+        </main>
+      </WorkspaceDialog>
       {drawer && (
         <NoticeDrawer onClose={() => D(false)}>
           <div className="notice-heading">
