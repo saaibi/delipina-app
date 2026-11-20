@@ -52,6 +52,29 @@ export class NativePushController {
       verification: code.slice(-4).toUpperCase(),
     };
   }
+  @Post("register")
+  @HttpCode(200)
+  async register(@Req() req: any) {
+    const u = auth(req);
+    if (!fcmConfigured())
+      fail(503, "Notificaciones Android pendientes de configurar");
+    const { token, deviceKey } = req.body;
+    if (
+      typeof token !== "string" ||
+      token.length < 30 ||
+      token.length > 4096 ||
+      typeof deviceKey !== "string" ||
+      !/^[a-f0-9]{64}$/.test(deviceKey)
+    )
+      fail(400, "Dispositivo inválido");
+    const row = (
+      await pool.query(
+        `INSERT INTO native_push_devices(id,device_hash,token,user_id,enabled) VALUES($1,$2,$3,$4,true) ON CONFLICT(device_hash) DO UPDATE SET token=excluded.token,user_id=excluded.user_id,enabled=true,pair_hash=NULL,expires_at=NULL,updated_at=now() RETURNING id`,
+        [randomUUID(), digest(deviceKey), token, u.id],
+      )
+    ).rows[0];
+    return { id: row.id };
+  }
   @Post("claim") @HttpCode(200) async claim(@Req() req: any) {
     const u = auth(req);
     const code = req.body.code;

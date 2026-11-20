@@ -1,3 +1,4 @@
+import { AttachmentLink } from "./attachment-link";
 import TablePagination from "@mui/material/TablePagination";
 import { attachment } from "./photos";
 import React, { useEffect, useRef, useState } from "react";
@@ -112,13 +113,13 @@ export function CreditsView({
                   bancolombia: "Bancolombia",
                 }[p.method] || p.method}{" "}
                 ·{" "}
-                <a
+                <AttachmentLink
                   href={"/api/payments/" + p.id + "/proof"}
                   target="_blank"
                   rel="noreferrer"
                 >
                   Ver factura o comprobante
-                </a>
+                </AttachmentLink>
               </p>
             ))}
         </section>
@@ -138,13 +139,13 @@ export function CreditsView({
                     bancolombia: "Bancolombia",
                   }[p.method] || p.method}
                   {p.has_proof && (
-                    <a
+                    <AttachmentLink
                       href={"/api/payments/" + p.id + "/proof"}
                       target="_blank"
                       rel="noreferrer"
                     >
                       Ver comprobante
-                    </a>
+                    </AttachmentLink>
                   )}
                   <p>
                     Recibida por {p.receiver} ·{" "}

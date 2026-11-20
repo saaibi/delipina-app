@@ -1,3 +1,5 @@
+import { nativeAndroid, NativeBridge } from "./native";
+import GoogleIcon from "@mui/icons-material/Google";
 import { NativePair } from "./native-pair";
 import Accordion from "@mui/material/Accordion";
 import AccordionSummary from "@mui/material/AccordionSummary";
@@ -380,7 +382,7 @@ function App() {
         L(false);
       }
     })();
-    navigator.serviceWorker?.register("/sw.js");
+    if (!nativeAndroid) navigator.serviceWorker?.register("/sw.js");
     const online = () => {
       ON(true);
       run(async () => {
@@ -399,6 +401,30 @@ function App() {
   }, [user?.id]);
   useEffect(() => {
     if (!user) return;
+    if (nativeAndroid) {
+      let active = true;
+      const refreshNow = () => {
+        if (active && !document.hidden) void run(() => refresh());
+      };
+      const timer = setInterval(refreshNow, 15000);
+      const events = NativeBridge.addListener("refresh", refreshNow);
+      const actions = NativeBridge.addListener("notificationAction", (n) => {
+        if (active)
+          void openNotice({ ...n, revision: Number(n.revision) || undefined });
+      });
+      void NativeBridge.launchNotice().then((n) => {
+        if (active && n.id)
+          void openNotice({ ...n, revision: Number(n.revision) || undefined });
+      });
+      document.addEventListener("visibilitychange", refreshNow);
+      return () => {
+        active = false;
+        clearInterval(timer);
+        document.removeEventListener("visibilitychange", refreshNow);
+        void events.then((e) => e.remove());
+        void actions.then((e) => e.remove());
+      };
+    }
     const socket = io();
     socket.on("refresh", () => run(() => refresh()));
     socket.on("connect", () => run(() => refresh()));
@@ -418,7 +444,7 @@ function App() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
   useEffect(() => {
-    if (loading || user || !config?.googleClientId) return;
+    if (nativeAndroid || loading || user || !config?.googleClientId) return;
     const script = document.createElement("script");
     script.src = "https://accounts.google.com/gsi/client";
     script.onload = () => {
@@ -652,7 +678,21 @@ function App() {
           Calidad, frescura y diferentes presentaciones para tu operación
           comercial.
         </p>
-        <div id="google" />
+        {nativeAndroid ? (
+          <Button
+            onClick={() =>
+              run(async () => {
+                const u = await NativeBridge.signInGoogle();
+                await enter(u);
+              })
+            }
+          >
+            <GoogleIcon sx={{ mr: 1 }} />
+            Ingresar con Google
+          </Button>
+        ) : (
+          <div id="google" />
+        )}
         {!config?.googleClientId && (
           <p>El ingreso con Google requiere configurar el proyecto OAuth.</p>
         )}
@@ -736,10 +776,12 @@ function App() {
           S("");
         }}
       />
-      <NativePair
-        userId={user?.id}
-        onLinked={() => window.dispatchEvent(new Event("native-push-linked"))}
-      />
+      {!nativeAndroid && (
+        <NativePair
+          userId={user?.id}
+          onLinked={() => window.dispatchEvent(new Event("native-push-linked"))}
+        />
+      )}
       <PushPermissionPrompt controller={push} />
       <Navigation
         user={user}

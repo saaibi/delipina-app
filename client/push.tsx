@@ -1,3 +1,4 @@
+import { nativeAndroid, NativeBridge } from "./native";
 import React, { useEffect, useState } from "react";
 import { api } from "./offline";
 import { Button, Modal } from "./ui";
@@ -45,6 +46,18 @@ export function usePushPreferences(
   async function activate(requestPermission = false) {
     E("");
     try {
+      if (nativeAndroid) {
+        const device = await NativeBridge.pushToken();
+        const result = await api("/native-push/register", {
+          method: "POST",
+          body: device,
+        });
+        localStorage.setItem("delipina-native-device:" + userId, result.id);
+        localStorage.removeItem(key);
+        await nativeStatus();
+        A(false);
+        return;
+      }
       if (nativeId()) {
         await api("/native-push/device", {
           method: "PUT",
@@ -116,6 +129,24 @@ export function usePushPreferences(
   }
   useEffect(() => {
     if (!userId) return;
+    if (nativeAndroid) {
+      if (localStorage.getItem(key)) {
+        ST("Desactivadas por tu preferencia");
+        S(false);
+        return;
+      }
+      void NativeBridge.pushStatus()
+        .then((s) => {
+          if (s.granted) void activate();
+          else {
+            ST("Permiso de notificaciones pendiente");
+            if (!sessionStorage.getItem("delipina-push-prompt:" + userId))
+              A(true);
+          }
+        })
+        .catch((e) => E(e.message));
+      return;
+    }
     if (nativeId()) {
       void nativeStatus().catch((e) => E(e.message));
       return;
@@ -156,7 +187,10 @@ export function usePushPreferences(
     status,
     ask,
     error,
-    available: !!nativeId() || (available() && !!config?.vapidPublicKey),
+    available:
+      nativeAndroid ||
+      !!nativeId() ||
+      (available() && !!config?.vapidPublicKey),
     activate: () => activate(true),
     disable,
     dismiss() {

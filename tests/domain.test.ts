@@ -1019,3 +1019,20 @@ test('FCM vincula un dispositivo con código de un solo uso, permiso y aislamien
  await pool.query('DELETE FROM native_push_devices WHERE id=$1',[claimed.body.id]);
  }finally{if(previous===undefined)delete process.env.FIREBASE_SERVICE_ACCOUNT;else process.env.FIREBASE_SERVICE_ACCOUNT=previous;}
 });
+
+test('FCM nativo exige sesión y mueve el dispositivo al usuario que inicia sesión',async()=>{
+ const previous=process.env.FIREBASE_SERVICE_ACCOUNT;process.env.FIREBASE_SERVICE_ACCOUNT='{}';
+ let id:string|undefined;
+ try {
+ const deviceKey='b'.repeat(64),token='native-device-token-'.repeat(8);
+ assert.equal((await request(app).post('/api/native-push/register').set('Origin',origin).send({deviceKey,token})).status,401);
+ assert.equal((await call('client','post','/native-push/register',{deviceKey,token:'short'})).status,400);
+ const created=await call('client','post','/native-push/register',{deviceKey,token});assert.equal(created.status,200);id=created.body.id;
+ const rotated=await call('client','post','/native-push/register',{deviceKey,token:token+'rotated'});assert.equal(rotated.body.id,id);
+ assert.equal((await call('admin','put','/native-push/device',{id,enabled:false})).status,404);
+ const moved=await call('admin','post','/native-push/register',{deviceKey,token});assert.equal(moved.body.id,id);
+ assert.equal((await call('client','get','/native-push/device?id='+id)).body.id,null);
+ assert.equal((await call('admin','get','/native-push/device?id='+id)).body.enabled,true);
+ assert.equal((await call('admin','put','/native-push/device',{id,enabled:false})).status,200);
+ }finally{if(id)await pool.query('DELETE FROM native_push_devices WHERE id=$1',[id]);if(previous===undefined)delete process.env.FIREBASE_SERVICE_ACCOUNT;else process.env.FIREBASE_SERVICE_ACCOUNT=previous;}
+});

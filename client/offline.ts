@@ -1,3 +1,4 @@
+import { nativeAndroid, NativeBridge } from "./native";
 import { storage } from "./storage";
 const db = storage();
 let uid;
@@ -20,6 +21,20 @@ export async function api(
   path: string,
   options: Omit<RequestInit, "body"> & { body?: unknown } = {},
 ) {
+  if (nativeAndroid) {
+    const result = await NativeBridge.request({
+      path,
+      method: options.method || "GET",
+      body: options.body,
+      headers: Object.fromEntries(new Headers(options.headers).entries()),
+    });
+    if (result.status >= 400)
+      throw Object.assign(
+        Error(result.data?.error || "No fue posible completar la solicitud"),
+        { status: result.status },
+      );
+    return result.data;
+  }
   const r = await fetch("/api" + path, {
     cache: "no-store",
     ...options,
@@ -94,6 +109,17 @@ export async function queued() {
 export async function cachedProductImage(id: string, version: string) {
   const key = uid + "/product-image/" + id + "/" + version;
   try {
+    if (nativeAndroid) {
+      const r = await NativeBridge.request({
+        path: "/products/" + id + "/photo",
+        method: "GET",
+      });
+      if (r.status !== 200 || !r.mime?.startsWith("image/"))
+        throw Error("Imagen no disponible");
+      const data = "data:" + r.mime + ";base64," + r.base64;
+      await (await db).put("cache", data, key);
+      return data;
+    }
     const r = await fetch("/api/products/" + id + "/photo");
     if (!r.ok) throw Error("Imagen no disponible");
     const blob = await r.blob();

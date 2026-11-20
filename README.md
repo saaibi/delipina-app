@@ -48,7 +48,7 @@ La UI usa ThemeProvider, botones, campos, Dialog, Drawer, AppBar, navegación, s
 - GPS voluntario solo con reparto activo; servidor guarda ubicación redondeada a 0,01° (~1 km). Cliente consulta únicamente su entrega en camino, sin identidad ni paradas ajenas. Señal perdida después de 2 minutos. Al terminar las entregas la UI detiene GPS; datos antiguos no se exponen fuera de un pedido activo.
 - Google Maps abre origen/destino reales, sin ruta simulada.
 - PWA con caché de aplicación y datos por usuario, cola IndexedDB y claves idempotentes. Solo creación de pedidos se encola offline; cobros, asignaciones y cambios de estado requieren conexión. En modo offline no se garantiza precio/cupo/horario hasta validar en servidor. Logout borra caché y cola local.
-- Android/iOS Capacitor generados, adaptador SQLite nativo para la misma caché/cola. **Proyecto preparado, no APK compilado, no app instalada.**
+- Android/iOS Capacitor generados, adaptador SQLite nativo para la misma caché/cola. APK de pruebas compilado; validar instalación en dispositivo real.
 - Selección visual de presentaciones con las fotos proporcionadas por el usuario (recorte CSS, sin redibujar los productos), cantidades directas y referencia visual configurable en catálogo.
 - Jornadas por fecha de Colombia con horarios por día y anticipación por día de entrega en Ajustes. El horario cierra la recepción; el cierre contable espera entregas resueltas, transferencias verificadas y todos los cuadres enviados por mensajero y confirmados por administración. Render Free puede dormir: los procesos se retoman al despertar o recibir una consulta.
 - Pedidos y ventas unificados, tarjetas compactas con detalle en modal y vista de todos los aceptados. Cartera por cliente con abonos generales y distribución automática a facturas antiguas; transferencias pendientes reservan saldo.
@@ -76,7 +76,7 @@ Si se instala en otro entorno, el despliegue puede iniciar sin Google pero queda
 - Google Routes/Places embebidos y ETA de tráfico: **no conectados**, sin key ni habilitación de servicio/costo. Solo enlace Maps. No crear un proyecto facturable automáticamente.
 - Recorridos de hasta cinco pedidos: agrupación geográfica y orden vial por grupo; solicitud del mensajero y aprobación administrativa. No se calcula tráfico ni ETA.
 - Edición de direcciones, reversión/rechazo de transferencias y reapertura de cuadres: pendientes. No reemplazar movimientos históricos para corregirlos.
-- Notificaciones móviles por FCM/APNs y Google OAuth nativo: plugins presentes, configuración/canales nativos pendientes. El login web GIS no debe usarse como login Google embebido de producción en WebView. Abrir con navegador de sistema e implementar retorno OAuth nativo antes de distribuir.
+- Android usa FCM y Google Credential Manager mediante el puente nativo. iOS/APNs y la distribución en tiendas siguen pendientes.
 - Interacciones móviles de deslizar para aceptar/revisar rechazo: pendientes; los botones accesibles actuales funcionan. No equivaler abrir a aceptar.
 - Cola offline necesita una pantalla completa de edición/resolución de conflictos. En esta base los fallos conservan el borrador y muestran el error; no se descartan silenciosamente.
 - Auditoría SQL base; panel de auditoría, paginación y búsqueda del historial por servidor pendientes para escalar.
@@ -92,12 +92,11 @@ Si se instala en otro entorno, el despliegue puede iniciar sin Google pero queda
 
 ## Resultado de publicación y compilaciones (19 noviembre 2026)
 
-Repositorio **privado**: https://github.com/saaibi/delipina-app .
+Repositorio **público**: https://github.com/saaibi/delipina-app .
 
 Render confirmó el espacio `Saaibi Yesid's workspace`. Una segunda base Free fue rechazada por el límite de una instancia gratuita. El usuario autorizó usar **un schema específico `delipina` dentro de `playita-db`**, preservando el schema de Playita. El Blueprint solo crea el web service Free y referencia la conexión privada existente; no declara ni modifica la instancia de base de datos. No se cambia el allowlist y no se habilita acceso externo. El resultado efectivo del despliegue se registra en `outputs/validacion-delipina.md` del chat y en el Dashboard, URL del servicio: https://delipina-app-z9br.onrender.com . Google OAuth web ya está configurado en el proyecto independiente `delipina-app-2026`, cliente `Delipiña Web`, con orígenes del servicio y `http://localhost:3000`. `GOOGLE_CLIENT_ID` está en Render y `DEV_AUTH=false`. El flujo GIS solo solicita identidad básica (openid/email/profile); no usa client secret. Google conserva estado Prueba; su excepción para identidad básica permite usuarios fuera de la lista de prueba (https://support.google.com/cloud/answer/15549945?hl=en). No se habilitó facturación.
 
-Capacitor `add` y `sync` completados para Android/iOS. `assembleDebug` llegó a Gradle y falló porque **no existe Android SDK configurado** (`SDK location not found`). `xcodebuild` falló porque **la licencia de Xcode está sin aceptar**. No hay APK, IPA ni app instalada. Se conserva el proyecto y los comandos para continuar después de que el propietario instale/configure SDK y acepte las licencias correspondientes.
-
+Capacitor Android compila con Java 21 y SDK 36. El APK de pruebas usa la interfaz integrada y acceso Google nativo. iOS continúa pendiente de configuración de firma, APNs y compilación.
 ```sh
 npm run build
 npx cap sync
@@ -107,7 +106,7 @@ cd android && ./gradlew assembleDebug
 xcodebuild -project ios/App/App.xcodeproj -scheme App -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-Las apps nativas necesitan URL de API/CORS, OAuth de navegador de sistema, FCM/APNs y configuración de firma para distribución. Estos pasos no están conectados y no se afirma que el contenedor móvil sea una app productiva terminada.
+Android usa exclusivamente la API publicada y conserva la sesión cifrada en almacenamiento nativo. La publicación en tiendas y validación con un teléfono real siguen pendientes.
 
 ## Actualización de operación (19 noviembre 2026)
 
@@ -119,7 +118,7 @@ El catálogo admite kilo, libra (500 g), arroba colombiana (25 libras / 12,5 kg)
 
 Los precios especiales se editan desde el catálogo de un cliente, con búsqueda, precio general como referencia y guardado conjunto transaccional. Campo vacío restaura precio general. Los pedidos previos conservan sus importes. La tabla de clientes muestra cupo total, utilizado y saldo por cobrar, con acciones de edición y precios.
 
-Cada día del horario tiene su propia anticipación. Los valores anteriores se usan como respaldo hasta guardar la configuración semanal. La notificación tiene cierre en la esquina superior derecha. Firebase/FCM y APNs todavía no están configurados: la web usa Web Push/VAPID y la bandeja interna.
+Cada día del horario tiene su propia anticipación. Los valores anteriores se usan como respaldo hasta guardar la configuración semanal. La notificación tiene cierre en la esquina superior derecha. Android tiene Firebase/FCM configurado; la web usa Web Push/VAPID y la bandeja interna. APNs sigue pendiente.
 
 
 ### Operación y accesos ampliados
@@ -204,7 +203,7 @@ Recargar fuerza consultas sin caché HTTP, actualiza recorridos aunque no cambie
 Las consultas de horario no crean jornadas. El reloj registra únicamente fechas con pedidos y conserva el cierre contable sujeto a cuadres. La migración 020 retira jornadas automáticas sin actividad, comprobando pedidos, pagos, recorridos y cuadres. El apartado de administración de datos fue retirado; el respaldo previo permanece conservado.
 
 ### APK de prueba
-Android abre la web publicada mediante Custom Tabs, compartiendo la sesión del navegador y permitiendo el acceso Google. Requiere conexión y un navegador compatible. No es un WebView con login Google embebido. La compilación debug es para instalación y pruebas, no para Play Store; Firebase nativo requiere configuración y vinculación de dispositivo antes de probar la recepción.
+Android 1.0.2 usa Capacitor con la interfaz compilada dentro del APK. El acceso Google usa Credential Manager y el selector nativo; la sesión se guarda cifrada con Android Keystore y las solicitudes van al servidor publicado. Conserva `com.delipina.app` y la firma anterior para actualizar la instalación existente. Un acceso PWA instalado previamente desde el navegador debe retirarse por separado. La compilación debug es para pruebas; falta validación en un teléfono con cuentas Google y firma de distribución para Play Store.
 
 ### Inicio de sesión con Apple
 Pendiente de cuenta activa Apple Developer Program. La configuración web requiere App ID, Services ID, dominio y retorno HTTPS registrados y clave privada. No se muestra un botón sin configuración. Documentación: https://developer.apple.com/help/account/capabilities/configure-sign-in-with-apple-for-the-web/
@@ -212,6 +211,9 @@ Pendiente de cuenta activa Apple Developer Program. La configuración web requie
 ### Firebase Android
 Proyecto independiente `delipina-app-2026` (Spark), app Android `com.delipina.app` y registro Web `Delipiña Web`. Web Push con VAPID se conserva para navegadores. Android usa FCM HTTP v1 con la cuenta `delipina-push`, limitada al rol Firebase Cloud Messaging API Admin; `FIREBASE_SERVICE_ACCOUNT` vive únicamente en el servidor. El archivo `android/app/google-services.json` es configuración pública de cliente y se excluye de Git.
 
-El APK solicita permiso en Android 13+, obtiene el token y muestra un código para vincularlo con la sesión web mediante confirmación explícita, válida diez minutos y de un solo uso. Ajustes permite desactivar ese dispositivo; cerrar sesión también lo desactiva. Los avisos se actualizan por ID/revisión y abren el pedido al tocarlos. El servidor excluye usuarios inactivos. Los tokens se renuevan al abrir la app; falta validar recepción y clic con un teléfono Android real. No se habilita FCM en iOS sin APNs.
+El APK Capacitor solicita permiso en Android 13+, obtiene el token y registra el dispositivo con la sesión autenticada, sin código manual. Ajustes permite desactivar ese dispositivo; cerrar sesión también lo desactiva. Los avisos se actualizan por ID/revisión y abren el pedido al tocarlos. El servidor excluye usuarios inactivos. Los tokens se renuevan al abrir la app; falta validar recepción y clic con un teléfono Android real. No se habilita FCM en iOS sin APNs.
 
 La credencial FCM se generó localmente, registrando únicamente el certificado público en Google Cloud. El certificado vence el 20/11/2027: reemplazarlo en Google Cloud y Render antes de esa fecha. Las copias privadas temporales se retiraron tras validar OAuth/FCM y guardar el secreto.
+
+### Control de versiones y despliegue
+El repositorio público es https://github.com/saaibi/delipina-app. Render despliega la rama `main` con cada commit. Los secretos permanecen en Render; las bases, copias de datos y claves de firma no se versionan. Para Android: `npm ci`, `npm run build`, `npx cap sync android` y `./android/gradlew -p android assembleDebug`, con Java 21, SDK 36 y la configuración pública de Firebase local. Registrar la huella de la firma de Play App Signing antes de distribuir por tienda.
