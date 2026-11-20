@@ -1,6 +1,3 @@
-import { mapsUrl, localDelivery } from "../shared/routes";
-import MapOutlined from "@mui/icons-material/MapOutlined";
-import { Button } from "./ui";
 import LocalShippingOutlined from "@mui/icons-material/LocalShippingOutlined";
 import PlaceOutlined from "@mui/icons-material/PlaceOutlined";
 import ArrowForward from "@mui/icons-material/ArrowForward";
@@ -48,41 +45,48 @@ export function OrderCards({
             )}
             {userRole === "preparation" ? (
               <>
-                <div className="orderhead">
-                  <strong className="plant-order-number">
-                    {o.client_name || "Cliente"}
-                  </strong>
-                  <span className={"status " + o.status}>
-                    {labels[o.status]}
-                  </span>
-                  <span className={"urgency " + color}>{!terminal && urg}</span>
-                </div>
-                <div className="plant-window">
-                  {new Date(o.window_start).toLocaleTimeString("es-CO", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    timeZone: "America/Bogota",
-                  })}{" "}
-                  —{" "}
-                  {new Date(o.window_end).toLocaleTimeString("es-CO", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    timeZone: "America/Bogota",
-                  })}
-                </div>
-                <ul
-                  className="items plant-items"
-                  aria-label="Productos y cantidades"
+                <button
+                  type="button"
+                  className="plant-card-main"
+                  onClick={() => onSelect(o)}
+                  aria-label={"Ver detalle del pedido de " + o.client_name}
                 >
-                  {o.items?.map((i, j) => (
-                    <li key={j}>
-                      <strong>{Number(i.quantity)}</strong>
-                      <span>{i.name}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {actionsFor(o)}
+                  <div className="orderhead">
+                    <strong className="plant-order-number">
+                      {o.client_name || "Cliente"}
+                    </strong>
+                    <span className={"status " + o.status}>
+                      {labels[o.status]}
+                    </span>
+                    <span className={"urgency " + color}>
+                      {!terminal && urg}
+                    </span>
+                  </div>
+                  <div className="plant-window">
+                    {new Date(o.window_start).toLocaleTimeString("es-CO", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "America/Bogota",
+                    })}{" "}
+                    —{" "}
+                    {new Date(o.window_end).toLocaleTimeString("es-CO", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "America/Bogota",
+                    })}
+                  </div>
+                  <ul
+                    className="items plant-items"
+                    aria-label="Productos y cantidades"
+                  >
+                    {o.items?.map((i, j) => (
+                      <li key={j}>
+                        <strong>{Number(i.quantity)}</strong>
+                        <span>{i.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </button>
               </>
             ) : userRole === "courier" ? (
               <button
@@ -197,20 +201,9 @@ export function OrderCards({
                 </button>
               </>
             )}
-            {userRole !== "preparation" && localDelivery(o.city) && (
-              <div className="order-map-action">
-                <Button
-                  component="a"
-                  className="neutral"
-                  href={mapsUrl([o])}
-                  target="_blank"
-                  rel="noreferrer"
-                  startIcon={<MapOutlined />}
-                >
-                  Ver mapa
-                </Button>
-              </div>
-            )}
+            {userRole !== "preparation" &&
+              o.status === "pending" &&
+              actionsFor(o)}
           </article>
         );
       })}

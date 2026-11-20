@@ -1,4 +1,4 @@
-import { mapsUrl } from "../shared/routes";
+import { mapsUrl, localDelivery } from "../shared/routes";
 import { BranchEditor, BranchManager } from "./branches";
 import { DeliveryConfirm } from "./delivery-confirm";
 import { WorkspaceDialog } from "./ui";
@@ -434,24 +434,28 @@ function App() {
       });
       await refresh();
     });
+  const quickActionsFor = (o: any) =>
+    (admin || plantAdmin) && o.status === "pending" ? (
+      <div className="actions quick-order-actions">
+        <Button
+          aria-label="Aceptar pedido"
+          disabled={loading}
+          onClick={() => action(o, "confirm")}
+        >
+          ✓ Aceptar
+        </Button>
+        <Button
+          className="danger"
+          disabled={loading}
+          onClick={() => M({ kind: "reject", order: o })}
+        >
+          ✕ Rechazar
+        </Button>
+      </div>
+    ) : null;
   const actionsFor = (o: any) => (
     <div className="actions">
-      {admin && o.status === "pending" && (
-        <>
-          <Button
-            aria-label="Aceptar pedido"
-            onClick={() => action(o, "confirm")}
-          >
-            ✓ Aceptar
-          </Button>
-          <Button
-            className="danger"
-            onClick={() => M({ kind: "reject", order: o })}
-          >
-            ✕ Rechazar
-          </Button>
-        </>
-      )}
+      {quickActionsFor(o)}
       {(admin || prep) && o.status === "confirmed" && (
         <Button onClick={() => action(o, "prepare")}>
           Iniciar preparación
@@ -491,27 +495,17 @@ function App() {
           {o.courier_id ? "Reasignar mensajero" : "Asignar mensajero"}
         </Button>
       )}
-      {(admin || delivery) &&
-        [
-          "bucaramanga",
-          "piedecuesta",
-          "girón",
-          "giron",
-          "floridablanca",
-        ].includes((o.city || "").toLowerCase()) &&
-        !["pending", "rejected", "cancelled", "delivered"].includes(
-          o.status,
-        ) && (
-          <Button
-            className="neutral"
-            component="a"
-            href={mapsUrl([o])}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Ver mapa
-          </Button>
-        )}
+      {!prep && localDelivery(o.city) && (
+        <Button
+          className="neutral"
+          component="a"
+          href={mapsUrl([o])}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Ver mapa
+        </Button>
+      )}
       {client &&
         [
           "bucaramanga",
@@ -963,24 +957,7 @@ function App() {
               <OrderCards
                 orders={selected}
                 userRole={prep ? "preparation" : user.role}
-                actionsFor={
-                  prep
-                    ? (o) => (
-                        <div className="actions">
-                          {o.status === "confirmed" && (
-                            <Button onClick={() => action(o, "prepare")}>
-                              Iniciar preparación
-                            </Button>
-                          )}
-                          {o.status === "preparing" && (
-                            <Button onClick={() => action(o, "ready")}>
-                              Marcar listo
-                            </Button>
-                          )}
-                        </div>
-                      )
-                    : actionsFor
-                }
+                actionsFor={prep ? () => null : quickActionsFor}
                 urgency={urgency}
                 labels={labels}
                 money={money}

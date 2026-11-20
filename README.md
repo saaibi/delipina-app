@@ -181,3 +181,5 @@ El mensajero que registra dinero recibido debe adjuntar comprobante de factura; 
 Clientes y administración pueden eliminar sucursales con confirmación y restaurarlas desde «Sucursales eliminadas». Se conserva el historial de pedidos, se impide usarlas en pedidos nuevos y se pausan sus frecuencias. Restaurar una sucursal no reactiva frecuencias automáticamente.
 
 La búsqueda espera una dirección colombiana con placa completa (p. ej. Carrera 23 #6-68) y 1,2 segundos sin escribir. Conserva la búsqueda manual para lugares sin nomenclatura. Normaliza abreviaturas comunes, incluye municipio y país, descarta respuestas de consultas anteriores y prioriza coincidencias de calle y placa. Photon/OpenStreetMap no cubre todas las placas: los resultados sin coincidencia se identifican como aproximados y requieren confirmar el punto en el mapa.
+
+Las tarjetas de pedidos abren el detalle al seleccionarlas. Solo los pendientes muestran Aceptar/Rechazar para administración o roles personalizados con Pedidos. Las acciones de preparación y entrega, y «Ver mapa», están en el detalle.

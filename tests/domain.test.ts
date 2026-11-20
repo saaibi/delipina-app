@@ -912,3 +912,14 @@ test('Eliminar y restaurar sucursales conserva pedidos, pausa frecuencias y rest
  assert.ok((await call('client','get','/branches')).body.some(b=>b.id===id));
  assert.equal((await pool.query('SELECT active FROM order_schedules WHERE id=$1',[schedule.id])).rows[0].active,false);
 });
+test('Rol personalizado con Pedidos acepta y rechaza; sin módulo no puede hacerlo', async()=>{
+ const make=async()=>{const r=await call('client','post','/orders',{...body,credit:false,paymentMethod:'online'},randomUUID());assert.equal(r.status,200,JSON.stringify(r.body));return r.body;};
+ const accepted=await make();assert.equal((await call('courier','post','/orders/'+accepted.id+'/action',{action:'confirm'})).status,403);
+ assert.equal((await call('custom','post','/orders/'+accepted.id+'/action',{action:'confirm'})).status,200);
+ const rejected=await make();assert.equal((await call('custom','post','/orders/'+rejected.id+'/action',{action:'reject',reason:'No hay disponibilidad'})).status,200);
+ const denied=await make();await call('admin','patch','/users/'+users.custom.id,{permissions:['plant']});await login('custom');
+ assert.equal((await call('custom','post','/orders/'+denied.id+'/action',{action:'confirm'})).status,403);
+ assert.equal((await call('custom','post','/orders/'+denied.id+'/action',{action:'reject',reason:'Sin permiso'})).status,403);
+ assert.equal((await pool.query('SELECT status FROM orders WHERE id=$1',[denied.id])).rows[0].status,'pending');
+ await call('admin','patch','/users/'+users.custom.id,{permissions:['orders','plant']});await login('custom');
+});

@@ -342,8 +342,11 @@ export class OrdersController {
         } else {
           const t = transitions[b.action];
           if (!t || t[0] !== status) fail(409, "Transición no válida");
-          if (["confirm", "reject"].includes(b.action) && !admin)
-            fail(403, "Solo administración");
+          if (
+            ["confirm", "reject"].includes(b.action) &&
+            !hasModule(u, "orders")
+          )
+            fail(403, "Sin permiso para aceptar o rechazar pedidos");
           if (
             ["prepare", "ready"].includes(b.action) &&
             !admin &&
