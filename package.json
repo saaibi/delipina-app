@@ -6,13 +6,12 @@
     "node": "26.x"
   },
   "scripts": {
-    "dev": "npm run build:server && node --env-file=.env dist-server/index.js",
+    "dev": "node --import tsx scripts/local-preview.ts",
     "build": "tsc -p tsconfig.server.json && tsc -p tsconfig.json && tsc -p tsconfig.sw.json && vite build client --outDir ../dist --emptyOutDir",
     "start": "node dist-server/index.js",
     "migrate": "node --env-file=.env --import tsx server/migrate.ts",
     "seed": "node --env-file=.env --import tsx server/seed.ts",
     "test": "npm run build:server && node --env-file=.env --import tsx --test tests/*.test.ts",
-    "db:local": "pglite-server --db=../work/pglite --port=55432",
     "bootstrap": "node dist-server/bootstrap.js",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.json",
     "build:server": "tsc -p tsconfig.server.json",

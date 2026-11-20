@@ -976,3 +976,24 @@ test('Entrega fallida pasa a rechazado; reprogramar recupera En camino, mensajer
  assert.ok((await pool.query("SELECT 1 FROM delivery_runs WHERE courier_id=$1 AND status='enroute' AND $2=ANY(order_ids)",[users.courier.id,id])).rowCount);
  const notes=(await pool.query("SELECT details FROM audit WHERE order_id=$1 AND action='failed'",[id])).rows;assert.ok(notes.some(a=>a.details.reason==='Local cerrado'));
 });
+test('Limpieza administrativa reversible conserva catálogo, usuarios y archivos binarios',async()=>{
+ const {cleanupOperations,restoreOperations,maintenancePreview,operationalTables}=await import('../dist-server/maintenance.js');
+ assert.equal((await call('client','get','/maintenance/preview')).status,403);
+ assert.equal((await call('courier','post','/maintenance/cleanup',{confirmation:'LIMPIAR DELIPIÑA'})).status,403);
+ assert.equal((await call('admin','post','/maintenance/cleanup',{confirmation:'incorrecto'})).status,400);
+ const invoice=(await pool.query('SELECT id FROM invoices LIMIT 1')).rows[0];
+ const bytes=Buffer.from([0,1,127,128,255]);
+ await pool.query("INSERT INTO invoice_photos(invoice_id,mime,data) VALUES($1,'image/png',$2) ON CONFLICT(invoice_id) DO UPDATE SET data=$2",[invoice.id,bytes]);
+ const before=await maintenancePreview();
+ const credits=(await pool.query('SELECT id,credit_used FROM users ORDER BY id')).rows;
+ const cleared=await cleanupOperations(users.admin.id,'LIMPIAR DELIPIÑA');
+ for(const name of operationalTables)assert.equal(Number((await pool.query('SELECT count(*) FROM '+name)).rows[0].count),0,name);
+ assert.equal((await pool.query('SELECT count(*) FROM users WHERE credit_used<>0')).rows[0].count,'0');
+ assert.deepEqual((await maintenancePreview()).preserved,before.preserved);
+ assert.equal((await call('client','get','/maintenance/archives/'+cleared.id+'/download')).status,403);
+ const restored=await restoreOperations(users.admin.id,cleared.id,'RESTAURAR DELIPIÑA');
+ const after=await maintenancePreview();assert.deepEqual(after.counts,before.counts);assert.deepEqual(after.preserved,before.preserved);
+ assert.deepEqual((await pool.query('SELECT id,credit_used FROM users ORDER BY id')).rows,credits);
+ assert.deepEqual((await pool.query('SELECT data FROM invoice_photos WHERE invoice_id=$1',[invoice.id])).rows[0].data,bytes);
+ assert.ok((await pool.query('SELECT 1 FROM maintenance_archives WHERE id=ANY($1::uuid[])',[[cleared.id,restored.safetyId]])).rowCount===2);
+});

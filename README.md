@@ -8,29 +8,12 @@ Requiere Node **26.13.1 LTS** y npm. React **19.3.1**, NestJS **12.5.1**, Materi
 
 ```sh
 npm ci
-cp .env.example .env
-npm run db:local
-```
-
-En otra terminal, desde este directorio:
-
-```sh
-npm run migrate
-npm run seed
 npm run dev
 ```
 
-Abrir http://localhost:3000. Semillas **ficticias**, precios de ejemplo COP 5.000/kg. Los accesos demo existen solo con `NODE_ENV=development` y `DEV_AUTH=true`. El servidor aborta si se activa DEV_AUTH en producción. Google no se simula.
+Abrir http://localhost:3007. Este acceso redirige a https://delipina-app-z9br.onrender.com: inicio de sesión, API y datos usan exclusivamente el servidor y la base publicados. No levanta una base local ni ofrece recarga de cambios de código; estos requieren compilar y publicar.
 
-El motor local PGlite ejecuta PostgreSQL embebido y guarda exclusivamente datos de desarrollo en `../work/pglite`. Esta opción evita restricciones de memoria compartida de este entorno. Es de una conexión: detener `npm run dev` antes de migraciones o pruebas para liberar su conexión. **No demuestra concurrencia entre conexiones PostgreSQL reales**. El CI usa PostgreSQL 18 real con pool de 10 conexiones y las mismas pruebas.
-
-Para PostgreSQL nativo o Docker:
-
-```sh
-docker run --name delipina-pg -e POSTGRES_PASSWORD=local-only -e POSTGRES_DB=delipina -p 55432:5432 -d postgres:18
-```
-
-Cambiar `.env`: `DATABASE_URL=postgresql://postgres:local-only@127.0.0.1:55432/delipina`, `PGLITE_LOCAL=false`. No ejecutar simultáneamente los dos motores en ese puerto.
+Las pruebas usan una base efímera independiente, destruida al terminar. No ejecutar migraciones, semillas ni pruebas con credenciales de producción.
 
 ## Verificación
 
@@ -153,7 +136,7 @@ Cada día del horario tiene su propia anticipación. Los valores anteriores se u
 
 
 ### Rutas y vista previa
-`npm run build` y `node --import tsx scripts/local-preview.ts` levantan una base local aislada y persistente en `../work/preview-routes-db`, interfaz en http://localhost:3007 y datos ficticios. No usa la base de producción. Cierra el proceso con Ctrl+C.
+`npm run dev` mantiene el único acceso local en http://localhost:3007 y abre la aplicación publicada. Cierra el proceso con Ctrl+C.
 
 Entregas agrupa automáticamente hasta cinco pedidos listos o en preparación. El mensajero solicita los grupos disponibles y administración aprueba su asignación. Puede ajustar los pedidos antes de salir; iniciar el recorrido exige que todos estén listos y los marca En camino en una transacción. Después de iniciar, el recorrido queda fijo. «Ver mapa» abre directamente la aplicación de mapas para el recorrido; cada parada y pedido también tiene acceso individual. Se incluyen todas las paradas en el enlace. Google Maps admite hasta tres paradas intermedias en navegador móvil y hasta nueve en otros entornos; para cinco entregas conviene abrir la aplicación o utilizar el acceso de cada parada.
 
@@ -215,3 +198,10 @@ Las tarjetas agrupan al mismo cliente y dirección dentro de la fecha/filtros el
 Registrar una entrega fallida cambia a Rechazado y conserva mensajero, factura y crédito. Reprogramar una entrega fallida la devuelve a En camino, actualiza la jornada de entrega y conserva la asignación; exige mensajero activo. Los rechazos de pedidos sin aceptar no se convierten en entregas. Los motivos quedan en trazabilidad. Los recorridos actualizan sus paradas para no mostrar una entrega trasladada a otra jornada.
 
 Recargar fuerza consultas sin caché HTTP, actualiza recorridos aunque no cambien los IDs y comparte clics simultáneos. Las respuestas antiguas no sobrescriben la última actualización; la cartera y solicitudes se vuelven a consultar mediante la invalidación del módulo. La interfaz indica cuándo está actualizando y confirma la recarga.
+
+
+### Limpieza y recuperación
+Solo administración puede usar Ajustes → Administración de datos. Cada limpieza conserva usuarios, catálogo, imágenes y ajustes; archiva comprimidos los datos operativos antes de retirarlos en una transacción limitada al schema de Delipiña. Los respaldos permiten descargar y restaurar la operación. Una restauración respalda también el estado que reemplaza. La jornada vacía de hoy se abre automáticamente. No hay una opción de purga permanente de respaldos.
+
+### Inicio de sesión con Apple
+Pendiente de cuenta activa Apple Developer Program. La configuración web requiere App ID, Services ID, dominio y retorno HTTPS registrados y clave privada. No se muestra un botón sin configuración. Documentación: https://developer.apple.com/help/account/capabilities/configure-sign-in-with-apple-for-the-web/
