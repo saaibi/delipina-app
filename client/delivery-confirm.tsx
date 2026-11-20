@@ -1,3 +1,4 @@
+import { PhotoInput } from "./photo-input";
 import React, { useState, useRef } from "react";
 import Alert from "@mui/material/Alert";
 import { Field, Select, Button } from "./ui";
@@ -8,6 +9,7 @@ export function DeliveryConfirm({ order, onDone }: any) {
     [busy, B] = useState(false),
     [error, E] = useState(""),
     [paid, P] = useState(false),
+    [proof, PROOF] = useState<File | null>(null),
     key = useRef("delivery-payment:" + order.id);
   return (
     <form
@@ -18,7 +20,7 @@ export function DeliveryConfirm({ order, onDone }: any) {
         const f = new FormData(e.currentTarget);
         try {
           if (Number(amount) > 0 && !paid) {
-            const photo = await attachment(f.get("proof") as File);
+            const photo = await attachment(proof);
             await api("/payments", {
               method: "POST",
               headers: { "Idempotency-Key": key.current },
@@ -66,12 +68,10 @@ export function DeliveryConfirm({ order, onDone }: any) {
             <option value="nequi">Nequi · verificar</option>
             <option value="bancolombia">Bancolombia · verificar</option>
           </Select>
-          <Field
-            name="proof"
+          <PhotoInput
             label="Foto de la factura o comprobante"
-            type="file"
-            accept="image/*"
-            capture="environment"
+            onFile={PROOF}
+            disabled={busy}
           />
           <p>
             El abono se registra sobre la cartera del cliente; las

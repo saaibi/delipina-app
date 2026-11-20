@@ -1,5 +1,5 @@
 import { StatusChip } from "./order-badges";
-import { mapsUrl, localDelivery } from "../shared/routes";
+import { mapsUrl, localDelivery, routeOrigin } from "../shared/routes";
 import IconButton from "@mui/material/IconButton";
 import MapOutlined from "@mui/icons-material/MapOutlined";
 import Chip from "@mui/material/Chip";
@@ -109,7 +109,7 @@ export function DeliveryRoute({
                 {localDelivery(o.city) && (
                   <IconButton
                     component="a"
-                    href={mapsUrl([o])}
+                    href={mapsUrl([o], routeOrigin({ origin, originLocation }))}
                     target="_blank"
                     rel="noreferrer"
                     title="Ver mapa"

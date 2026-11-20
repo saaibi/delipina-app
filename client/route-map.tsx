@@ -1,3 +1,4 @@
+import { mapsUrl, routeOrigin } from "../shared/routes";
 import React, { useState, useEffect, useRef } from "react";
 import * as L from "leaflet";
 import Alert from "@mui/material/Alert";
@@ -113,18 +114,10 @@ export function RouteMap({ route, onClose }: any) {
                   {s.status !== "delivered" && (
                     <IconButton
                       component="a"
-                      href={
-                        "https://www.google.com/maps/dir/?" +
-                        new URLSearchParams({
-                          api: "1",
-                          destination:
-                            s.lat != null
-                              ? `${s.lat},${s.lng}`
-                              : `${s.address}, ${s.city}, Colombia`,
-                          travelmode: "driving",
-                          dir_action: "navigate",
-                        })
-                      }
+                      href={mapsUrl(
+                        [s],
+                        routeOrigin({ originLocation: data.origin }),
+                      )}
                       target="_blank"
                       rel="noreferrer"
                       aria-label={`Navegar a la parada ${i + 1}`}

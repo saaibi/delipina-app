@@ -3,7 +3,7 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import { FeedbackSnackbar } from "./feedback";
 import { comparePlantOrders } from "../shared/plant-priority";
 import { deliveryClosing, deliveryDay } from "../shared/delivery-window";
-import { mapsUrl, localDelivery } from "../shared/routes";
+import { mapsUrl, localDelivery, routeOrigin } from "../shared/routes";
 import { BranchEditor, BranchManager } from "./branches";
 import { DeliveryConfirm } from "./delivery-confirm";
 import { WorkspaceDialog } from "./ui";
@@ -510,7 +510,7 @@ function App() {
         <Button
           className="neutral"
           component="a"
-          href={mapsUrl([o])}
+          href={mapsUrl([o], routeOrigin(settings))}
           target="_blank"
           rel="noreferrer"
         >
@@ -663,7 +663,11 @@ function App() {
       ((prep && full) ||
         !search ||
         o.client_name?.toLowerCase().includes(search.toLowerCase())) &&
-      (prep || !courier || o.courier_id === courier) &&
+      (prep ||
+        !courier ||
+        (courier === "unassigned"
+          ? !o.courier_id
+          : o.courier_id === courier)) &&
       (view !== "deliveries" ||
         (deliveryFilter === "mine" ? o.courier_id === user.id : !o.courier_id)),
   );
@@ -934,6 +938,9 @@ function App() {
                           onChange={(e) => CR(e.target.value)}
                         >
                           <option value="">Todos los mensajeros</option>
+                          <option value="unassigned">
+                            Sin mensajero asignado
+                          </option>
                           {users
                             .filter((u) => u.role === "courier")
                             .map((u) => (

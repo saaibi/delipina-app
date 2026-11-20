@@ -941,3 +941,23 @@ test('Pedidos y saldo: paginación del servidor conserva alcance y no repite fil
  assert.equal((await call('admin','get','/credit-accounts/'+users.client.id+'/orders?page=-1')).status,400);
  const courier=(await call('courier','get','/credit-accounts/'+users.client.id+'/orders?page=0&pageSize=100')).body;assert.equal(courier.total,(await call('courier','get','/credit-accounts/'+users.client.id+'/orders')).body.length);
 });
+test('Entrega fallida permite administración y mensajero asignado, pero protege estado y propiedad',async()=>{
+ const o=(await pool.query("SELECT id,courier_id FROM orders WHERE status='enroute' AND courier_id=$1 LIMIT 1",[users.courier.id])).rows[0];assert.ok(o);
+ assert.equal((await call('admin','post','/orders/'+o.id+'/action',{action:'failed',reason:'No abrieron la puerta'})).status,200);
+ assert.equal((await call('courier','post','/orders/'+o.id+'/action',{action:'failed',reason:'Cliente no responde'})).status,200);
+ assert.equal((await call('courier2','post','/orders/'+o.id+'/action',{action:'failed',reason:'No autorizado'})).status,404);
+ const saved=(await pool.query('SELECT reason,status FROM orders WHERE id=$1',[o.id])).rows[0];assert.equal(saved.reason,'Cliente no responde');assert.equal(saved.status,'enroute');
+ const ready=(await pool.query("SELECT id FROM orders WHERE status='ready' LIMIT 1")).rows[0];assert.equal((await call('admin','post','/orders/'+ready.id+'/action',{action:'failed',reason:'Aún no sale'})).status,409);
+});
+test('Asignación parcial retira pedidos de solicitudes y aprobar conserva únicamente disponibles',async()=>{
+ const branch=(await call('owner','get','/branches')).body[0], list=[];
+ for(let i=0;i<2;i++){const r=await call('owner','post','/orders',{...body,branchId:branch.id,credit:false,paymentMethod:'online'},randomUUID());assert.equal(r.status,200);list.push(r.body.id);await call('admin','post','/orders/'+r.body.id+'/action',{action:'confirm'});}
+ const day=(await call('admin','get','/business-day')).body.day;await pool.query("UPDATE orders SET operation_day=$2 WHERE id=ANY($1::uuid[])",[list,day]);
+ const requested=await call('courier','post','/delivery-route-requests',{orderIds:list});assert.equal(requested.status,200,JSON.stringify(requested.body));
+ assert.equal((await call('admin','post','/orders/'+list[0]+'/action',{action:'assign',courierId:users.courier2.id})).status,200);
+ const remaining=(await call('admin','get','/delivery-route-requests')).body.find(r=>r.id===requested.body.id);assert.deepEqual(remaining.order_ids,[list[1]]);assert.equal(remaining.stops.length,1);
+ assert.equal((await call('admin','post','/delivery-routes/'+requested.body.id+'/decision',{approve:true})).status,200);
+ assert.equal((await pool.query('SELECT courier_id FROM orders WHERE id=$1',[list[0]])).rows[0].courier_id,users.courier2.id);
+ assert.equal((await pool.query('SELECT courier_id FROM orders WHERE id=$1',[list[1]])).rows[0].courier_id,users.courier.id);
+ assert.ok(!(await call('admin','get','/delivery-route-requests')).body.some(r=>r.id===requested.body.id));
+});

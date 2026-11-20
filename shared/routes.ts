@@ -57,3 +57,13 @@ export function mapsUrl(stops: any[], origin?: string) {
     p.set("waypoints", stops.slice(0, -1).map(place).join("|"));
   return "https://www.google.com/maps/dir/?" + p;
 }
+
+export function routeOrigin(settings: any) {
+  const p = settings?.originLocation;
+  return p?.lat != null &&
+    p?.lng != null &&
+    Number.isFinite(Number(p.lat)) &&
+    Number.isFinite(Number(p.lng))
+    ? `${p.lat},${p.lng}`
+    : settings?.origin?.trim() || "Plaza San Francisco, Bucaramanga, Colombia";
+}

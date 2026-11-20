@@ -71,13 +71,20 @@ export class RouteActionsController {
     const u = auth(req, ["admin", "courier"]);
     if (req.query.day && !/^\d{4}-\d{2}-\d{2}$/.test(req.query.day))
       fail(400, "Fecha inválida");
-    return (
+    const rows = (
       await pool.query(
-        "SELECT r.*,u.name courier_name,(SELECT json_agg(json_build_object('id',o.id,'status',o.status,'client_name',(SELECT name FROM users WHERE id=o.client_id),'address',b.address,'city',b.city)) FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.id=ANY(r.order_ids)) stops FROM delivery_runs r JOIN users u ON u.id=r.courier_id WHERE r.status='requested' AND ($1 OR r.courier_id=$2) AND ($3::date IS NULL OR r.day=$3::date) ORDER BY r.created_at",
+        `SELECT r.*,u.name courier_name,(SELECT json_agg(json_build_object('id',o.id,'status',o.status,'client_name',(SELECT name FROM users WHERE id=o.client_id),'address',COALESCE(o.delivery_address,b.address),'city',COALESCE(o.delivery_city,b.city))) FROM orders o JOIN branches b ON b.id=o.branch_id WHERE o.id=ANY(r.order_ids) AND o.courier_id IS NULL AND o.status IN ('confirmed','preparing','ready')) stops FROM delivery_runs r JOIN users u ON u.id=r.courier_id WHERE r.status='requested' AND ($1 OR r.courier_id=$2) AND ($3::date IS NULL OR r.day=$3::date) ORDER BY r.created_at`,
         [u.role === "admin", u.id, req.query.day || null],
       )
     ).rows;
+    return rows
+      .filter((r) => r.stops?.length)
+      .map((r) => ({
+        ...r,
+        order_ids: r.order_ids.filter((id) => r.stops.some((o) => o.id === id)),
+      }));
   }
+
   @Post("delivery-route-requests") @HttpCode(200) async request(
     @Req() req: any,
   ) {
@@ -150,20 +157,25 @@ export class RouteActionsController {
             [r.order_ids],
           )
         ).rows;
-        if (
-          rows.length !== r.order_ids.length ||
-          rows.some(
-            (o) =>
-              o.courier_id ||
-              !["confirmed", "preparing", "ready"].includes(o.status),
-          )
-        )
-          fail(409, "Un pedido ya fue asignado o cambió de estado");
+        const available = rows.filter(
+          (o) =>
+            !o.courier_id &&
+            ["confirmed", "preparing", "ready"].includes(o.status),
+        );
+        if (!available.length)
+          fail(409, "La solicitud ya no tiene pedidos disponibles");
+        r.order_ids = r.order_ids.filter((id) =>
+          available.some((o) => o.id === id),
+        );
+        await c.query("UPDATE delivery_runs SET order_ids=$2 WHERE id=$1", [
+          r.id,
+          r.order_ids,
+        ]);
         await c.query(
           "UPDATE orders SET courier_id=$2 WHERE id=ANY($1::uuid[])",
           [r.order_ids, r.courier_id],
         );
-        for (const o of rows)
+        for (const o of available)
           await notify(c, o, "Recorrido asignado por administración", [
             "courier",
             "client",

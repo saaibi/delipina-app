@@ -315,12 +315,16 @@ export class OrdersController {
           o.id,
         ]);
       } else if (b.action === "failed") {
-        if (
-          u.role !== "courier" ||
-          o.courier_id !== u.id ||
-          status !== "enroute"
-        )
-          fail(403, "No disponible");
+        if (!admin && !(u.role === "courier" && o.courier_id === u.id))
+          fail(
+            403,
+            "Solo administración o el mensajero asignado puede registrar la incidencia",
+          );
+        if (status !== "enroute")
+          fail(
+            409,
+            "Solo puedes registrar entrega fallida cuando el pedido está en camino",
+          );
         await c.query("UPDATE orders SET reason=$2 WHERE id=$1", [
           o.id,
           text(b.reason),

@@ -89,3 +89,7 @@ La anticipación mínima del día de entrega se valida para clientes y administr
 `GET /credit-accounts/:id/orders?page=0&pageSize=10` devuelve `{rows,total,page,pageSize}`. Página cero inicial, tamaño 1–100, orden estable por fecha e ID. Aplica el mismo alcance por cliente/mensajero a filas y total. Sin parámetros conserva la respuesta de lista para compatibilidad.
 
 `GET /delivery-route-requests?day=YYYY-MM-DD` filtra las solicitudes por jornada y agrega `client_name` a las paradas. El filtro de fecha en Pedidos y Planta corresponde a `operation_day`.
+
+`POST /orders/:id/action` con `action:failed` permite administración o mensajero asignado; requiere estado `enroute` y motivo. Otros mensajeros no pueden registrar la incidencia. El estado permanece en reparto.
+
+El listado de solicitudes filtra las paradas asignadas o no disponibles, recalcula `order_ids` y oculta solicitudes vacías. Aprobar una solicitud parcial mantiene los bloqueos de pedidos y reduce el recorrido a los restantes; si no queda ninguno devuelve 409. Se conserva el registro de la solicitud y la trazabilidad de la decisión.

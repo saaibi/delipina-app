@@ -85,3 +85,9 @@ test("Ver mapa abre la ruta completa o un destino individual con coordenadas o d
  assert.equal(single.searchParams.has('waypoints'),false);assert.equal(single.searchParams.has('origin'),false);
  assert.equal(localDelivery('Girón'),true);assert.equal(localDelivery('Bogotá'),false);
 });
+import {routeOrigin} from '../shared/routes.js';
+test('Todos los accesos de navegación usan el origen configurado de reparto',()=>{
+ const stop={address:'Calle 43 #26-106',city:'Girón',lat:7.07,lng:-73.16};
+ assert.equal(new URL(mapsUrl([stop],routeOrigin({originLocation:{lat:7.13488,lng:-73.12438},origin:'Origen textual'}))).searchParams.get('origin'),'7.13488,-73.12438');
+ assert.equal(new URL(mapsUrl([stop],routeOrigin({origin:'Bodega configurada, Girón'}))).searchParams.get('origin'),'Bodega configurada, Girón');
+});

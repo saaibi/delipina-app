@@ -199,3 +199,12 @@ Pedidos y Planta permiten elegir la fecha de la jornada; inicia en la jornada ac
 Pedidos y saldo del cliente pagina en servidor con 10, 25 o 50 registros por página, manteniendo el alcance del cliente y del mensajero. Los precios especiales muestran únicamente presentaciones/unidades activas del catálogo: variantes desactivadas conservan el historial, pero no aparecen como ofertas actuales.
 
 Se comprobó el 20/11/2026 la consulta pública «Cl. 43 #26-106, POBLADO, Girón, Santander»: Photon devolvió comercios próximos y placa 26-06, no la 26-106. El aviso de aproximación refleja esa falta de datos. La sucursal permite abrir la búsqueda completa en la app de mapas y pegar latitud/longitud validadas para fijar el punto. No se habilitaron APIs de Google con facturación ni se sustituyó la placa por una coincidencia cercana.
+
+### Incidencias, asignación y comprobantes de entrega
+Administración y el mensajero asignado pueden registrar una entrega fallida únicamente en estado En camino. Se conserva la incidencia sin marcar el pedido como entregado. El filtro de mensajero incluye Sin mensajero asignado.
+
+Las solicitudes muestran solo pedidos que siguen disponibles. Asignar un pedido lo retira de las solicitudes visibles; si no quedan pedidos, la solicitud se oculta. Aprobar una solicitud parcial bloquea los pedidos y asigna únicamente los que todavía están disponibles, preservando las asignaciones ya realizadas.
+
+El comprobante al confirmar entrega tiene un campo para cargar imagen y cámara integrada a la derecha. En móvil, la cámara solicita captura posterior mediante el selector nativo; la carga normal mantiene la galería disponible. La foto sigue siendo obligatoria si el mensajero recibe dinero. La apertura real de cámara depende del navegador y sus permisos.
+
+Los enlaces de navegación de pedidos y paradas incluyen el origen de reparto configurado, preferentemente sus coordenadas, en vez de depender de la ubicación actual del teléfono.
