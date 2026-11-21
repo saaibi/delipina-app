@@ -83,7 +83,7 @@ export async function notifyOrder(
     )
   ).rows.map((u) => u.id);
   await notifyRecipients(c, [...eligible, ...target], {
-    key: "order:" + order.id,
+    key: "order:" + order.id + ":" + current.status,
     module: "orders",
     targetId: order.id,
     orderId: order.id,

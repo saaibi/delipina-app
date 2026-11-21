@@ -58,10 +58,26 @@ sw.addEventListener("push", (e) => {
     query.set(d.module === "credits" ? "credit" : "order", d.targetId);
   e.waitUntil(
     sw.registration.showNotification(d.title || "Delipiña", {
-      body: "Toca para consultar el detalle.",
+      body: d.body || "Toca para consultar el detalle.",
       icon: "/icon-192.png",
-      tag: d.id || "delipina-update",
-      data: { url: "/?" + query, id: d.id, revision: d.revision },
+      badge: "/icon-192.png",
+      tag: d.id ? d.id + ":" + (d.status || "") : "delipina-update",
+      data: {
+        url: "/?" + query,
+        id: d.id,
+        revision: d.revision,
+        targetId: d.targetId,
+        canRespond: d.canRespond,
+        status: d.status,
+      },
+      ...(d.canRespond === "true"
+        ? {
+            actions: [
+              { action: "confirm", title: "Aceptar" },
+              { action: "reject", title: "Rechazar" },
+            ],
+          }
+        : {}),
     }),
   );
 });
@@ -70,6 +86,42 @@ sw.addEventListener("notificationclick", (e) => {
   e.waitUntil(
     (async () => {
       const d = e.notification.data || {};
+      if (["confirm", "reject"].includes(e.action)) {
+        try {
+          if (d.canRespond !== "true" || d.status !== "pending" || !d.targetId)
+            throw Error("Acción no disponible");
+          const response = await fetch(
+            "/api/orders/" + encodeURIComponent(d.targetId) + "/action",
+            {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: e.action,
+                notificationId: d.id,
+                revision: Number(d.revision),
+              }),
+            },
+          );
+          if (!response.ok) throw Error("No se completó la respuesta");
+          const windows = await sw.clients.matchAll({
+            type: "window",
+            includeUncontrolled: true,
+          });
+          windows.forEach((w) => w.postMessage({ type: "refresh" }));
+        } catch {
+          await sw.registration.showNotification(
+            "No se completó la respuesta",
+            {
+              body: "Abre el pedido para revisar su estado antes de volver a intentar.",
+              icon: "/icon-192.png",
+              data: d,
+            },
+          );
+        }
+        return;
+      }
+
       if (d.id)
         await fetch(
           "/api/notifications/" + encodeURIComponent(d.id) + "/read",

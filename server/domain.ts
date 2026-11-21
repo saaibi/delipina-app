@@ -1,3 +1,4 @@
+import { notificationPayload } from "./notification-payload.js";
 import { maintainGoogleLocations } from "./google-locations.js";
 import { dispatchNativePush } from "./native-push.js";
 import { ensureRecurrences } from "./recurrence.js";
@@ -114,7 +115,7 @@ export async function dispatchPush() {
     );
     const rows = (
       await pool.query(
-        "SELECT s.*,n.title,n.id AS notification_id,n.revision,n.module,n.target_id,n.status FROM subscriptions s JOIN users u ON u.id=s.user_id JOIN notifications n ON n.user_id=s.user_id WHERE u.active AND (u.client_account_id IS NULL OR EXISTS(SELECT 1 FROM users owner WHERE owner.id=u.client_account_id AND owner.active)) AND NOT n.read AND n.updated_at>now()-interval '1 day' AND NOT EXISTS(SELECT 1 FROM push_deliveries d WHERE d.notification_id=n.id AND d.endpoint=s.endpoint AND d.revision=n.revision)",
+        "SELECT s.*,n.title,n.id AS notification_id,n.revision,n.module,n.target_id,n.status,n.order_id,o.window_start,o.window_end,o.status current_status,(SELECT name FROM users WHERE id=o.client_id) client_name,(u.role='admin' OR u.role='custom' AND u.permissions ? 'orders') can_respond FROM subscriptions s JOIN users u ON u.id=s.user_id JOIN notifications n ON n.user_id=s.user_id LEFT JOIN orders o ON o.id=n.order_id WHERE u.active AND (u.client_account_id IS NULL OR EXISTS(SELECT 1 FROM users owner WHERE owner.id=u.client_account_id AND owner.active)) AND NOT n.read AND n.updated_at>now()-interval '1 day' AND NOT EXISTS(SELECT 1 FROM push_deliveries d WHERE d.notification_id=n.id AND d.endpoint=s.endpoint AND d.revision=n.revision)",
       )
     ).rows;
     await Promise.allSettled(
@@ -127,14 +128,7 @@ export async function dispatchPush() {
         try {
           await webpush.sendNotification(
             s.payload,
-            JSON.stringify({
-              title: s.title,
-              id: s.notification_id,
-              revision: s.revision,
-              module: s.module,
-              targetId: s.target_id,
-              status: s.status,
-            }),
+            JSON.stringify(notificationPayload(s)),
           );
         } catch (e) {
           await pool.query(

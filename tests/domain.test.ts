@@ -370,7 +370,7 @@ test("Cierre automático conserva historia, saldos y pedidos futuros", async () 
     403,
   );
 });
-test("Avisos actualizan el mismo pedido y respetan lectura por revisión y propietario", async () => {
+test("Avisos conservan un registro por pedido y estado y respetan el propietario", async () => {
   const created = await call("client", "post", "/orders", body, randomUUID());
   assert.equal(created.status, 200);
   const notices = await call("admin", "get", "/notifications");
@@ -400,18 +400,11 @@ test("Avisos actualizan el mismo pedido y respetan lectura por revisión y propi
   const updates = (await call("admin", "get", "/notifications")).body.filter(
     (n) => n.order_id === created.body.id,
   );
-  assert.equal(updates.length, 1);
-  assert.equal(updates[0].id, n.id);
-  assert.equal(updates[0].status, "confirmed");
-  assert.equal(updates[0].read, false);
-  assert.equal(
-    (
-      await call("admin", "post", "/notifications/" + n.id + "/read", {
-        revision: n.revision,
-      })
-    ).body.read,
-    false,
-  );
+  assert.equal(updates.length, 2);
+  const confirmed = updates.find(n=>n.status === "confirmed");
+  assert.ok(confirmed);assert.notEqual(confirmed.id,n.id);assert.equal(confirmed.read,false);
+  assert.equal(updates.find(r=>r.id===n.id).read,true);
+  assert.ok(confirmed.client_name);assert.ok(confirmed.window_start);assert.ok(confirmed.window_end);
   const counts = (await call("admin", "get", "/notifications/counts")).body;
   assert.ok(counts.find((n) => n.module === "orders").count > 0);
   assert.equal(
@@ -1060,4 +1053,26 @@ test('Google Maps conserva metadatos de origen y sucursal; las coordenadas venci
  assert.equal((await request(app).get('/api/maps/config')).status,401);
  const config=await call('admin','get','/maps/config');assert.equal(config.status,200);assert.equal(config.body.serverKey,undefined);
  }finally{await pool.query('DELETE FROM branches WHERE id=$1',[branch.id]);}
+});
+
+test('Acciones rápidas de avisos verifican permiso, propietario y revisión; lectura es atómica',async()=>{
+ const make=async()=>{const r=await call('client','post','/orders',{...body,credit:false,paymentMethod:'online'},randomUUID());assert.equal(r.status,200,JSON.stringify(r.body));return r.body;};
+ const order=await make();
+ const notice=async(role,id)=>(await call(role,'get','/notifications')).body.find(n=>n.order_id===id&&n.status==='pending');
+ const n=await notice('admin',order.id), custom=await notice('custom',order.id), own=await notice('client',order.id);
+ const decision=(n,action='confirm')=>({action,notificationId:n.id,revision:n.revision});
+ assert.equal((await call('client','post','/orders/'+order.id+'/action',decision(own))).status,403);
+ assert.equal((await call('courier','post','/orders/'+order.id+'/action',decision(n))).status,403);
+ assert.equal((await call('admin','post','/orders/'+order.id+'/action',decision(custom))).status,404);
+ assert.equal((await call('admin','post','/orders/'+order.id+'/action',{...decision(n),revision:n.revision+1})).status,409);
+ assert.equal((await notice('admin',order.id)).read,false);
+ assert.equal((await call('custom','post','/orders/'+order.id+'/action',decision(custom))).status,200);
+ const customRows=(await call('custom','get','/notifications')).body.filter(n=>n.order_id===order.id);assert.equal(customRows.length,2);assert.ok(customRows.every(n=>n.read));
+ assert.equal((await notice('admin',order.id)).read,false);
+ assert.equal((await call('admin','post','/orders/'+order.id+'/action',decision(n,'reject'))).status,409);
+ assert.equal((await pool.query('SELECT status FROM orders WHERE id=$1',[order.id])).rows[0].status,'confirmed');
+ const reject=await make(), rejection=await notice('admin',reject.id);
+ assert.equal((await call('admin','post','/orders/'+reject.id+'/action',decision(rejection,'reject'))).status,200);
+ assert.ok((await call('admin','get','/notifications')).body.filter(n=>n.order_id===reject.id).every(n=>n.read));
+ assert.equal((await pool.query('SELECT status FROM orders WHERE id=$1',[reject.id])).rows[0].status,'rejected');
 });

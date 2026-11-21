@@ -1134,6 +1134,16 @@ function App() {
           <NotificationList
             rows={notifications}
             onSelect={openNotice}
+            canRespond={has(user, "orders")}
+            onAction={(n, action) =>
+              run(async () => {
+                await api("/orders/" + n.order_id + "/action", {
+                  method: "POST",
+                  body: { action, notificationId: n.id, revision: n.revision },
+                });
+                await refresh();
+              })
+            }
             labels={labels}
             date={date}
           />

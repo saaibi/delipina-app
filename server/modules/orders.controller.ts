@@ -273,6 +273,26 @@ export class OrdersController {
         ])
       ).rows[0];
       if (!o || !orderVisible(u, o)) fail(404, "Pedido no disponible");
+      if (b.notificationId !== undefined) {
+        if (
+          !["confirm", "reject"].includes(b.action) ||
+          !hasModule(u, "orders")
+        )
+          fail(403, "Sin permiso para responder este aviso");
+        const notice = (
+          await c.query(
+            "SELECT id,revision,status FROM notifications WHERE id=$1 AND user_id=$2 AND order_id=$3 FOR UPDATE",
+            [b.notificationId, u.id, o.id],
+          )
+        ).rows[0];
+        if (!notice) fail(404, "Aviso no disponible");
+        if (
+          notice.status !== "pending" ||
+          notice.revision !== b.revision ||
+          o.status !== "pending"
+        )
+          fail(409, "El pedido ya cambió de estado. Actualiza los avisos.");
+      }
       const admin = u.role === "admin";
       let status = o.status;
       if (b.action === "take") {
@@ -511,6 +531,12 @@ export class OrdersController {
           { reason: b.reason || null, previousStatus: o.status },
         ],
       );
+      if (b.notificationId) {
+        await c.query(
+          "UPDATE notifications SET read=true WHERE user_id=$1 AND order_id=$2 AND (id=$3 OR status=$4)",
+          [u.id, o.id, b.notificationId, status],
+        );
+      }
       return { ok: true };
     });
     await broadcast();

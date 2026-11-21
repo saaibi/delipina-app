@@ -41,7 +41,7 @@ export class NotificationsController {
     const u = auth(req);
     return (
       await pool.query(
-        `SELECT n.* FROM notifications n LEFT JOIN orders o ON o.id=n.order_id WHERE ${noticeVisibility()} ORDER BY n.updated_at DESC LIMIT 100`,
+        `SELECT n.*,o.window_start,o.window_end,o.status AS current_status,(SELECT name FROM users WHERE id=o.client_id) client_name FROM notifications n LEFT JOIN orders o ON o.id=n.order_id WHERE ${noticeVisibility()} ORDER BY n.updated_at DESC LIMIT 100`,
         [u.id, u.role],
       )
     ).rows.map((n) => ({ ...n, title: noticeTitle(n.title) }));
