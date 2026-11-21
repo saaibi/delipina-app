@@ -1,5 +1,5 @@
 import { ensureRecurrences } from "./recurrence.js";
-import { broadcast } from "./domain.js";
+import { broadcast, dispatchPush } from "./domain.js";
 import { ensureBusinessClock } from "./business-day.js";
 import { bootstrapAdmin } from "./bootstrap.js";
 import { createApp } from "./app.js";
@@ -11,7 +11,10 @@ if (process.env.BOOTSTRAP_ADMIN_EMAIL) await bootstrapAdmin();
 const app = await createApp();
 const io = createRealtime(app.getHttpServer());
 const server = app.getHttpAdapter().getInstance();
-if (process.env.NODE_ENV === "production" || process.env.LOCAL_PREVIEW_STATIC === "true") {
+if (
+  process.env.NODE_ENV === "production" ||
+  process.env.LOCAL_PREVIEW_STATIC === "true"
+) {
   server.use(express.static("dist"));
   server.use((req, res, next) =>
     req.path.startsWith("/api") || req.path.startsWith("/socket.io")
@@ -38,7 +41,11 @@ const businessClock = setInterval(() => {
   ensureBusinessClock()
     .then((changed) => {
       if (changed) void broadcast();
-      void ensureRecurrences();
+      void ensureRecurrences()
+        .then(() => dispatchPush())
+        .catch(() =>
+          console.error("No se pudieron procesar las frecuencias o sus avisos"),
+        );
     })
     .catch(() =>
       console.error("No se pudo completar el cierre automático de jornada"),

@@ -157,6 +157,7 @@ export class OrdersController {
         b.start,
         b.end,
         isCustomer(u) && !req.recurring,
+        req.recurring === true,
       );
       const paymentMethod = b.credit
         ? "credit"

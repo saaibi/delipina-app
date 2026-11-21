@@ -777,10 +777,24 @@ test("Producto con n presentaciones conserva variantes históricas al editar y d
  const saved=await call('admin','put','/product-groups/'+group.body.id,{name:'Salsa nueva',presentations:[{label:'Bolsa',units:got.body.variants.filter(v=>v.presentation==='Bolsa').map(v=>({id:v.id,unit:v.unit,price:Number(v.price)}))}]});assert.equal(saved.status,200);assert.equal((await call('client','post','/orders',{...body,credit:false,items:[{productId:variant.id,quantity:1}]},randomUUID())).status,400);assert.equal(Number((await call('client','get','/orders/'+created.body.id)).body.items[0].price),100000);
  assert.equal((await call('admin','get','/audit?page=0&pageSize=2')).body.rows.length,2);assert.equal((await call('client','get','/audit?page=0')).status,403);assert.ok((await call('admin','get','/business-days?page=0&pageSize=2')).body.total>=0);
 });
-test("Frecuencias generan una sola repetición y pausar evita nuevas órdenes",async()=>{
- const created=await call('client','post','/orders',{...body,credit:false,recurrence:{enabled:true,frequency:'days',intervalDays:2,weekdays:[]}},randomUUID());assert.equal(created.status,200,JSON.stringify(created.body));const schedule=(await call('client','get','/schedules')).body.find(s=>s.source_order_id===created.body.id);assert.ok(schedule);
- const day=new Date(body.start).toISOString().slice(0,10);await pool.query('UPDATE order_schedules SET next_day=$2 WHERE id=$1',[schedule.id,day]);const{ensureRecurrences}=await import('../dist-server/recurrence.js');await Promise.all([ensureRecurrences(),ensureRecurrences()]);await ensureRecurrences();
- const runs=(await pool.query("SELECT * FROM schedule_runs WHERE schedule_id=$1 AND status='created'",[schedule.id])).rows;assert.equal(runs.length,1);assert.ok(runs[0].order_id);assert.equal((await call('admin','get','/notifications')).body.find(n=>n.order_id===runs[0].order_id).title,'Pedido por frecuencia');assert.equal((await call('owner','patch','/schedules/'+schedule.id,{active:false})).status,404);assert.equal((await call('client','patch','/schedules/'+schedule.id,{active:false})).status,200);const count=(await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n;await ensureRecurrences();assert.equal((await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n,count);
+test("Frecuencia diaria espera la apertura de su fecha y genera una sola repetición",async()=>{
+ const sourceDay=String(body.start).slice(0,10),payload={...body,credit:false,start:sourceDay+'T07:00:00-05:00',end:sourceDay+'T15:00:00-05:00',recurrence:{enabled:true,frequency:'days',intervalDays:1,weekdays:[]}};
+ const created=await call('client','post','/orders',payload,randomUUID());assert.equal(created.status,200,JSON.stringify(created.body));
+ const schedule=(await call('client','get','/schedules')).body.find(s=>s.source_order_id===created.body.id);assert.ok(schedule);
+ const day=String(schedule.next_day).slice(0,10),{ensureRecurrences}=await import('../dist-server/recurrence.js'),originalNow=Date.now;
+ const prior=(await call('admin','get','/settings')).body;
+ try{
+ const week=Object.fromEntries(Array.from({length:7},(_,i)=>[i+1,{enabled:true,open:'06:00',close:'18:00',leadHours:2}]));
+ await pool.query('UPDATE settings SET data=data||$1::jsonb WHERE id=1',[JSON.stringify({weeklySchedule:week})]);
+ await ensureRecurrences();assert.equal((await pool.query('SELECT count(*)::int n FROM schedule_runs WHERE schedule_id=$1',[schedule.id])).rows[0].n,0);
+ Date.now=()=>+new Date(day+'T05:59:00-05:00');await ensureRecurrences();assert.equal((await pool.query('SELECT count(*)::int n FROM schedule_runs WHERE schedule_id=$1',[schedule.id])).rows[0].n,0);
+ Date.now=()=>+new Date(day+'T06:00:00-05:00');await Promise.all([ensureRecurrences(),ensureRecurrences()]);await ensureRecurrences();
+ const runs=(await pool.query("SELECT * FROM schedule_runs WHERE schedule_id=$1 AND status='created'",[schedule.id])).rows;assert.equal(runs.length,1);assert.ok(runs[0].order_id);
+ const made=(await pool.query('SELECT * FROM orders WHERE id=$1',[runs[0].order_id])).rows[0];assert.equal(made.status,'pending');assert.equal(new Date(made.window_start).toISOString(),new Date(day+'T07:00:00-05:00').toISOString());
+ assert.equal((await call('admin','get','/notifications')).body.find(n=>n.order_id===runs[0].order_id).title,'Pedido por frecuencia');
+ assert.equal((await call('owner','patch','/schedules/'+schedule.id,{active:false})).status,404);assert.equal((await call('client','patch','/schedules/'+schedule.id,{active:false})).status,200);
+ const count=(await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n;await ensureRecurrences();assert.equal((await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n,count);
+ }finally{Date.now=originalNow;await pool.query('UPDATE settings SET data=$1 WHERE id=1',[prior]);}
 });
 test("Jornada contable espera envío y confirmación de todos los cuadres",async()=>{
  const day=(await pool.query("SELECT to_char((now() AT TIME ZONE 'America/Bogota')::date-1,'YYYY-MM-DD') AS day")).rows[0].day;
@@ -1122,4 +1136,15 @@ test('Un pedido creado por administración espera aceptación explícita y reint
  assert.equal((await pool.query('SELECT status FROM orders WHERE id=$1',[created.body.id])).rows[0].status,'confirmed');
  assert.equal((await pool.query('SELECT count(*)::int n FROM invoices WHERE order_id=$1',[created.body.id])).rows[0].n,1);
  const notices=(await call('admin','get','/notifications')).body.filter(n=>n.order_id===created.body.id);assert.equal(notices.length,1);assert.equal(notices[0].id,rows[0].id);assert.equal(notices[0].status,'confirmed');
+});
+
+test('Los avisos aplazados no aparecen ni cuentan hasta el momento de activación',async()=>{
+ const created=await call('client','post','/orders',{...body,credit:false,paymentMethod:'online'},randomUUID());assert.equal(created.status,200);
+ const notice=(await call('admin','get','/notifications')).body.find(n=>n.order_id===created.body.id);assert.ok(notice);
+ const count=async()=>((await call('admin','get','/notifications/counts')).body.find(n=>n.module==='orders')?.count||0);
+ const before=await count();
+ await pool.query("UPDATE notifications SET available_at=now()+interval '1 hour' WHERE id=$1",[notice.id]);
+ assert.ok(!(await call('admin','get','/notifications')).body.some(n=>n.id===notice.id));assert.equal(await count(),before-1);
+ await pool.query("UPDATE notifications SET available_at=now()-interval '1 second',updated_at=now()-interval '3 days' WHERE id=$1",[notice.id]);
+ const active=(await call('admin','get','/notifications')).body.find(n=>n.id===notice.id);assert.ok(active);assert.equal(active.read,false);assert.equal(await count(),before);
 });

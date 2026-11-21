@@ -137,6 +137,7 @@ export async function validateDeliveryWindow(
   startValue: any,
   endValue: any,
   customer = false,
+  scheduled = false,
 ) {
   const cfg = (await c.query("SELECT data FROM settings WHERE id=1")).rows[0]
     .data;
@@ -197,15 +198,16 @@ export async function validateDeliveryWindow(
   ).rows[0];
   const schedule = weeklySchedule(cfg)[r.weekday];
   if (
+    !scheduled &&
     Date.now() >
-    +new Date(`${r.day}T${schedule.close}:00-05:00`) -
-      schedule.leadHours * 3600000
+      +new Date(`${r.day}T${schedule.close}:00-05:00`) -
+        schedule.leadHours * 3600000
   )
     fail(
       400,
       "Ya pasó la hora de cierre menos la anticipación; elige el siguiente día habilitado",
     );
-  if (+start < Date.now() + schedule.leadHours * 3600000)
+  if (!scheduled && +start < Date.now() + schedule.leadHours * 3600000)
     fail(400, "No cumple la anticipación del día de entrega");
   if (
     !schedule.enabled ||
@@ -214,6 +216,8 @@ export async function validateDeliveryWindow(
     r.end_time > schedule.close
   )
     fail(400, "El rango está fuera del horario del día elegido");
+  if (scheduled && +end <= Date.now())
+    fail(409, "La franja de entrega programada ya terminó");
   await assertBusinessDateOpen(c, r.day);
   return { start, end, day: r.day };
 }

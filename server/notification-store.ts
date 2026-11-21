@@ -16,7 +16,7 @@ export async function notifyRecipients(
 ) {
   for (const id of new Set(userIds)) {
     await c.query(
-      `INSERT INTO notifications(id,user_id,title,order_id,event_key,module,target_id,status) SELECT $1,id,$3,$4,$5,$6,$7,$8 FROM users WHERE id=$2 AND active ON CONFLICT(user_id,event_key) DO UPDATE SET title=excluded.title,status=excluded.status,target_id=excluded.target_id,updated_at=clock_timestamp(),revision=notifications.revision+1,read=false,dismissed=false WHERE notifications.title IS DISTINCT FROM excluded.title OR notifications.status IS DISTINCT FROM excluded.status OR notifications.target_id IS DISTINCT FROM excluded.target_id`,
+      `INSERT INTO notifications(id,user_id,title,order_id,event_key,module,target_id,status) SELECT $1,id,$3,$4,$5,$6,$7,$8 FROM users WHERE id=$2 AND active ON CONFLICT(user_id,event_key) DO UPDATE SET title=excluded.title,status=excluded.status,target_id=excluded.target_id,updated_at=clock_timestamp(),revision=notifications.revision+1,read=false,dismissed=false,available_at=clock_timestamp() WHERE notifications.title IS DISTINCT FROM excluded.title OR notifications.status IS DISTINCT FROM excluded.status OR notifications.target_id IS DISTINCT FROM excluded.target_id`,
       [
         randomUUID(),
         id,
@@ -97,5 +97,5 @@ export async function notifyOrder(
   });
 }
 export function noticeVisibility() {
-  return `n.user_id=$1 AND NOT n.dismissed AND (n.module<>'credits' OR NOT EXISTS(SELECT 1 FROM users a WHERE a.id=$1 AND a.role='client_member' AND NOT a.can_view_portfolio)) AND (n.order_id IS NULL OR o.id IS NOT NULL AND (($2 IN ('admin','preparation','plant_admin') OR $2='custom' AND EXISTS(SELECT 1 FROM users a WHERE a.id=$1 AND a.permissions ?| array['orders','plant'])) OR $2 IN ('client','client_member') AND o.client_id=COALESCE((SELECT a.client_account_id FROM users a WHERE a.id=$1),$1) OR $2='courier' AND (o.courier_id=$1 OR o.courier_id IS NULL AND o.status NOT IN ('rejected','cancelled','delivered'))))`;
+  return `n.user_id=$1 AND NOT n.dismissed AND n.available_at<=now() AND (n.module<>'credits' OR NOT EXISTS(SELECT 1 FROM users a WHERE a.id=$1 AND a.role='client_member' AND NOT a.can_view_portfolio)) AND (n.order_id IS NULL OR o.id IS NOT NULL AND (($2 IN ('admin','preparation','plant_admin') OR $2='custom' AND EXISTS(SELECT 1 FROM users a WHERE a.id=$1 AND a.permissions ?| array['orders','plant'])) OR $2 IN ('client','client_member') AND o.client_id=COALESCE((SELECT a.client_account_id FROM users a WHERE a.id=$1),$1) OR $2='courier' AND (o.courier_id=$1 OR o.courier_id IS NULL AND o.status NOT IN ('rejected','cancelled','delivered'))))`;
 }

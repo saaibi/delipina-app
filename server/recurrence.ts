@@ -1,3 +1,4 @@
+import { weeklySchedule } from "./business-day.js";
 import { pool, tx, fail } from "./db.js";
 import { randomUUID } from "node:crypto";
 import { isCustomer, customerId, hasModule } from "./access.js";
@@ -88,32 +89,41 @@ export async function ensureRecurrences() {
   if (running) return;
   running = true;
   try {
+    const now = new Date(Date.now()),
+      today = new Date(+now - 5 * 3600000).toISOString().slice(0, 10);
     const rules = (
       await pool.query(
-        "SELECT s.*,row_to_json(u) actor FROM order_schedules s JOIN users u ON u.id=s.created_by JOIN users owner ON owner.id=s.client_id WHERE s.active AND s.next_day<=((now() AT TIME ZONE 'America/Bogota')::date+45) ORDER BY s.next_day LIMIT 100",
+        "SELECT s.*,row_to_json(u) actor FROM order_schedules s JOIN users u ON u.id=s.created_by JOIN users owner ON owner.id=s.client_id WHERE s.active AND s.next_day<=$1::date ORDER BY s.next_day LIMIT 100",
+        [today],
       )
     ).rows;
     const cfg = (await pool.query("SELECT data FROM settings WHERE id=1"))
       .rows[0]?.data;
-    const maxLead = Math.max(
-      2,
-      ...Object.values(cfg?.weeklySchedule || {}).map((v: any) =>
-        Number(v.leadHours || 0),
-      ),
-    );
-    const horizon = new Date(
-      new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" }) +
-        "T12:00:00Z",
-    );
-    horizon.setUTCDate(horizon.getUTCDate() + Math.ceil(maxLead / 24) + 1);
-    const until = horizon.toISOString().slice(0, 10);
     for (const r of rules) {
       const day = String(
         r.next_day instanceof Date
           ? r.next_day.toISOString().slice(0, 10)
           : r.next_day,
       ).slice(0, 10);
-      if (day > until) continue;
+      if (day > today) continue;
+      if (day === today) {
+        const schedule =
+          weeklySchedule(cfg)[new Date(day + "T12:00:00Z").getUTCDay() || 7];
+        const record = (
+          await pool.query(
+            "SELECT closed_at,intake_closed_at FROM business_days WHERE day=$1",
+            [day],
+          )
+        ).rows[0];
+        if (
+          !schedule.enabled ||
+          +now < +new Date(day + "T" + schedule.open + ":00-05:00") ||
+          +now >= +new Date(day + "T" + schedule.close + ":00-05:00") ||
+          record?.closed_at ||
+          record?.intake_closed_at
+        )
+          continue;
+      }
       const u = r.actor,
         owner = (
           await pool.query("SELECT active FROM users WHERE id=$1", [
@@ -148,9 +158,6 @@ export async function ensureRecurrences() {
         order: any,
         error = null;
       try {
-        const today = new Date().toLocaleDateString("en-CA", {
-          timeZone: "America/Bogota",
-        });
         if (day < today) fail(409, "Repetición omitida: fecha pasada");
         const b = {
           ...r.body,
