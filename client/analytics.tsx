@@ -197,6 +197,7 @@ export function AnalyticsView({ money, labels, closings }: any) {
             <Chart
               title="Clientes que más compran"
               type="PieChart"
+              options={{ pieHole: 0 }}
               description="Valor de pedidos aceptados (COP), según la fecha de entrega."
               rows={[
                 ["Cliente", "Valor aceptado COP"],
