@@ -14,7 +14,7 @@ import TableRow from "@mui/material/TableRow";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import Alert from "@mui/material/Alert";
-import { Button, Field, Select } from "./ui";
+import { Button, Field, Select, Modal } from "./ui";
 import { api, cached } from "./offline";
 export function CreditsView({
   accounts,
@@ -96,7 +96,7 @@ export function CreditsView({
                       </TableCell>
                     )}
                     <TableCell>
-                      <div className="actions">
+                      <div className="actions portfolio-actions">
                         <Button className="neutral" onClick={() => onReview(a)}>
                           Ver pedidos
                         </Button>
@@ -147,6 +147,7 @@ export function CreditDetails({
   canPay,
   personal = false,
 }: any) {
+  const [detail, DETAIL] = useState<any>(null);
   const [revision, RV] = useState(0);
   useEffect(() => {
     const handler = () => RV((n) => n + 1);
@@ -224,11 +225,12 @@ export function CreditDetails({
                   })}
                 </TableCell>
                 <TableCell>
-                  {o.items?.map((i) => (
-                    <div key={i.name}>
-                      {Number(i.quantity)} · {i.name}
-                    </div>
-                  ))}
+                  <div className="portfolio-item-summary">
+                    <small>{o.items?.length || 0} presentaciones</small>
+                    <Button className="neutral" onClick={() => DETAIL(o)}>
+                      Ver detalle
+                    </Button>
+                  </div>
                 </TableCell>
                 <TableCell>
                   <StatusChip status={o.status} />
@@ -240,8 +242,58 @@ export function CreditDetails({
           </TableBody>
         </Table>
       </TableContainer>
+      {detail && (
+        <Modal title="Detalle del pedido" onClose={() => DETAIL(null)}>
+          <div className="portfolio-order-detail">
+            <div className="portfolio-detail-heading">
+              <strong>
+                {new Date(detail.window_start).toLocaleDateString("es-CO", {
+                  timeZone: "America/Bogota",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </strong>
+              <StatusChip status={detail.status} />
+            </div>
+            <p>
+              Entrega:{" "}
+              {new Date(detail.window_start).toLocaleTimeString("es-CO", {
+                timeZone: "America/Bogota",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+              {detail.window_end
+                ? ` — ${new Date(detail.window_end).toLocaleTimeString("es-CO", { timeZone: "America/Bogota", hour: "2-digit", minute: "2-digit" })}`
+                : ""}
+            </p>
+            <ul className="portfolio-detail-items">
+              {detail.items?.map((i, n) => (
+                <li key={n}>
+                  <span>{i.name}</span>
+                  <strong>{Number(i.quantity)}</strong>
+                </li>
+              ))}
+            </ul>
+            <div className="portfolio-detail-totals">
+              <div>
+                <small>Total del pedido</small>
+                <strong>{money(detail.total)}</strong>
+              </div>
+              <div>
+                <small>Saldo pendiente</small>
+                <strong>
+                  {detail.invoice_id ? money(detail.balance) : "Por facturar"}
+                </strong>
+              </div>
+            </div>
+            {detail.number && <p>Factura {detail.number}</p>}
+          </div>
+        </Modal>
+      )}
       {!orders.length && <p>No hay pedidos registrados.</p>}
       <TablePagination
+        className="portfolio-pagination"
         component="div"
         count={total}
         page={page}
@@ -350,6 +402,7 @@ export function GeneralPaymentForm({
 }
 
 export function PersonalPortfolio({ account, user, money, onPay }: any) {
+  const [quantityUnit, QU] = useState("");
   const [summary, S] = useState<any>(null),
     [error, E] = useState("");
   useEffect(() => {
@@ -378,6 +431,15 @@ export function PersonalPortfolio({ account, user, money, onPay }: any) {
     0,
     Number(account.credit_limit) - Number(account.credit_used),
   );
+  const quantityUnits = [
+    ...new Set<string>((summary?.products || []).map((p) => p.unit)),
+  ];
+  const selectedUnit = quantityUnits.includes(quantityUnit)
+    ? quantityUnit
+    : quantityUnits[0] || "";
+  const quantityProducts = (summary?.products || [])
+    .filter((p) => p.unit === selectedUnit)
+    .slice(0, 10);
   return (
     <>
       {error && <Alert severity="error">{error}</Alert>}
@@ -413,7 +475,7 @@ export function PersonalPortfolio({ account, user, money, onPay }: any) {
         </article>
       </div>
       <section className="panel">
-        <div className="actions">
+        <div className="actions portfolio-actions">
           <Button
             disabled={Number(account.available_to_pay) <= 0}
             onClick={() => onPay(account)}
@@ -429,15 +491,6 @@ export function PersonalPortfolio({ account, user, money, onPay }: any) {
       {summary && (
         <div className="personal-portfolio-charts">
           <Chart
-            title="Mis pedidos por mes"
-            type="ColumnChart"
-            rows={[
-              ["Mes", "Pedidos"],
-              ...summary.monthly.map((m) => [m.month, m.orders]),
-            ]}
-            options={{ legend: { position: "none" } }}
-          />
-          <Chart
             title="Mis compras por mes"
             type="ColumnChart"
             description="Valor de pedidos entregados (COP). Últimos 12 meses con actividad."
@@ -447,6 +500,40 @@ export function PersonalPortfolio({ account, user, money, onPay }: any) {
             ]}
             options={{ legend: { position: "none" } }}
           />
+          <div>
+            <Select
+              label="Unidad para comparar cantidades"
+              required={false}
+              value={selectedUnit}
+              onChange={(e) => QU(e.target.value)}
+              disabled={!quantityUnits.length}
+            >
+              {!quantityUnits.length && (
+                <option value="">Sin productos entregados</option>
+              )}
+              {quantityUnits.map((unit) => (
+                <option key={unit} value={unit}>
+                  {unit}
+                </option>
+              ))}
+            </Select>
+            <Chart
+              title="Productos que más compro"
+              type="BarChart"
+              description="Cantidades acumuladas en pedidos entregados. Hasta 10 presentaciones por unidad, sin mezclar kilos, cajas u otras medidas."
+              rows={[
+                ["Producto", selectedUnit || "Cantidad"],
+                ...quantityProducts.map((p) => [p.name, Number(p.quantity)]),
+              ]}
+              options={{
+                legend: { position: "none" },
+                height: Math.max(270, quantityProducts.length * 42),
+                chartArea: { left: 145, top: 20, width: "52%", height: "80%" },
+                hAxis: { minValue: 0, title: selectedUnit },
+                vAxis: { textStyle: { fontSize: 11 } },
+              }}
+            />
+          </div>
         </div>
       )}
       <section className="panel">
@@ -595,7 +682,7 @@ export function PaymentHistory({
                 {onVerify && (
                   <TableCell>
                     {!p.verified && !p.rejected_at && (
-                      <div className="actions">
+                      <div className="actions portfolio-actions">
                         <Button disabled={busy} onClick={() => review(p)}>
                           Aceptar
                         </Button>
@@ -641,7 +728,7 @@ export function PaymentHistory({
             onChange={(e) => WHY(e.target.value)}
             maxLength={500}
           />
-          <div className="actions">
+          <div className="actions portfolio-actions">
             <Button type="submit" className="danger" disabled={busy}>
               Confirmar rechazo
             </Button>
@@ -652,6 +739,7 @@ export function PaymentHistory({
         </form>
       )}
       <TablePagination
+        className="portfolio-pagination"
         component="div"
         count={total}
         page={page}

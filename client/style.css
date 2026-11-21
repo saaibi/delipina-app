@@ -1757,3 +1757,14 @@ footer {
 .MuiButton-outlined.danger { color:#a53c35; border-color:#a53c35; background:transparent; }
 
 .personal-portfolio-charts { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,320px),1fr)); gap: 16px; margin: 16px 0; }
+
+.actions.portfolio-actions { flex-wrap: nowrap; align-items: center; margin-top: 8px; }
+.actions.portfolio-actions > button { flex-shrink: 0; white-space: nowrap; }
+
+.portfolio-item-summary { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.portfolio-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.portfolio-detail-items { list-style: none; padding: 0; margin: 16px 0; }
+.portfolio-detail-items li { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 12px 0; border-bottom: 1px solid #edf0e8; }
+.portfolio-detail-items li strong { flex-shrink: 0; background: #f0f3e8; padding: 4px 10px; border-radius: 8px; }
+.portfolio-detail-totals { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.portfolio-detail-totals small, .portfolio-detail-totals strong { display: block; }

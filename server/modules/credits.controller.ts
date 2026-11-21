@@ -40,7 +40,13 @@ export class CreditsController {
         args,
       )
     ).rows.reverse();
-    return { ...totals, monthly };
+    const products = (
+      await pool.query(
+        `SELECT i.name,COALESCE(substring(i.name from '\\(([^()]*)\\)$'),p.unit,'Unidad') AS unit,sum(i.quantity) AS quantity FROM items i JOIN orders o ON o.id=i.order_id LEFT JOIN products p ON p.id=i.product_id WHERE ${where} AND o.status='delivered' GROUP BY i.name,2 ORDER BY sum(i.quantity) DESC,i.name`,
+        args,
+      )
+    ).rows;
+    return { ...totals, monthly, products };
   }
   @Get("credit-accounts/:id/orders") @HttpCode(200) async orders(
     @Req() req: any,
@@ -66,7 +72,7 @@ export class CreditsController {
       "o.client_id=$1 AND ($2<>'courier' OR o.courier_id=$3 OR o.delivered_by=$3)";
     const rows = (
       await pool.query(
-        `SELECT i.id AS invoice_id,i.number,COALESCE(i.balance,0) AS balance,o.id,o.total,o.status,o.created_at,o.window_start,(SELECT json_agg(json_build_object('name',name,'quantity',quantity)) FROM items WHERE order_id=o.id) AS items FROM orders o LEFT JOIN invoices i ON o.id=i.order_id WHERE ${where} ORDER BY o.created_at DESC,o.id${paged ? " LIMIT $4 OFFSET $5" : ""}`,
+        `SELECT i.id AS invoice_id,i.number,COALESCE(i.balance,0) AS balance,o.id,o.total,o.status,o.created_at,o.window_start,o.window_end,(SELECT json_agg(json_build_object('name',name,'quantity',quantity)) FROM items WHERE order_id=o.id) AS items FROM orders o LEFT JOIN invoices i ON o.id=i.order_id WHERE ${where} ORDER BY o.created_at DESC,o.id${paged ? " LIMIT $4 OFFSET $5" : ""}`,
         paged ? [...params, pageSize, page * pageSize] : params,
       )
     ).rows;

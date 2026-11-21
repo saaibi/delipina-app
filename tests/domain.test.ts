@@ -1241,3 +1241,18 @@ test('Abonos del cliente: comprobante, aislamiento, revisión, rechazo y aplicac
  assert.equal((await call('paymentmember','get',`/payments/${sent.body.id}/proof`)).status,200);
  assert.equal((await call('paymentmember','get',`/payments?page=0&clientId=${users.owner.id}`)).body.total,0);
 });
+
+test('Cantidades de cartera separan unidades, preservan la unidad histórica y omiten pedidos sin entregar',async()=>{
+ const group=await call('admin','post','/product-groups',{name:'Comparación de cantidades',presentations:[{label:'Natural',units:[{unit:'kg',price:10000},{unit:'Caja',price:30000}]}]});assert.equal(group.status,200,JSON.stringify(group.body));
+ const variants=(await call('admin','get',`/product-groups/${group.body.id}`)).body.variants;
+ const kg=variants.find(p=>p.unit==='kg'),box=variants.find(p=>p.unit==='Caja');
+ const make=async(qty)=>{const made=await call('client','post','/orders',{...body,credit:false,paymentMethod:'online',items:[{productId:kg.id,quantity:qty},{productId:box.id,quantity:3}]},randomUUID());assert.equal(made.status,200,JSON.stringify(made.body));return made.body;};
+ const delivered=await make(2);assert.equal((await call('admin','post',`/orders/${delivered.id}/action`,{action:'confirm'})).status,200);await pool.query("UPDATE orders SET status='delivered' WHERE id=$1",[delivered.id]);
+ await make(100);
+ await pool.query("UPDATE products SET unit='Unidad renombrada' WHERE id=$1",[box.id]);
+ const summary=await call('client','get',`/credit-accounts/${users.client.id}/summary`);assert.equal(summary.status,200,JSON.stringify(summary.body));
+ const quantities=summary.body.products.filter(p=>p.name.includes('Comparación de cantidades'));
+ assert.equal(quantities.length,2,JSON.stringify(summary.body.products));assert.equal(Number(quantities.find(p=>p.unit==='kg').quantity),2);assert.equal(Number(quantities.find(p=>p.unit==='Caja').quantity),3);
+ const history=await call('client','get',`/credit-accounts/${users.client.id}/orders?page=0&pageSize=100`);assert.ok(history.body.rows.find(o=>o.id===delivered.id).window_end);
+ const other=await call('owner','get',`/credit-accounts/${users.owner.id}/summary`);assert.ok(!other.body.products.some(p=>p.name.includes('Comparación de cantidades')));
+});
