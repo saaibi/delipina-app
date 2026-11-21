@@ -863,6 +863,15 @@ test("Recorridos automáticos limitados al mensajero y jornada, con grupos de m�
  const batch=(await pool.query("SELECT * FROM demo_batches WHERE client_id=$1",[users.owner.id])).rows[0];
  await pool.query("UPDATE orders SET operation_day=(now() AT TIME ZONE 'America/Bogota')::date WHERE demo_batch_id=$1",[batch.id]);
  const routes=await call('courier','get','/delivery-routes');assert.equal(routes.status,200,JSON.stringify(routes.body));assert.equal(routes.body.groups.flatMap(g=>g.stops).length,9);assert.ok(routes.body.groups.every(g=>g.stops.length<=5));assert.ok(routes.body.groups.every(g=>g.stops.every(s=>s.city!=='Bogotá')||g.stops.every(s=>s.city==='Bogotá')));assert.ok(routes.body.groups.every(g=>['distance','carrier'].includes(g.mode)));
+ const futureDay='2099-01-15';
+ const futureOrder=batch.order_ids[0];
+ await pool.query("UPDATE orders SET operation_day=$2 WHERE id=$1",[futureOrder,futureDay]);
+ const futureRoutes=await call('courier','get','/delivery-routes?day='+futureDay);
+ assert.equal(futureRoutes.status,200);assert.equal(futureRoutes.body.day,futureDay);assert.deepEqual(futureRoutes.body.groups.flatMap(g=>g.stops.map(s=>s.id)),[futureOrder]);
+ assert.ok((await call('courier','get','/orders')).body.some(o=>o.id===futureOrder));
+ assert.ok((await call('courier','get','/delivery-routes')).body.groups.every(g=>g.stops.every(s=>s.id!==futureOrder)));
+ assert.equal((await call('courier','get','/delivery-routes?day=2026-02-30')).status,400);
+ await pool.query("UPDATE orders SET operation_day=(now() AT TIME ZONE 'America/Bogota')::date WHERE id=$1",[futureOrder]);
  assert.equal((await call('client','get','/delivery-routes')).status,403);assert.equal((await call('courier2','get','/delivery-routes')).body.groups.length,0);
  const id=batch.branch_ids[0];assert.equal((await call('client','patch','/branches/'+id+'/location',{lat:7,lng:-73})).status,404);assert.equal((await call('owner','patch','/branches/'+id+'/location',{lat:91,lng:-73})).status,400);assert.equal((await call('owner','patch','/branches/'+id+'/location',{lat:7.01,lng:-73.04})).status,200);
 });

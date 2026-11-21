@@ -243,6 +243,15 @@ export function SettingsView({
           Restablecer a 100%
         </Button>
         <NotificationSettings controller={push} />
+        <span>
+          <a href="/mapas-privacidad.html" target="_blank" rel="noreferrer">
+            Privacidad de mapas
+          </a>{" "}
+          ·{" "}
+          <a href="/mapas-condiciones.html" target="_blank" rel="noreferrer">
+            Condiciones de mapas
+          </a>
+        </span>
       </Section>
       {admin && (
         <>

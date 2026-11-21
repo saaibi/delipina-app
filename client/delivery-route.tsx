@@ -30,10 +30,12 @@ export function DeliveryRoute({
       .map((o) => o.id + o.status + o.courier_id + o.lat + o.lng)
       .sort()
       .join("|") + JSON.stringify({ origin, originLocation, day });
-  const load = () => api("/delivery-routes").then(S);
+  const endpoint =
+    "/delivery-routes" + (day ? "?day=" + encodeURIComponent(day) : "");
+  const load = () => api(endpoint).then(S);
   useEffect(() => {
     let live = true;
-    api("/delivery-routes")
+    api(endpoint)
       .then((d) => {
         if (live) {
           S(d);

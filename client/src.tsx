@@ -197,7 +197,6 @@ function App() {
     async () => {
       await run(async () => {
         await refresh();
-        S("Información actualizada");
       });
     },
     !user || !!modal || drawer,
@@ -985,7 +984,7 @@ function App() {
               )}
               {!(prep && full) && (
                 <div className="toolbar">
-                  {(prep || view === "orders") && (
+                  {(prep || view === "orders" || view === "deliveries") && (
                     <Field
                       label="Fecha de pedidos"
                       type="date"
@@ -1062,7 +1061,7 @@ function App() {
                   refreshToken={refreshToken}
                   scope={deliveryFilter}
                   onRefresh={refresh}
-                  day={currentDay}
+                  day={selectedDay}
                   originLocation={settings?.originLocation}
                   user={user}
                   origin={
@@ -1103,23 +1102,6 @@ function App() {
                 {config?.devAuth
                   ? "Datos de demostración solo en el entorno local"
                   : "Delipiña · Pedidos y entregas"}
-              </span>
-              <span>
-                <a
-                  href="/mapas-privacidad.html"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Privacidad de mapas
-                </a>{" "}
-                ·{" "}
-                <a
-                  href="/mapas-condiciones.html"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Condiciones de mapas
-                </a>
               </span>
             </footer>
           )}

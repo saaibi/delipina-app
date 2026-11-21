@@ -1,6 +1,6 @@
 import { Controller, Get, Req, HttpCode } from "@nestjs/common";
 import { auth } from "../domain.js";
-import { pool, tx } from "../db.js";
+import { pool, tx, fail } from "../db.js";
 import { businessDate } from "../business-day.js";
 import {
   groupStops,
@@ -15,10 +15,19 @@ import { randomUUID } from "node:crypto";
 export class DeliveryRoutesController {
   @Get("delivery-routes") @HttpCode(200) async get(@Req() req: any) {
     const u = auth(req, ["courier"]);
-    return this.plan(u);
+    const day = req.query.day;
+    if (
+      day &&
+      (typeof day !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
+        !Number.isFinite(Date.parse(day + "T12:00:00Z")) ||
+        new Date(day + "T12:00:00Z").toISOString().slice(0, 10) !== day)
+    )
+      fail(400, "Fecha inválida");
+    return this.plan(u, day);
   }
-  async plan(u: any) {
-    const day = await businessDate(),
+  async plan(u: any, selectedDay?: string) {
+    const day = selectedDay || (await businessDate()),
       cfg = (await pool.query("SELECT data FROM settings WHERE id=1")).rows[0]
         .data,
       origin = cfg.originLocation,
