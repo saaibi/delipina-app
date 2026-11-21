@@ -537,7 +537,26 @@ export class OrdersController {
           [u.id, o.id, b.notificationId, status],
         );
       }
-      return { ok: true };
+      const notification = b.notificationId
+        ? (
+            await c.query(
+              "SELECT id,title,status,revision,read FROM notifications WHERE id=$1 AND user_id=$2",
+              [b.notificationId, u.id],
+            )
+          ).rows[0]
+        : undefined;
+      return {
+        ok: true,
+        ...(notification
+          ? {
+              notification: {
+                ...notification,
+                statusLabel:
+                  statusLabels[notification.status] || notification.status,
+              },
+            }
+          : {}),
+      };
     });
     await broadcast();
     return result;

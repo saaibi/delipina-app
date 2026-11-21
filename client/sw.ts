@@ -61,8 +61,12 @@ sw.addEventListener("push", (e) => {
       body: d.body || "Toca para consultar el detalle.",
       icon: "/icon-192.png",
       badge: "/icon-192.png",
-      tag: d.id ? d.id + ":" + (d.status || "") : "delipina-update",
+      tag:
+        d.module === "orders" && d.targetId
+          ? "order:" + d.targetId
+          : d.id || "delipina-update",
       data: {
+        ...d,
         url: "/?" + query,
         id: d.id,
         revision: d.revision,
@@ -104,6 +108,26 @@ sw.addEventListener("notificationclick", (e) => {
             },
           );
           if (!response.ok) throw Error("No se completó la respuesta");
+          const result = await response.json(),
+            notice = result.notification;
+          if (notice) {
+            const url = new URL(d.url || "/", sw.location.origin);
+            url.searchParams.set("revision", String(notice.revision));
+            await sw.registration.showNotification("Pedido", {
+              body: [d.clientName, notice.statusLabel, d.deliveryWindow]
+                .filter(Boolean)
+                .join(" · "),
+              icon: "/icon-192.png",
+              tag: "order:" + d.targetId,
+              data: {
+                ...d,
+                ...notice,
+                url: url.pathname + url.search,
+                canRespond: "false",
+              },
+            });
+          }
+
           const windows = await sw.clients.matchAll({
             type: "window",
             includeUncontrolled: true,
@@ -145,5 +169,18 @@ sw.addEventListener("notificationclick", (e) => {
         await existing.focus();
       } else await sw.clients.openWindow(url);
     })(),
+  );
+});
+
+sw.addEventListener("notificationclose", (e) => {
+  const d = e.notification.data || {};
+  if (!d.id) return;
+  e.waitUntil(
+    fetch("/api/notifications/" + encodeURIComponent(d.id) + "/dismiss", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision: Number(d.revision) }),
+    }).catch(() => {}),
   );
 });

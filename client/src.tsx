@@ -1135,6 +1135,15 @@ function App() {
             rows={notifications}
             onSelect={openNotice}
             canRespond={has(user, "orders")}
+            onDismiss={(n) =>
+              run(async () => {
+                await api("/notifications/" + n.id + "/dismiss", {
+                  method: "POST",
+                  body: { revision: n.revision },
+                });
+                await refresh();
+              })
+            }
             onAction={(n, action) =>
               run(async () => {
                 await api("/orders/" + n.order_id + "/action", {

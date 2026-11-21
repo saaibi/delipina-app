@@ -370,7 +370,7 @@ test("Cierre automático conserva historia, saldos y pedidos futuros", async () 
     403,
   );
 });
-test("Avisos conservan un registro por pedido y estado y respetan el propietario", async () => {
+test("Avisos actualizan un único registro por pedido y respetan la revisión y el propietario", async () => {
   const created = await call("client", "post", "/orders", body, randomUUID());
   assert.equal(created.status, 200);
   const notices = await call("admin", "get", "/notifications");
@@ -400,10 +400,9 @@ test("Avisos conservan un registro por pedido y estado y respetan el propietario
   const updates = (await call("admin", "get", "/notifications")).body.filter(
     (n) => n.order_id === created.body.id,
   );
-  assert.equal(updates.length, 2);
-  const confirmed = updates.find(n=>n.status === "confirmed");
-  assert.ok(confirmed);assert.notEqual(confirmed.id,n.id);assert.equal(confirmed.read,false);
-  assert.equal(updates.find(r=>r.id===n.id).read,true);
+  assert.equal(updates.length, 1);
+  const confirmed=updates[0];assert.equal(confirmed.id,n.id);assert.equal(confirmed.status,"confirmed");assert.equal(confirmed.read,false);assert.ok(confirmed.revision>n.revision);
+  assert.equal((await call("admin","post","/notifications/"+n.id+"/read",{revision:n.revision})).body.read,false);
   assert.ok(confirmed.client_name);assert.ok(confirmed.window_start);assert.ok(confirmed.window_end);
   const counts = (await call("admin", "get", "/notifications/counts")).body;
   assert.ok(counts.find((n) => n.module === "orders").count > 0);
@@ -1067,12 +1066,47 @@ test('Acciones rápidas de avisos verifican permiso, propietario y revisión; le
  assert.equal((await call('admin','post','/orders/'+order.id+'/action',{...decision(n),revision:n.revision+1})).status,409);
  assert.equal((await notice('admin',order.id)).read,false);
  assert.equal((await call('custom','post','/orders/'+order.id+'/action',decision(custom))).status,200);
- const customRows=(await call('custom','get','/notifications')).body.filter(n=>n.order_id===order.id);assert.equal(customRows.length,2);assert.ok(customRows.every(n=>n.read));
- assert.equal((await notice('admin',order.id)).read,false);
+ const customRows=(await call('custom','get','/notifications')).body.filter(n=>n.order_id===order.id);assert.equal(customRows.length,1);assert.equal(customRows[0].id,custom.id);assert.equal(customRows[0].title,"Pedido: Confirmado");assert.ok(customRows.every(n=>n.read));
+ assert.equal((await call('admin','get','/notifications')).body.find(r=>r.id===n.id).read,false);
  assert.equal((await call('admin','post','/orders/'+order.id+'/action',decision(n,'reject'))).status,409);
  assert.equal((await pool.query('SELECT status FROM orders WHERE id=$1',[order.id])).rows[0].status,'confirmed');
  const reject=await make(), rejection=await notice('admin',reject.id);
  assert.equal((await call('admin','post','/orders/'+reject.id+'/action',decision(rejection,'reject'))).status,200);
  assert.ok((await call('admin','get','/notifications')).body.filter(n=>n.order_id===reject.id).every(n=>n.read));
  assert.equal((await pool.query('SELECT status FROM orders WHERE id=$1',[reject.id])).rows[0].status,'rejected');
+});
+
+test('Descartar persiste lectura, respeta revisión y permite reaparecer solo ante un cambio nuevo',async()=>{
+ const created=await call('client','post','/orders',{...body,credit:false,paymentMethod:'online'},randomUUID());assert.equal(created.status,200);
+ const get=async(role)=>(await call(role,'get','/notifications')).body.find(n=>n.order_id===created.body.id);
+ const n=await get('admin'), client=await get('client');
+ assert.equal((await call('client','post','/notifications/'+n.id+'/dismiss',{revision:n.revision})).status,404);
+ assert.equal((await call('admin','post','/notifications/'+n.id+'/dismiss',{revision:n.revision+1})).status,409);
+ assert.equal((await get('admin')).read,false);
+ assert.equal((await call('client','post','/notifications/'+client.id+'/dismiss',{revision:client.revision})).status,200);
+ assert.equal(await get('client'),undefined);
+ const before=(await call('admin','get','/notifications/counts')).body.find(r=>r.module==='orders')?.count||0;
+ const dismissed=await call('admin','post','/notifications/'+n.id+'/dismiss',{revision:n.revision});assert.equal(dismissed.status,200);assert.equal(dismissed.body.read,true);assert.equal(dismissed.body.dismissed,true);
+ assert.equal(await get('admin'),undefined);
+ assert.equal((await call('admin','get','/notifications/counts')).body.find(r=>r.module==='orders')?.count||0,before-1);
+ assert.equal((await call('admin','post','/notifications/'+n.id+'/dismiss',{revision:n.revision})).status,200);
+ assert.equal((await call('admin','post','/orders/'+created.body.id+'/action',{action:'confirm'})).status,200);
+ const updated=await get('admin');assert.equal(updated.id,n.id);assert.equal(updated.dismissed,false);assert.equal(updated.read,false);assert.equal(updated.status,'confirmed');assert.equal(updated.title,'Pedido: Confirmado');
+ assert.equal((await call('admin','post','/notifications/'+n.id+'/dismiss',{revision:n.revision})).status,409);assert.ok(await get('admin'));
+});
+
+test('La reparación conserva IDs históricos pero muestra solo el estado actual por pedido',async()=>{
+ const {readFile}=await import('node:fs/promises');const c=await pool.connect();
+ try{
+ await c.query('BEGIN');
+ await c.query('CREATE TEMP TABLE orders(id uuid PRIMARY KEY,status text) ON COMMIT DROP');
+ await c.query('CREATE TEMP TABLE notifications(id uuid PRIMARY KEY,user_id uuid,order_id uuid,status text,title text,read boolean,event_key text,revision int,updated_at timestamptz,UNIQUE(user_id,event_key)) ON COMMIT DROP');
+ const user=randomUUID(),order=randomUUID(),ready=randomUUID(),pending=randomUUID();
+ await c.query("INSERT INTO orders VALUES($1,'ready')",[order]);
+ await c.query("INSERT INTO notifications VALUES($1,$3,$4,'ready','Pedido: Listo para despacho',false,'order:ready',2,now()-interval '1 hour'),($2,$3,$4,'pending','Nuevo pedido',false,'order:pending',1,now())",[ready,pending,user,order]);
+ await c.query(await readFile('migrations/024.sql','utf8'));
+ const rows=(await c.query('SELECT * FROM notifications')).rows;assert.equal(rows.length,2);
+ const visible=rows.filter(n=>!n.dismissed);assert.equal(visible.length,1);assert.equal(visible[0].id,ready);assert.equal(visible[0].status,'ready');assert.equal(visible[0].event_key,'order:'+order);
+ assert.equal(rows.find(n=>n.id===pending).dismissed,true);assert.equal(rows.find(n=>n.id===pending).read,true);
+ }finally{await c.query('ROLLBACK');c.release();}
 });

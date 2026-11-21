@@ -68,6 +68,7 @@ public class DelipinaNativePlugin extends Plugin {
             JSObject result=new JSObject().put("status",status);String type=connection.getContentType();
             if(type!=null&&type.contains("application/json"))result.put("data",bytes.length==0?JSONObject.NULL:new JSONTokener(new String(bytes,java.nio.charset.StandardCharsets.UTF_8)).nextValue());
             else result.put("base64",Base64.encodeToString(bytes,Base64.NO_WRAP)).put("mime",type==null?"application/octet-stream":type.split(";",2)[0]);
+            if(path.equals("/notifications")&&status<400&&result.opt("data") instanceof JSONArray)DelipinaMessagingService.syncInbox(getContext(),(JSONArray)result.opt("data"));
             if(path.equals("/logout")&&status<400){NativeSession.clear(getContext());((NotificationManager)getContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE)).cancelAll();CredentialManager.create(getContext()).clearCredentialStateAsync(new ClearCredentialStateRequest(),null,ContextCompat.getMainExecutor(getContext()),new CredentialManagerCallback<Void,androidx.credentials.exceptions.ClearCredentialException>(){public void onResult(Void ignored){}public void onError(androidx.credentials.exceptions.ClearCredentialException ignored){}});}
             return result;
         }finally{connection.disconnect();}

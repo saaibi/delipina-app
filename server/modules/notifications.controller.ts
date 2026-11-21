@@ -79,6 +79,32 @@ export class NotificationsController {
     }
     return r.rows[0];
   }
+  @Post("notifications/:id/dismiss") @HttpCode(200) async dismiss(
+    @Req() req: any,
+  ) {
+    const u = auth(req),
+      revision = req.body.revision;
+    if (!Number.isSafeInteger(revision) || revision < 1)
+      fail(400, "Revisión inválida");
+    const result = await pool.query(
+      "UPDATE notifications SET read=true,dismissed=true WHERE id=$1 AND user_id=$2 AND revision=$3 RETURNING id,revision,read,dismissed",
+      [req.params.id, u.id, revision],
+    );
+    if (!result.rowCount) {
+      if (
+        !(
+          await pool.query(
+            "SELECT 1 FROM notifications WHERE id=$1 AND user_id=$2",
+            [req.params.id, u.id],
+          )
+        ).rowCount
+      )
+        fail(404, "Aviso no disponible");
+      fail(409, "El aviso cambió. Actualiza las notificaciones.");
+    }
+    await broadcast();
+    return result.rows[0];
+  }
   @Post("notifications/read")
   @HttpCode(200)
   async postNotificationsRead(

@@ -7,6 +7,8 @@ import android.os.Build;
 import com.google.firebase.messaging.*;
 import androidx.core.app.NotificationCompat;
 import java.util.Map;
+import java.util.HashMap;
+import org.json.*;
 
 public class DelipinaMessagingService extends FirebaseMessagingService {
     @Override public void onMessageReceived(RemoteMessage message) {
@@ -20,7 +22,7 @@ public class DelipinaMessagingService extends FirebaseMessagingService {
             revisions.edit().putInt(id,revision).apply();
         }
     }
-    static String tag(Map<String,String> data){return data.get("id")+":"+data.getOrDefault("status","");}
+    static String tag(Map<String,String> data){return "orders".equals(data.get("module")) && !data.getOrDefault("targetId","").isEmpty() ? "order:"+data.get("targetId") : data.get("id");}
     static void show(Context context,Map<String,String> data){
         NotificationManager manager=(NotificationManager)context.getSystemService(Context.NOTIFICATION_SERVICE);
         if(Build.VERSION.SDK_INT>=26)manager.createNotificationChannel(new NotificationChannel("orders","Pedidos y entregas",NotificationManager.IMPORTANCE_DEFAULT));
@@ -30,6 +32,7 @@ public class DelipinaMessagingService extends FirebaseMessagingService {
         intent.setData(android.net.Uri.parse("delipina://notification/"+id));
         PendingIntent tap=PendingIntent.getActivity(context,0,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         String client=data.getOrDefault("clientName",""), window=data.getOrDefault("deliveryWindow",""), title=data.getOrDefault("title","Delipiña");
+        if("orders".equals(data.get("module")) && !title.startsWith("No se")) title="pending".equals(data.get("status"))?"Nuevo pedido":"Pedido";
         String body=data.getOrDefault("body","Toca para consultar el detalle.");
         var builder=new NotificationCompat.Builder(context,"orders")
             .setSmallIcon(R.drawable.ic_notification).setColor(Color.rgb(22,64,46))
@@ -37,7 +40,7 @@ public class DelipinaMessagingService extends FirebaseMessagingService {
             .setContentText(window.isEmpty()?body:window)
             .setSubText(data.getOrDefault("statusLabel","Delipiña"))
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-            .setContentIntent(tap).setAutoCancel(true).setOnlyAlertOnce(true)
+            .setContentIntent(tap).setDeleteIntent(action(context,data,"dismiss")).setAutoCancel(true).setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_EVENT).setVisibility(NotificationCompat.VISIBILITY_PRIVATE);
         try {
             var logo=context.getDrawable(R.mipmap.ic_launcher);
@@ -48,7 +51,42 @@ public class DelipinaMessagingService extends FirebaseMessagingService {
             builder.addAction(android.R.drawable.checkbox_on_background,"Aceptar",action(context,data,"confirm"));
             builder.addAction(android.R.drawable.ic_menu_close_clear_cancel,"Rechazar",action(context,data,"reject"));
         }
+        android.os.Bundle metadata=new android.os.Bundle();metadata.putString("delipina.data",new JSONObject(data).toString());builder.addExtras(metadata);
+        builder.setSilent("true".equals(data.get("silent")));
+        manager.cancel(id,0);
+        for(String state:new String[]{"pending","confirmed","preparing","ready","enroute","delivered","rejected","cancelled"})manager.cancel(id+":"+state,0);
         manager.notify(tag(data),0,builder.build());
+    }
+    static void syncInbox(Context context,JSONArray rows){
+        if(Build.VERSION.SDK_INT<23)return;
+        NotificationManager manager=(NotificationManager)context.getSystemService(Context.NOTIFICATION_SERVICE);
+        for(var active:manager.getActiveNotifications()){
+            try{
+                String stored=active.getNotification().extras.getString("delipina.data");
+                JSONObject data=stored==null?null:new JSONObject(stored),row=null;
+                String id=data==null?active.getTag():data.optString("id");
+                if(id==null)continue;
+                if(data==null && id.matches("[a-f0-9-]{36}:.*"))id=id.substring(0,36);
+                for(int i=0;i<rows.length();i++)if(id.equals(rows.getJSONObject(i).optString("id"))){row=rows.getJSONObject(i);break;}
+                if(row==null){manager.cancel(active.getTag(),active.getId());continue;}
+                if(data==null) {
+                    // Retire notices from older APKs; current pushes use one stable order tag.
+                    if(active.getTag().contains(":"))manager.cancel(active.getTag(),active.getId());
+                    continue;
+                }
+                if(data.optInt("revision")==row.optInt("revision"))continue;
+                Map<String,String> updated=new HashMap<>();
+                for(var keys=data.keys();keys.hasNext();){String key=keys.next();updated.put(key,data.optString(key));}
+                for(String key:new String[]{"id","title","status","revision"})updated.put(key,row.optString(key));
+                updated.put("silent","true");
+                updated.put("canRespond",String.valueOf("true".equals(data.optString("canRespond"))&&"pending".equals(row.optString("current_status"))));
+                updated.put("statusLabel",statusLabel(row.optString("status")));
+                show(context,updated);
+            }catch(Exception ignored){}
+        }
+    }
+    static String statusLabel(String value){
+        switch(value){case "pending":return "Por confirmar";case "confirmed":return "Confirmado";case "preparing":return "En preparación";case "ready":return "Listo para despacho";case "enroute":return "En camino";case "delivered":return "Entregado";case "rejected":return "Rechazado";case "cancelled":return "Cancelado";default:return value;}
     }
     private static PendingIntent action(Context context,Map<String,String> data,String action){
         Intent intent=new Intent(context,NotificationActionReceiver.class).setAction("com.delipina.app.NOTICE_ACTION");
