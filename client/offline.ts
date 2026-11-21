@@ -62,8 +62,12 @@ export async function cached(path) {
   }
 }
 export async function submitOrder(body) {
-  const key = crypto.randomUUID();
-  await (await db).put("queue", { key, uid, body });
+  const existing = (await (await db).getAll("queue")).find(
+    (item) =>
+      item.uid === uid && JSON.stringify(item.body) === JSON.stringify(body),
+  );
+  const key = existing?.key || crypto.randomUUID();
+  if (!existing) await (await db).put("queue", { key, uid, body });
   if (navigator.onLine) {
     try {
       const r = await api("/orders", {

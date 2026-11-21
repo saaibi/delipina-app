@@ -53,7 +53,9 @@ function Notice({
   };
   const title = n.order_id
     ? n.current_status === "pending"
-      ? "Nuevo pedido"
+      ? n.title === "Pedido por frecuencia"
+        ? n.title
+        : "Nuevo pedido"
       : "Pedido"
     : n.title;
   return (
@@ -66,7 +68,14 @@ function Notice({
         borderRadius: 2,
         border: "1px solid",
         borderColor: "divider",
-        bgcolor: actionable && dx > 0 ? "error.main" : "success.main",
+        bgcolor:
+          Math.abs(dx) < 10
+            ? "transparent"
+            : !actionable
+              ? "#155e9c"
+              : dx > 0
+                ? "#a82b38"
+                : "#23643f",
         touchAction: "pan-y",
       }}
       onPointerDown={(e) => {
@@ -103,18 +112,28 @@ function Notice({
     >
       {Math.abs(dx) > 25 && (
         <Typography
+          component="span"
+          className="notification-swipe-label"
           sx={{
             position: "absolute",
-            top: "50%",
-            left: 12,
-            right: 12,
-            transform: "translateY(-50%)",
-            textAlign: dx < 0 ? "right" : "left",
-            fontWeight: 700,
-            color: "white",
+            top: 0,
+            bottom: 0,
+            left: dx > 0 ? 0 : "auto",
+            right: dx < 0 ? 0 : "auto",
+            width: 104,
+            p: 1,
+            boxSizing: "border-box",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 14,
+            lineHeight: 1.2,
+            fontWeight: 800,
+            color: "#fff",
+            pointerEvents: "none",
           }}
         >
-          {actionable ? (dx < 0 ? "Aceptar" : "Rechazar") : "Leído"}
+          {actionable ? (dx < 0 ? "Aceptar" : "Rechazar") : "Limpiar"}
         </Typography>
       )}
       <ListItemButton
@@ -135,7 +154,7 @@ function Notice({
           ". " +
           (actionable
             ? "Desliza izquierda para aceptar o derecha para rechazar"
-            : "Desliza para marcar como leído y ocultar")
+            : "Desliza para limpiar y marcar como leído")
         }
         sx={{
           display: "block",

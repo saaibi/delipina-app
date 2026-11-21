@@ -32,7 +32,7 @@ public class DelipinaMessagingService extends FirebaseMessagingService {
         intent.setData(android.net.Uri.parse("delipina://notification/"+id));
         PendingIntent tap=PendingIntent.getActivity(context,0,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         String client=data.getOrDefault("clientName",""), window=data.getOrDefault("deliveryWindow",""), title=data.getOrDefault("title","Delipiña");
-        if("orders".equals(data.get("module")) && !title.startsWith("No se")) title="pending".equals(data.get("status"))?"Nuevo pedido":"Pedido";
+        if("orders".equals(data.get("module")) && !title.startsWith("No se")) title="pending".equals(data.get("status"))?("Pedido por frecuencia".equals(title)?title:"Nuevo pedido"):"Pedido";
         String body=data.getOrDefault("body","Toca para consultar el detalle.");
         var builder=new NotificationCompat.Builder(context,"orders")
             .setSmallIcon(R.drawable.ic_notification).setColor(Color.rgb(22,64,46))

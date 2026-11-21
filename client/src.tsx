@@ -1747,11 +1747,18 @@ function App() {
   );
 }
 function Form({ onSubmit, children }) {
+  const submitting = useRef(false);
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        onSubmit(Object.fromEntries(new FormData(e.currentTarget)));
+        if (submitting.current) return;
+        submitting.current = true;
+        try {
+          await onSubmit(Object.fromEntries(new FormData(e.currentTarget)));
+        } finally {
+          submitting.current = false;
+        }
       }}
     >
       {children}

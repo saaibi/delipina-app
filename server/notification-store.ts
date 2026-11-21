@@ -89,7 +89,9 @@ export async function notifyOrder(
     orderId: order.id,
     title:
       current.status === "pending"
-        ? "Nuevo pedido"
+        ? title === "Pedido por frecuencia"
+          ? title
+          : "Nuevo pedido"
         : `Pedido: ${statusLabels[current.status] || current.status}`,
     status: current.status,
   });

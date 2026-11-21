@@ -780,7 +780,7 @@ test("Producto con n presentaciones conserva variantes históricas al editar y d
 test("Frecuencias generan una sola repetición y pausar evita nuevas órdenes",async()=>{
  const created=await call('client','post','/orders',{...body,credit:false,recurrence:{enabled:true,frequency:'days',intervalDays:2,weekdays:[]}},randomUUID());assert.equal(created.status,200,JSON.stringify(created.body));const schedule=(await call('client','get','/schedules')).body.find(s=>s.source_order_id===created.body.id);assert.ok(schedule);
  const day=new Date(body.start).toISOString().slice(0,10);await pool.query('UPDATE order_schedules SET next_day=$2 WHERE id=$1',[schedule.id,day]);const{ensureRecurrences}=await import('../dist-server/recurrence.js');await Promise.all([ensureRecurrences(),ensureRecurrences()]);await ensureRecurrences();
- const runs=(await pool.query("SELECT * FROM schedule_runs WHERE schedule_id=$1 AND status='created'",[schedule.id])).rows;assert.equal(runs.length,1);assert.ok(runs[0].order_id);assert.equal((await call('owner','patch','/schedules/'+schedule.id,{active:false})).status,404);assert.equal((await call('client','patch','/schedules/'+schedule.id,{active:false})).status,200);const count=(await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n;await ensureRecurrences();assert.equal((await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n,count);
+ const runs=(await pool.query("SELECT * FROM schedule_runs WHERE schedule_id=$1 AND status='created'",[schedule.id])).rows;assert.equal(runs.length,1);assert.ok(runs[0].order_id);assert.equal((await call('admin','get','/notifications')).body.find(n=>n.order_id===runs[0].order_id).title,'Pedido por frecuencia');assert.equal((await call('owner','patch','/schedules/'+schedule.id,{active:false})).status,404);assert.equal((await call('client','patch','/schedules/'+schedule.id,{active:false})).status,200);const count=(await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n;await ensureRecurrences();assert.equal((await pool.query('SELECT count(*)::int n FROM orders')).rows[0].n,count);
 });
 test("Jornada contable espera envío y confirmación de todos los cuadres",async()=>{
  const day=(await pool.query("SELECT to_char((now() AT TIME ZONE 'America/Bogota')::date-1,'YYYY-MM-DD') AS day")).rows[0].day;
@@ -1109,4 +1109,17 @@ test('La reparación conserva IDs históricos pero muestra solo el estado actual
  const visible=rows.filter(n=>!n.dismissed);assert.equal(visible.length,1);assert.equal(visible[0].id,ready);assert.equal(visible[0].status,'ready');assert.equal(visible[0].event_key,'order:'+order);
  assert.equal(rows.find(n=>n.id===pending).dismissed,true);assert.equal(rows.find(n=>n.id===pending).read,true);
  }finally{await c.query('ROLLBACK');c.release();}
+});
+
+test('Un pedido creado por administración espera aceptación explícita y reintentar no lo duplica',async()=>{
+ const key=randomUUID(),payload={...body,clientId:users.client.id,credit:false,paymentMethod:'online'};
+ const created=await call('admin','post','/orders',payload,key);assert.equal(created.status,200,JSON.stringify(created.body));assert.equal(created.body.status,'pending');
+ const repeat=await call('admin','post','/orders',payload,key);assert.equal(repeat.status,200);assert.equal(repeat.body.id,created.body.id);
+ const rows=(await call('admin','get','/notifications')).body.filter(n=>n.order_id===created.body.id);assert.equal(rows.length,1);assert.equal(rows[0].status,'pending');assert.equal(rows[0].title,'Nuevo pedido');
+ assert.equal((await pool.query('SELECT count(*)::int n FROM invoices WHERE order_id=$1',[created.body.id])).rows[0].n,0);
+ const audit=(await pool.query("SELECT * FROM audit WHERE order_id=$1 AND action='created'",[created.body.id])).rows;assert.equal(audit.length,1);assert.equal(audit[0].next_status,'pending');assert.equal(audit[0].details.source,'manual');
+ const accepted=await call('admin','post','/orders/'+created.body.id+'/action',{action:'confirm',notificationId:rows[0].id,revision:rows[0].revision});assert.equal(accepted.status,200);
+ assert.equal((await pool.query('SELECT status FROM orders WHERE id=$1',[created.body.id])).rows[0].status,'confirmed');
+ assert.equal((await pool.query('SELECT count(*)::int n FROM invoices WHERE order_id=$1',[created.body.id])).rows[0].n,1);
+ const notices=(await call('admin','get','/notifications')).body.filter(n=>n.order_id===created.body.id);assert.equal(notices.length,1);assert.equal(notices[0].id,rows[0].id);assert.equal(notices[0].status,'confirmed');
 });

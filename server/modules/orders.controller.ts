@@ -194,16 +194,7 @@ export class OrdersController {
       if (!Number.isSafeInteger(total)) fail(400, "Total inválido");
       if (b.credit && Number(client.credit_limit) === 0)
         fail(409, "Crédito no autorizado");
-      const status =
-        u.role === "admin" && !req.recurring ? "confirmed" : "pending";
-      if (status === "confirmed" && b.credit) {
-        if (Number(client.credit_used) + total > Number(client.credit_limit))
-          fail(409, "Cupo insuficiente");
-        await c.query(
-          "UPDATE users SET credit_used=credit_used+$2 WHERE id=$1",
-          [clientId, total],
-        );
-      }
+      const status = "pending";
       const o = (
         await c.query(
           "INSERT INTO orders(id,client_id,branch_id,status,window_start,window_end,total,credit,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
@@ -240,13 +231,26 @@ export class OrdersController {
           q,
           price,
         ]);
-      if (status === "confirmed") await createInvoice(c, o);
       await c.query(
-        "INSERT INTO audit(order_id,actor_id,action,next_status) VALUES($1,$2,$3,$4)",
-        [o.id, u.id, "created", status],
+        "INSERT INTO audit(order_id,actor_id,action,next_status,details) VALUES($1,$2,$3,$4,$5)",
+        [
+          o.id,
+          u.id,
+          "created",
+          status,
+          {
+            source: req.recurring ? "recurrence" : "manual",
+            actorRole: u.role,
+          },
+        ],
       );
       if (!req.recurring) await saveOrderSchedule(c, u, o, b.recurrence, b);
-      await notify(c, o, "Nuevo pedido", ["admin", "courier", "preparation"]);
+      await notify(
+        c,
+        o,
+        req.recurring ? "Pedido por frecuencia" : "Nuevo pedido",
+        ["admin", "courier", "preparation"],
+      );
       await c.query("INSERT INTO idempotency VALUES($1,$2,$3,$4)", [
         u.id,
         key,
