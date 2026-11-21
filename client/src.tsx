@@ -822,7 +822,7 @@ function App() {
           {prep && full ? (
             <div className="plant-focus-controls heading-actions">
               <Button
-                className="neutral"
+                className="neutral module-refresh"
                 aria-label="Actualizar módulo"
                 disabled={pull.busy}
                 onClick={() => pull.refresh()}
@@ -877,7 +877,7 @@ function App() {
                   <Button onClick={() => M("order")}>＋ Crear pedido</Button>
                 )}
                 <Button
-                  className="neutral"
+                  className="neutral module-refresh"
                   aria-label="Actualizar módulo"
                   disabled={pull.busy}
                   onClick={() => pull.refresh()}

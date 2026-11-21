@@ -44,7 +44,7 @@ export function suggestedDelivery(
     // Round up to the next minute so the suggestion survives opening/submitting the form.
     const earliest =
       (Math.floor((+now + schedule.leadHours * 3600000) / 60000) + 1) * 60000;
-    const start = Math.max(open, earliest);
+    const start = Math.max(open + schedule.leadHours * 3600000, earliest);
     if (start >= close) continue;
     return {
       start: new Date(start).toISOString(),

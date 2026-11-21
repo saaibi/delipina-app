@@ -339,7 +339,7 @@ test("Catálogo editable conserva referencia visual y permisos", async () => {
 test("Cierre automático conserva historia, saldos y pedidos futuros", async () => {
   const current = (await call("admin", "get", "/business-day")).body;
   const day = (
-    await pool.query("SELECT to_char(current_date-1,'YYYY-MM-DD') AS day")
+    await pool.query("SELECT to_char((now() AT TIME ZONE 'America/Bogota')::date-1,'YYYY-MM-DD') AS day")
   ).rows[0].day;
   const oldBalance = (
     await pool.query("SELECT sum(balance) AS n FROM invoices")

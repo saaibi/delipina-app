@@ -1,3 +1,5 @@
+import Slider from "@mui/material/Slider";
+import { readTextScale, saveTextScale } from "./text-scale";
 import { FeedbackSnackbar } from "./feedback";
 import { BranchManager } from "./branches";
 import { MembersEditor } from "./members";
@@ -201,8 +203,41 @@ export function SettingsView({
 }: any) {
   const admin = user.role === "admin";
   const [userTab, UT] = useState("staff");
+  const [textScale, TS] = useState(readTextScale);
   return (
     <div className="settings-sections">
+      <Section title="Tamaño del texto">
+        <Typography id="text-scale-label">
+          Tamaño del texto · {textScale}%
+        </Typography>
+        <Slider
+          aria-labelledby="text-scale-label"
+          min={85}
+          max={130}
+          step={5}
+          value={textScale}
+          valueLabelDisplay="auto"
+          valueLabelFormat={(v) => `${v}%`}
+          onChange={(_, value) => {
+            const next = Number(value);
+            TS(next);
+            saveTextScale(next);
+          }}
+          sx={{ mt: 2, maxWidth: 420 }}
+        />
+        <Typography variant="body2">
+          Se aplica al instante y se guarda en este dispositivo.
+        </Typography>
+        <Button
+          className="neutral"
+          onClick={() => {
+            TS(100);
+            saveTextScale(100);
+          }}
+        >
+          Restablecer a 100%
+        </Button>
+      </Section>
       <Section title="Notificaciones">
         <NotificationSettings controller={push} />
       </Section>

@@ -1,3 +1,4 @@
+import { nativeRequestHeaders } from "../shared/native-headers";
 import { nativeAndroid, NativeBridge } from "./native";
 import { storage } from "./storage";
 const db = storage();
@@ -26,7 +27,7 @@ export async function api(
       path,
       method: options.method || "GET",
       body: options.body,
-      headers: Object.fromEntries(new Headers(options.headers).entries()),
+      headers: nativeRequestHeaders(options.headers),
     });
     if (result.status >= 400)
       throw Object.assign(

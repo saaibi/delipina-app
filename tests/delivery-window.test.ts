@@ -42,7 +42,7 @@ test("Sin margen suficiente o día cerrado salta al próximo día habilitado con
     null,
     new Date("2026-11-20T15:00:00-05:00"),
   );
-  assert.equal(next.start, "2026-11-22T12:00:00.000Z");
+  assert.equal(next.start, "2026-11-22T13:00:00.000Z");
   assert.equal(next.end, "2026-11-22T19:00:00.000Z");
   assert.equal(
     suggestedDelivery(
@@ -76,5 +76,32 @@ test("Planta prioriza trabajo aceptado urgente y después respeta llegada", () =
   assert.equal(orderUrgency(make("x", "confirmed", 10, 0), now), "soon");
   assert.equal(orderUrgency(make("x", "delivered", -5, 0), now), null);
 });
-import {parseMapPoint} from '../shared/map-point.js';
-test('Coordenadas pegadas requieren latitud y longitud válidas y no interpretan enlaces como un punto',()=>{assert.deepEqual(parseMapPoint('7.075, -73.168'),{lat:7.075,lng:-73.168});for(const bad of ['100, -73','7','7,','https://maps.google.com/?q=7,-73','7,-181'])assert.equal(parseMapPoint(bad),null);});
+import { parseMapPoint } from "../shared/map-point.js";
+test("Coordenadas pegadas requieren latitud y longitud válidas y no interpretan enlaces como un punto", () => {
+  assert.deepEqual(parseMapPoint("7.075, -73.168"), {
+    lat: 7.075,
+    lng: -73.168,
+  });
+  for (const bad of [
+    "100, -73",
+    "7",
+    "7,",
+    "https://maps.google.com/?q=7,-73",
+    "7,-181",
+  ])
+    assert.equal(parseMapPoint(bad), null);
+});
+
+test("Antes de abrir y en días futuros suma la anticipación a la apertura del día", () => {
+  const settings = { weeklySchedule: week };
+  assert.equal(
+    suggestedDelivery(settings, null, new Date("2026-11-20T04:00:00-05:00"))
+      .start,
+    "2026-11-20T13:00:00.000Z",
+  );
+  assert.equal(
+    suggestedDelivery(settings, null, new Date("2026-11-20T17:00:00-05:00"))
+      .start,
+    "2026-11-21T13:00:00.000Z",
+  );
+});

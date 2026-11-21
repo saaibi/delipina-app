@@ -58,7 +58,7 @@ public class DelipinaNativePlugin extends Plugin {
         URL url=new URI(ORIGIN+"/api"+path).toURL();
         HttpURLConnection connection=(HttpURLConnection)url.openConnection();connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(20000);connection.setReadTimeout(30000);connection.setRequestMethod(method);connection.setRequestProperty("Accept","application/json");connection.setRequestProperty("Origin",ORIGIN);
         String session=NativeSession.read(getContext());if(session!=null)connection.setRequestProperty("Cookie","session="+session);
-        String idempotency=headers.getString("Idempotency-Key");if(idempotency!=null&&idempotency.length()<=100)connection.setRequestProperty("Idempotency-Key",idempotency);
+        String idempotency=null;for(Iterator<String> keys=headers.keys();keys.hasNext();){String key=keys.next();if("Idempotency-Key".equalsIgnoreCase(key)){idempotency=headers.getString(key);break;}}if(idempotency!=null&&idempotency.length()<=100)connection.setRequestProperty("Idempotency-Key",idempotency);
         try{
             if(body!=null&&!method.equals("GET")){connection.setRequestProperty("Content-Type","application/json");connection.setDoOutput(true);try(OutputStream output=connection.getOutputStream()){output.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));}}
             int status=connection.getResponseCode();

@@ -1,3 +1,4 @@
+import { readTextScale } from "./text-scale";
 import ClickAwayListener from "@mui/material/ClickAwayListener";
 import { has, customer, portfolio } from "./access";
 import Insights from "@mui/icons-material/Insights";
@@ -101,6 +102,18 @@ const theme = createTheme({
   },
 });
 export function Providers({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    const apply = () => {
+      document.documentElement.style.fontSize = readTextScale() + "%";
+    };
+    apply();
+    window.addEventListener("delipina:text-scale", apply);
+    window.addEventListener("storage", apply);
+    return () => {
+      window.removeEventListener("delipina:text-scale", apply);
+      window.removeEventListener("storage", apply);
+    };
+  }, []);
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -404,9 +417,6 @@ export function Navigation({
             />
           </Box>
           {!online && <WifiOff aria-label="Sin conexión" />}
-          {pending > 0 && (
-            <Typography variant="caption">{pending} por sincronizar</Typography>
-          )}
           <IconButton
             color="inherit"
             aria-label="Notificaciones"
@@ -425,6 +435,21 @@ export function Navigation({
           </IconButton>
         </Toolbar>
       </AppBar>
+      {pending > 0 && (
+        <Box
+          role="status"
+          className="sync-status"
+          sx={{
+            px: 2,
+            py: 1,
+            bgcolor: "#fff3d2",
+            color: "#745b18",
+            textAlign: "center",
+          }}
+        >
+          {pending} por sincronizar
+        </Box>
+      )}
       <Drawer
         variant="permanent"
         sx={{
