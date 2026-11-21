@@ -782,6 +782,7 @@ function App() {
         />
       )}
       <PushPermissionPrompt controller={push} />
+
       <Navigation
         user={user}
         view={view}
@@ -818,6 +819,24 @@ function App() {
             prep && full ? "workspace plant-workspace-full" : "workspace"
           }
         >
+          {delivery && (
+            <GPS
+              active={orders.some(
+                (o) =>
+                  o.courier_id === user.id &&
+                  o.status === "enroute" &&
+                  [
+                    "bucaramanga",
+                    "piedecuesta",
+                    "girón",
+                    "giron",
+                    "floridablanca",
+                  ].includes((o.city || "").toLowerCase()),
+              )}
+              onError={E}
+            />
+          )}
+
           {prep && full ? (
             <div className="plant-focus-controls heading-actions">
               <Button
@@ -991,23 +1010,6 @@ function App() {
                       value={selectedDay}
                       onChange={(e) => DAY(e.target.value)}
                       sx={{ m: 0, minWidth: 170, flex: 1 }}
-                    />
-                  )}
-                  {delivery && (
-                    <GPS
-                      active={orders.some(
-                        (o) =>
-                          o.courier_id === user.id &&
-                          o.status === "enroute" &&
-                          [
-                            "bucaramanga",
-                            "piedecuesta",
-                            "girón",
-                            "giron",
-                            "floridablanca",
-                          ].includes((o.city || "").toLowerCase()),
-                      )}
-                      onError={E}
                     />
                   )}
                   {admin && (
