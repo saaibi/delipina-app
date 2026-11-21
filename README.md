@@ -217,3 +217,6 @@ La credencial FCM se generó localmente, registrando únicamente el certificado 
 
 ### Control de versiones y despliegue
 El repositorio público es https://github.com/saaibi/delipina-app. Render despliega la rama `main` con cada commit. Los secretos permanecen en Render; las bases, copias de datos y claves de firma no se versionan. Para Android: `npm ci`, `npm run build`, `npx cap sync android` y `./android/gradlew -p android assembleDebug`, con Java 21, SDK 36 y la configuración pública de Firebase local. Registrar la huella de la firma de Play App Signing antes de distribuir por tienda.
+
+### Google Maps y Places
+Los selectores de sucursal y origen, el mapa del recorrido y la ubicación del mensajero usan Google Maps. Maps JavaScript y Places API (New) están configurados en el proyecto independiente `delipina-maps-2026`; Firebase y Google Login conservan su proyecto original. Las claves se guardan en Render y nunca en Git. La búsqueda pide ID y ubicación, con sesión y confirmación del punto. Google Routes permanece desactivado: se conserva agrupación aproximada y enlaces de navegación a Google Maps. Ver `docs/google-maps-local-review.md` para cuotas, conservación temporal de coordenadas y validación. Ajustes reúne tamaño de texto y notificaciones en General; quitar/eliminar usa el color de error.

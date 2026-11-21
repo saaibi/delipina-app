@@ -6,7 +6,9 @@ export function loadGoogleMaps(): Promise<any> {
     return Promise.resolve((window as any).google.maps);
   if (loading) return loading;
   loading = (async () => {
-    const localKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_BROWSER_KEY;
+    const localKey = (import.meta as any).env?.DEV
+      ? (import.meta as any).env?.VITE_GOOGLE_MAPS_BROWSER_KEY
+      : undefined;
     const localReview = window.location.pathname.endsWith("/maps-preview.html");
     const key =
       localKey || (localReview ? null : (await api("/maps/config")).browserKey);

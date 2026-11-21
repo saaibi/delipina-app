@@ -1,6 +1,6 @@
-# Google Maps: revisión local
+# Google Maps: configuración y validación
 
-Esta integración está preparada para revisión. No se debe subir a `main` ni desplegar hasta probar Google real y revisar cuotas/credenciales. El cambio no habilita facturación ni APIs por sí mismo.
+El propietario autorizó la publicación de Maps y Places. Las credenciales se configuran fuera del repositorio. Routes permanece desactivado hasta revisar su consumo por elementos de matriz.
 
 ## Revisión
 
@@ -10,7 +10,7 @@ La página utiliza los componentes reales de ubicación y Ajustes con datos de e
 
 ## Configuración pendiente
 
-Proyecto: delipina-app-2026. Requiere cuenta de facturación vinculada por el propietario.
+Proyecto de mapas: delipina-maps-2026, creado por el propietario con saaibiflorez@unac.edu.co. Firebase y Google Login continúan en delipina-app-2026. Maps JavaScript y Places API (New) están habilitadas. Routes no está habilitado. Cuotas configuradas: mapas 100 cargas/día, Autocomplete 300/día y GetPlace 100/día.
 
 - `GOOGLE_MAPS_BROWSER_KEY`: clave pública restringida para Maps JavaScript API y Places API (New). Configurar referencias HTTPS del dominio publicado y localhost:3007 para la revisión. Validar por separado las restricciones para la WebView de Capacitor antes de entregar un APK.
 - `GOOGLE_MAPS_SERVER_KEY`: secreto de servidor para Places API (New) y, si se habilita cálculo vial, Routes API. Restringir APIs y salida del servidor donde sea compatible; nunca versionar.
