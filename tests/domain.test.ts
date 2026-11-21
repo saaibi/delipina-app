@@ -1036,3 +1036,19 @@ test('FCM nativo exige sesión y mueve el dispositivo al usuario que inicia sesi
  assert.equal((await call('admin','put','/native-push/device',{id,enabled:false})).status,200);
  }finally{if(id)await pool.query('DELETE FROM native_push_devices WHERE id=$1',[id]);if(previous===undefined)delete process.env.FIREBASE_SERVICE_ACCOUNT;else process.env.FIREBASE_SERVICE_ACCOUNT=previous;}
 });
+
+test('Google Maps conserva metadatos de origen y sucursal; las coordenadas vencidas se retiran', async()=>{
+ const {maintainGoogleLocations}=await import('../dist-server/google-locations.js');
+ const created=await call('admin','post','/branches',{clientId:users.client.id,address:'Sucursal de prueba Google',city:'Girón',lat:7.07,lng:-73.16,locationSource:'google',placeId:'google-test-place'});
+ assert.equal(created.status,200,JSON.stringify(created.body));const branch=created.body;
+ try{
+ assert.equal(branch.location_source,'google');assert.equal(branch.location_place_id,'google-test-place');
+ assert.ok(+new Date(branch.location_expires_at)>Date.now());assert.ok(+new Date(branch.location_expires_at)<Date.now()+30*86400000);
+ const edited=await call('admin','patch','/branches/'+branch.id,{address:branch.address,city:branch.city,lat:branch.lat,lng:branch.lng,locationSource:'google',placeId:branch.location_place_id,expiresAt:branch.location_expires_at});assert.equal(edited.status,200);assert.equal(+new Date(edited.body.location_expires_at),+new Date(branch.location_expires_at));
+ await pool.query("UPDATE branches SET location_expires_at=now()-interval '1 hour' WHERE id=$1",[branch.id]);
+ await maintainGoogleLocations(true);
+ const stale=(await pool.query('SELECT * FROM branches WHERE id=$1',[branch.id])).rows[0];assert.equal(stale.lat,null);assert.equal(stale.lng,null);assert.equal(stale.location_place_id,'google-test-place');
+ assert.equal((await request(app).get('/api/maps/config')).status,401);
+ const config=await call('admin','get','/maps/config');assert.equal(config.status,200);assert.equal(config.body.serverKey,undefined);
+ }finally{await pool.query('DELETE FROM branches WHERE id=$1',[branch.id]);}
+});

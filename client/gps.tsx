@@ -1,3 +1,4 @@
+import { GoogleMapCanvas } from "./google-map-canvas";
 import React, { useState, useEffect, useRef } from "react";
 import { api } from "./offline";
 export function GPS({ active, onError }) {
@@ -83,12 +84,16 @@ export function Tracking({ orderId }) {
                 Última actualización:{" "}
                 {new Date(data.location.updated_at).toLocaleTimeString("es-CO")}
               </p>
-              <iframe
-                title="Mapa de ubicación aproximada del reparto"
+              <GoogleMapCanvas
+                points={[
+                  {
+                    ...data.location,
+                    label: "M",
+                    title: "Ubicación del mensajero",
+                  },
+                ]}
                 className="tracking-map"
-                loading="lazy"
-                referrerPolicy="strict-origin-when-cross-origin"
-                src={`https://www.openstreetmap.org/export/embed.html?${new URLSearchParams({ bbox: [Number(data.location.lng) - 0.015, Number(data.location.lat) - 0.01, Number(data.location.lng) + 0.015, Number(data.location.lat) + 0.01].join(","), layer: "mapnik", marker: `${data.location.lat},${data.location.lng}` })}`}
+                label="Ubicación del mensajero en Google Maps"
               />
               <a
                 className="button"

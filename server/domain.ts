@@ -1,3 +1,4 @@
+import { maintainGoogleLocations } from "./google-locations.js";
 import { dispatchNativePush } from "./native-push.js";
 import { ensureRecurrences } from "./recurrence.js";
 import { customerId, isCustomer, hasModule, canPortfolio } from "./access.js";
@@ -200,6 +201,7 @@ export function configureApp(app: any) {
         req.path.startsWith("/api/") &&
         !req.path.startsWith("/api/health")
       ) {
+        await maintainGoogleLocations();
         const changed = await ensureBusinessClock();
         if (process.env.DISABLE_AUTOMATIC_JOBS !== "true")
           void ensureRecurrences().catch(() => {});

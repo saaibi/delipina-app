@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "node --import tsx scripts/local-preview.ts",
+    "preview:maps": "vite client --host 127.0.0.1 --port 3007 --strictPort",
     "build": "tsc -p tsconfig.server.json && tsc -p tsconfig.json && tsc -p tsconfig.sw.json && vite build client --outDir ../dist --emptyOutDir",
     "start": "node dist-server/index.js",
     "migrate": "node --env-file=.env --import tsx server/migrate.ts",
@@ -38,7 +39,6 @@
     "google-auth-library": "11.3.4",
     "helmet": "8.3.0",
     "idb": "8.0.4",
-    "leaflet": "^1.9.4",
     "pg": "8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",

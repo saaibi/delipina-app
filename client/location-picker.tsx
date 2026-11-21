@@ -1,212 +1,203 @@
 import React, { useEffect, useRef, useState } from "react";
-import * as L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import Alert from "@mui/material/Alert";
-import { Button, Field } from "./ui";
-import { parseMapPoint } from "../shared/map-point";
-import { numberedAddress } from "../server/address-query";
-import { api } from "./offline";
+import { Button } from "./ui";
+import { loadGoogleMaps, mapsSearchUrl, useMapVisible } from "./google-maps";
 export function LocationPicker({ address, city, point, onChange }: any) {
   const host = useRef<HTMLDivElement>(null),
     map = useRef<any>(null),
     marker = useRef<any>(null),
     callback = useRef(onChange),
     version = useRef(0),
-    [results, R] = useState([]),
+    session = useRef<any>(null);
+  const [results, R] = useState<any[]>([]),
     [error, E] = useState(""),
-    [busy, B] = useState(false),
-    [coordinates, COORD] = useState("");
+    [busy, B] = useState(false);
+  const visible = useMapVisible(host);
   callback.current = onChange;
   useEffect(() => {
-    if (!host.current) return;
-    const m = L.map(host.current, { scrollWheelZoom: false }).setView(
-      [point?.lat ?? 7.13488, point?.lng ?? -73.12438],
-      point ? 16 : 12,
-    );
-    map.current = m;
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(m);
-    m.on("click", (e) => {
-      version.current++;
-      B(false);
-      R([]);
-      E("");
-      callback.current({
-        lat: Number(e.latlng.lat.toFixed(6)),
-        lng: Number(e.latlng.lng.toFixed(6)),
+    if (!visible) return;
+    let live = true;
+    const id = ++version.current;
+    loadGoogleMaps()
+      .then(async (g) => {
+        const { Map } = await g.importLibrary("maps");
+        if (!live || !host.current) return;
+        const m = new Map(host.current, {
+          center: { lat: point?.lat ?? 7.119, lng: point?.lng ?? -73.123 },
+          zoom: point ? 17 : 12,
+          mapId: "DEMO_MAP_ID",
+          streetViewControl: false,
+          mapTypeControl: false,
+          fullscreenControl: false,
+        });
+        map.current = m;
+        m.addListener("click", (e) => {
+          if (!e.latLng) return;
+          ++version.current;
+          R([]);
+          B(false);
+          E("");
+          callback.current({
+            lat: e.latLng.lat(),
+            lng: e.latLng.lng(),
+            source: "google",
+          });
+        });
+        if (point) {
+          const { AdvancedMarkerElement } = await g.importLibrary("marker");
+          if (live)
+            marker.current = new AdvancedMarkerElement({
+              map: m,
+              position: point,
+            });
+        }
+      })
+      .catch((e) => {
+        if (live) E(e.message);
       });
-    });
-    setTimeout(() => m.invalidateSize(), 0);
     return () => {
-      m.remove();
+      live = false;
+      ++version.current;
+      if (marker.current) marker.current.map = null;
       map.current = null;
     };
-  }, []);
+  }, [visible]);
   useEffect(() => {
-    if (!map.current) return;
-    if (!point) {
-      if (marker.current) {
-        marker.current.remove();
-        marker.current = null;
-      }
-      return;
+    let live = true;
+    if (marker.current) {
+      marker.current.map = null;
+      marker.current = null;
     }
-    if (marker.current) marker.current.remove();
-    marker.current = L.circleMarker([point.lat, point.lng], {
-      radius: 9,
-      color: "#143e2b",
-      fillColor: "#e8bc36",
-      fillOpacity: 1,
-    }).addTo(map.current);
-    map.current.setView([point.lat, point.lng], 16);
+    if (point)
+      loadGoogleMaps()
+        .then(async (g) => {
+          const { AdvancedMarkerElement } = await g.importLibrary("marker");
+          if (!live || !map.current) return;
+          marker.current = new AdvancedMarkerElement({
+            map: map.current,
+            position: { lat: Number(point.lat), lng: Number(point.lng) },
+          });
+          map.current.setCenter({
+            lat: Number(point.lat),
+            lng: Number(point.lng),
+          });
+          map.current.setZoom(17);
+        })
+        .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, [point?.lat, point?.lng]);
-  async function search(requestVersion: number) {
+  useEffect(() => {
+    ++version.current;
+    R([]);
+    B(false);
+    session.current = null;
+  }, [address, city]);
+  async function search() {
+    const id = ++version.current;
     B(true);
     E("");
     R([]);
     try {
-      const found = await api(
-        "/geocode?q=" +
-          encodeURIComponent(address + ", " + city + ", Colombia") +
-          "&city=" +
-          encodeURIComponent(city),
-      );
-      if (requestVersion !== version.current) return;
-      R(
-        found.filter(
-          (r, i, rows) => rows.findIndex((x) => x.label === r.label) === i,
-        ),
-      );
-      if (!found.length)
+      const g = await loadGoogleMaps(),
+        lib = await g.importLibrary("places");
+      session.current = new lib.AutocompleteSessionToken();
+      const { suggestions } =
+        await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: [address, city, "Colombia"].filter(Boolean).join(", "),
+          includedRegionCodes: ["co"],
+          language: "es",
+          region: "co",
+          sessionToken: session.current,
+        });
+      if (id !== version.current) return;
+      R(suggestions.filter((s) => s.placePrediction));
+      if (!suggestions.length)
         E(
-          "No se encontró esa dirección. Marca el punto directamente en el mapa.",
-        );
-      else if (numberedAddress(address) && !found.some((r) => r.numberMatch))
-        E(
-          "No encontramos esa numeración exacta. Estas opciones son aproximadas: confirma el punto de entrega en el mapa.",
+          "Google no encontró coincidencias. Revisa la ciudad y la numeración o marca el punto en el mapa.",
         );
     } catch (e) {
-      if (requestVersion === version.current) E(e.message);
+      if (id === version.current) E(e.message);
     } finally {
-      if (requestVersion === version.current) B(false);
+      if (id === version.current) B(false);
     }
   }
-  useEffect(() => {
+  async function select(s: any) {
     const id = ++version.current;
-    R([]);
+    B(true);
     E("");
-    B(false);
-    if (!city.trim() || !numberedAddress(address) || point) return;
-    const timer = setTimeout(() => {
-      if (id === version.current) search(id);
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [address, city]);
-  useEffect(
-    () => () => {
-      version.current++;
-    },
-    [],
-  );
+    try {
+      const place = s.placePrediction.toPlace();
+      await place.fetchFields({ fields: ["id", "location"] });
+      if (id !== version.current) return;
+      if (!place.location)
+        throw Error("Este resultado no tiene un punto disponible.");
+      onChange({
+        lat: place.location.lat(),
+        lng: place.location.lng(),
+        placeId: place.id,
+        source: "google",
+      });
+      R([]);
+      session.current = null;
+    } catch (e) {
+      if (id === version.current) E(e.message);
+    } finally {
+      if (id === version.current) B(false);
+    }
+  }
   return (
     <section className="address-picker">
       {error && <Alert severity="info">{error}</Alert>}
-      <Button
-        className="neutral"
-        disabled={busy || !address || !city}
-        onClick={() => {
-          const id = ++version.current;
-          search(id);
-        }}
-      >
-        {busy ? "Buscando…" : "Buscar dirección en el mapa"}
-      </Button>
-      {address && city && (
+      <div className="actions">
         <Button
           className="neutral"
-          component="a"
-          target="_blank"
-          rel="noreferrer"
-          href={
-            "https://www.google.com/maps/search/?" +
-            new URLSearchParams({
-              api: "1",
-              query: address + ", " + city + ", Colombia",
-            })
-          }
+          disabled={busy || !address?.trim() || !city?.trim()}
+          onClick={search}
         >
-          Buscar dirección en mapas
+          {busy ? "Buscando…" : "Buscar con Google"}
         </Button>
-      )}
-      <small className="address-search-hint">
-        Escribe la dirección completa, por ejemplo Calle 45 #18-32. Buscaremos
-        al terminar la numeración; también puedes buscar manualmente.
+        {address && (
+          <Button
+            className="neutral"
+            component="a"
+            href={mapsSearchUrl(address, city)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Ver mapa
+          </Button>
+        )}
+      </div>
+      <small>
+        Escribe ciudad y dirección completa; luego busca y confirma el resultado
+        o toca el punto de entrega.
       </small>
       <div className="address-results">
-        {results.map((r: any, i) => (
+        {results.map((s, i) => (
           <Button
             key={i}
             className="neutral"
-            onClick={() => {
-              version.current++;
-              B(false);
-              E("");
-              onChange({ lat: r.lat, lng: r.lng });
-              R([]);
-            }}
+            disabled={busy}
+            onClick={() => select(s)}
           >
-            {r.label} ·{" "}
-            {r.precision === "number"
-              ? "Numeración coincidente"
-              : "Ubicación aproximada"}
+            {s.placePrediction.text.toString()}
           </Button>
         ))}
       </div>
-      <details className="map-coordinate-entry">
-        <summary>Usar coordenadas de una app de mapas</summary>
-        <p>
-          En la app de mapas selecciona el punto del negocio y copia su latitud
-          y longitud. Pégalas aquí en ese orden.
-        </p>
-        <Field
-          label="Latitud, longitud"
-          required={false}
-          value={coordinates}
-          placeholder="Ej. 7.075, -73.168"
-          onChange={(e) => COORD(e.target.value)}
-        />
-        <Button
-          className="neutral"
-          disabled={!parseMapPoint(coordinates)}
-          onClick={() => {
-            const value = parseMapPoint(coordinates);
-            if (value) {
-              version.current++;
-              R([]);
-              E("");
-              B(false);
-              onChange(value);
-            }
-          }}
-        >
-          Usar punto
-        </Button>
-      </details>
+      {results.length > 0 && <small>Google Maps</small>}
       <div
         ref={host}
         className="branch-map"
         role="region"
-        aria-label="Mapa para seleccionar el punto de entrega"
+        aria-label="Mapa Google para seleccionar el punto de entrega"
       />
       <small>
         {point
-          ? `Ubicación seleccionada: ${point.lat}, ${point.lng}`
-          : "Haz clic o toca el punto de entrega en el mapa."}{" "}
-        Búsqueda Photon · datos OpenStreetMap. Al buscar se comparte la
-        dirección con el proveedor.
+          ? "Punto de entrega seleccionado."
+          : "Selecciona el punto en Google Maps."}{" "}
+        Al buscar se comparte la dirección con Google.
       </small>
     </section>
   );

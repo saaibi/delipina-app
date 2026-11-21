@@ -1,3 +1,4 @@
+import { locationMetadata } from "../google-locations.js";
 import { coordinates } from "../coordinates.js";
 import {
   validateSchedule,
@@ -37,6 +38,10 @@ import {
 
 @Controller("api")
 export class SettingsController {
+  @Get("maps/config") @HttpCode(200) mapsConfig(@Req() req: any) {
+    auth(req);
+    return { browserKey: process.env.GOOGLE_MAPS_BROWSER_KEY || null };
+  }
   @Get("settings")
   @HttpCode(200)
   async getSettings(
@@ -59,11 +64,27 @@ export class SettingsController {
     const week = validateSchedule(b),
       cfg = {
         origin: text(b.origin),
+        originCity: b.originCity ? text(b.originCity, 100) : "Bucaramanga",
         originLocation:
           b.originLocation === undefined
             ? (await pool.query("SELECT data FROM settings WHERE id=1")).rows[0]
                 .data.originLocation
-            : coordinates(b.originLocation?.lat, b.originLocation?.lng),
+            : b.originLocation
+              ? {
+                  ...coordinates(b.originLocation?.lat, b.originLocation?.lng),
+                  ...(() => {
+                    const meta = locationMetadata(
+                      b.originLocation,
+                      b.originLocation,
+                    );
+                    return {
+                      source: meta.source,
+                      placeId: meta.placeId,
+                      expiresAt: meta.expires,
+                    };
+                  })(),
+                }
+              : null,
         weeklySchedule: week,
       };
     await tx(async (c) => {

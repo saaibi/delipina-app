@@ -239,6 +239,7 @@ export function ProductEditor({ product, onSaved }: any) {
                     }
                   />
                   <IconButton
+                    color="error"
                     aria-label={"Quitar unidad " + (units[unit] || unit)}
                     onClick={() =>
                       change(p.key, {

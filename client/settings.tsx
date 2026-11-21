@@ -1,3 +1,4 @@
+import { LocationPicker } from "./location-picker";
 import Slider from "@mui/material/Slider";
 import { readTextScale, saveTextScale } from "./text-scale";
 import { FeedbackSnackbar } from "./feedback";
@@ -52,6 +53,11 @@ function Section({ title, children }: any) {
   );
 }
 export function ScheduleEditor({ settings, onSaved }: any) {
+  const [origin, ORIGIN] = useState(settings.origin || ""),
+    [originCity, OC] = useState(settings.originCity || "Bucaramanga"),
+    [originPoint, OP] = useState(
+      settings.originLocation?.lat != null ? settings.originLocation : null,
+    );
   const [week, W] = useState(() =>
       Object.fromEntries(
         days.map((_, i) => [
@@ -81,8 +87,9 @@ export function ScheduleEditor({ settings, onSaved }: any) {
           await api("/settings", {
             method: "PUT",
             body: {
-              origin: b.origin,
-              originLocation: { lat: b.originLat, lng: b.originLng },
+              origin,
+              originCity,
+              originLocation: originPoint,
               weeklySchedule: week,
             },
           });
@@ -104,29 +111,26 @@ export function ScheduleEditor({ settings, onSaved }: any) {
         }}
       />
       <Field
+        label="Ciudad del origen"
+        value={originCity}
+        onChange={(e) => {
+          OC(e.target.value);
+          OP(null);
+        }}
+      />
+      <Field
         label="Origen del reparto"
-        name="origin"
-        defaultValue={settings.origin}
+        value={origin}
+        onChange={(e) => {
+          ORIGIN(e.target.value);
+          OP(null);
+        }}
       />
-      <Field
-        label="Latitud del origen"
-        name="originLat"
-        type="number"
-        step="any"
-        min="-90"
-        max="90"
-        required={false}
-        defaultValue={settings.originLocation?.lat ?? ""}
-      />
-      <Field
-        label="Longitud del origen"
-        name="originLng"
-        type="number"
-        step="any"
-        min="-180"
-        max="180"
-        required={false}
-        defaultValue={settings.originLocation?.lng ?? ""}
+      <LocationPicker
+        address={origin}
+        city={originCity}
+        point={originPoint}
+        onChange={OP}
       />
       {days.map((name, i) => {
         const d = week[i + 1];
@@ -206,7 +210,8 @@ export function SettingsView({
   const [textScale, TS] = useState(readTextScale);
   return (
     <div className="settings-sections">
-      <Section title="Tamaño del texto">
+      <Section title="General">
+        <Typography variant="h6">Tamaño del texto</Typography>
         <Typography id="text-scale-label">
           Tamaño del texto · {textScale}%
         </Typography>
@@ -237,8 +242,6 @@ export function SettingsView({
         >
           Restablecer a 100%
         </Button>
-      </Section>
-      <Section title="Notificaciones">
         <NotificationSettings controller={push} />
       </Section>
       {admin && (

@@ -16,7 +16,13 @@ export function BranchEditor({
     [city, C] = useState(branch?.city || ""),
     [point, P] = useState(
       branch?.lat != null
-        ? { lat: Number(branch.lat), lng: Number(branch.lng) }
+        ? {
+            lat: Number(branch.lat),
+            lng: Number(branch.lng),
+            source: branch.location_source,
+            placeId: branch.location_place_id,
+            expiresAt: branch.location_expires_at,
+          }
         : null,
     ),
     [owner, O] = useState(clientId || ""),
@@ -37,6 +43,9 @@ export function BranchEditor({
               city,
               lat: point?.lat,
               lng: point?.lng,
+              locationSource: point?.source,
+              placeId: point?.placeId,
+              expiresAt: point?.expiresAt,
             },
           });
           await onSaved();

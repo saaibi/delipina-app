@@ -1753,3 +1753,5 @@ footer {
 
 .workspace .MuiTabs-root, .settings-sections .MuiTabs-root { margin-bottom: 16px; }
 @media(max-width:600px) { .module-refresh { display:none!important; } }
+
+.MuiButton-outlined.danger { color:#a53c35; border-color:#a53c35; background:transparent; }

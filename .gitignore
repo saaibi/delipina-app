@@ -10,3 +10,5 @@ GoogleService-Info.plist
 
 dist-server/
 client/public/sw.js
+
+**/.env.local

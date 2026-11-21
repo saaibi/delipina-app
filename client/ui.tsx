@@ -130,6 +130,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 }
 export function Button({ className = "", type = "button", ...props }: any) {
+  const label = typeof props.children === "string" ? props.children.trim() : "";
+  if (
+    /^(quitar|eliminar|borrar)\b/i.test(label) &&
+    !className.includes("danger")
+  )
+    className += " danger";
   return (
     <MuiButton
       type={type}

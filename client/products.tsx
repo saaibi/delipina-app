@@ -184,6 +184,7 @@ export function ProductChoices({
             </div>
             <div className="quantity-controls">
               <IconButton
+                color="error"
                 aria-label={
                   "Quitar cantidad de " +
                   group.name +

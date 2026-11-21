@@ -1,4 +1,4 @@
-import { geocode } from "../geocoder.js";
+import { locationMetadata } from "../google-locations.js";
 import { coordinates } from "../coordinates.js";
 import { customerId, isCustomer, hasModule, modules } from "../access.js";
 import {
@@ -223,28 +223,29 @@ export class CustomersController {
   }
   @Get("geocode") @HttpCode(200) async searchLocation(@Req() req: any) {
     auth(req, ["admin", "client"]);
-    return geocode(
-      text(req.query.q, 200),
-      undefined,
-      true,
-      req.query.city ? text(req.query.city, 100) : "",
+    fail(
+      410,
+      "Usa el selector Google de la sucursal para buscar su ubicación.",
     );
   }
   @Patch("branches/:id") @HttpCode(200) async editBranch(@Req() req: any) {
     const u = auth(req, ["admin", "client"]),
       b = req.body,
-      point = coordinates(b.lat, b.lng);
+      point = coordinates(b.lat, b.lng),
+      metadata = locationMetadata(b, point);
     const result = await pool.query(
-      "UPDATE branches SET address=$2,city=$3,lat=$4,lng=$5,location_source=$6 WHERE id=$1 AND deleted_at IS NULL AND ($7 OR client_id=$8) RETURNING *",
+      "UPDATE branches SET address=$2,city=$3,lat=$4,lng=$5,location_source=$6,location_place_id=$9,location_expires_at=$10 WHERE id=$1 AND deleted_at IS NULL AND ($7 OR client_id=$8) RETURNING *",
       [
         req.params.id,
         text(b.address),
         text(b.city, 100),
         point?.lat ?? null,
         point?.lng ?? null,
-        point ? "manual" : null,
+        metadata.source,
         u.role === "admin",
         customerId(u),
+        metadata.placeId,
+        metadata.expires,
       ],
     );
     if (!result.rowCount) fail(404, "Sucursal no disponible");
@@ -325,10 +326,11 @@ export class CustomersController {
   ) {
     const u = auth(req, ["admin", "client"]);
     const b = req.body;
-    const point = coordinates(b.lat, b.lng);
+    const point = coordinates(b.lat, b.lng),
+      metadata = locationMetadata(b, point);
     return (
       await pool.query(
-        "INSERT INTO branches(id,client_id,address,city,lat,lng,location_source) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *",
+        "INSERT INTO branches(id,client_id,address,city,lat,lng,location_source,location_place_id,location_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *",
         [
           randomUUID(),
           isCustomer(u) ? customerId(u) : b.clientId,
@@ -336,7 +338,9 @@ export class CustomersController {
           text(b.city, 100),
           point?.lat ?? null,
           point?.lng ?? null,
-          point ? "manual" : null,
+          metadata.source,
+          metadata.placeId,
+          metadata.expires,
         ],
       )
     ).rows[0];

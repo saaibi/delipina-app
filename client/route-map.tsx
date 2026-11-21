@@ -1,6 +1,6 @@
 import { mapsUrl, routeOrigin } from "../shared/routes";
 import React, { useState, useEffect, useRef } from "react";
-import * as L from "leaflet";
+import { GoogleMapCanvas } from "./google-map-canvas";
 import Alert from "@mui/material/Alert";
 import IconButton from "@mui/material/IconButton";
 import Navigation from "@mui/icons-material/Navigation";
@@ -25,56 +25,6 @@ export function RouteMap({ route, onClose }: any) {
       live = false;
     };
   }, [route.id]);
-  useEffect(() => {
-    if (!data || !host.current || data.carrier) return;
-    const points = data.stops
-      .map((s, i) => ({ ...s, stopNumber: i + 1 }))
-      .filter((s) => s.lat != null && s.lng != null);
-    const m = L.map(host.current, { scrollWheelZoom: false });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution:
-        '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://routing.openstreetmap.de/about.html">OSRM</a> · <a href="https://www.openstreetmap.org/fixthemap">Corregir mapa</a>',
-      maxZoom: 19,
-      referrerPolicy: "strict-origin-when-cross-origin",
-    }).addTo(m);
-    const bounds: any[] = [];
-    if (data.origin) {
-      L.circleMarker([data.origin.lat, data.origin.lng], {
-        radius: 8,
-        color: "#61735a",
-      })
-        .bindTooltip("Salida")
-        .addTo(m);
-      bounds.push([data.origin.lat, data.origin.lng]);
-    }
-    points.forEach((s, i) => {
-      const p: any = [s.lat, s.lng];
-      bounds.push(p);
-      L.circleMarker(p, {
-        radius: 10,
-        color: s.status === "delivered" ? "#85917c" : "#143e2b",
-        fillColor: "#e8bc36",
-        fillOpacity: 1,
-      })
-        .bindTooltip(String(s.stopNumber), {
-          permanent: true,
-          direction: "center",
-          className: "route-number",
-        })
-        .addTo(m);
-    });
-    if (data.geometry)
-      L.geoJSON(data.geometry, {
-        style: { color: "#218147", weight: 5, opacity: 0.8 },
-      }).addTo(m);
-    if (bounds.length)
-      m.fitBounds(L.latLngBounds(bounds), { padding: [30, 30], maxZoom: 16 });
-    else m.setView([7.13, -73.12], 12);
-    setTimeout(() => m.invalidateSize(), 0);
-    return () => {
-      m.remove();
-    };
-  }, [data]);
   return (
     <Modal
       title={`Recorrido completo · ${route.stops.length} paradas`}
@@ -95,11 +45,24 @@ export function RouteMap({ route, onClose }: any) {
               </Alert>
             )}
             {data.warning && <Alert severity="info">{data.warning}</Alert>}
-            <div
-              className="complete-route-map"
-              ref={host}
-              role="region"
-              aria-label="Mapa con todas las paradas del recorrido"
+            <GoogleMapCanvas
+              points={[
+                ...(data.origin
+                  ? [
+                      {
+                        ...data.origin,
+                        label: "S",
+                        title: "Salida del reparto",
+                      },
+                    ]
+                  : []),
+                ...data.stops.map((s, i) => ({
+                  ...s,
+                  label: String(i + 1),
+                  title: s.client_name,
+                })),
+              ]}
+              geometry={data.geometry}
             />
             <ol className="route-map-stops">
               {data.stops.map((s, i) => (
