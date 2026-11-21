@@ -271,7 +271,9 @@ function App() {
                 ? "orders"
                 : has(user, "plant")
                   ? "plant"
-                  : "settings"
+                  : has(user, "catalog")
+                    ? "catalog"
+                    : "settings"
               : "orders",
       );
   }, [user?.id]);
@@ -332,7 +334,7 @@ function App() {
     ];
     if (customer(u) || has(u, "orders"))
       tasks.push(cached("/branches").then(guard(B)));
-    if (u.role === "custom" && has(u, "orders"))
+    if (u.role === "custom" && (has(u, "orders") || has(u, "catalog")))
       tasks.push(cached("/users").then(guard(US)));
     if (u.role === "admin")
       tasks.push(
@@ -928,7 +930,7 @@ function App() {
                 <Tab value="recurrences" label="Frecuencias" />
               </Tabs>
             )}
-          {view === "catalog" && admin ? (
+          {view === "catalog" && has(user, "catalog") ? (
             <CatalogView
               products={products}
               onAction={M}

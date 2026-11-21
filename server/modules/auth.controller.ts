@@ -115,7 +115,7 @@ export class AuthController {
       }
       u = (
         await c.query(
-          "UPDATE users SET avatar_url=$2 WHERE id=$1 RETURNING *",
+          "UPDATE users SET avatar_url=COALESCE($2,avatar_url) WHERE id=$1 RETURNING *",
           [u.id, avatar],
         )
       ).rows[0];

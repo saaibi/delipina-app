@@ -1163,3 +1163,41 @@ test('Hasta permite cierre más anticipación para cliente y admin, incluso al d
  assert.equal((await pool.query('SELECT body FROM order_schedules WHERE source_order_id=$1',[result.body.id])).rows[0].body.endDayOffset,1);
  }finally{Date.now=oldNow;await pool.query('UPDATE settings SET data=$1 WHERE id=1',[previous]);}
 });
+
+test('Catálogo personalizado administra productos, fotos y precios sin recibir permisos de usuarios o pedidos',async()=>{
+ try{
+ assert.equal((await call('admin','patch','/users/'+users.custom.id,{permissions:['catalog']})).status,200);await login('custom');
+ assert.equal((await call('custom','get','/orders')).status,403);assert.equal((await call('custom','get','/analytics')).status,403);
+ const clients=(await call('custom','get','/users')).body;assert.ok(clients.length);assert.ok(clients.every(u=>u.role==='client'&&u.active&&!('credit_limit' in u)&&!('email' in u)));
+ assert.equal((await call('custom','post','/users',{name:'No permitido',email:'catalog-no@demo.test',role:'client'})).status,403);
+ const created=await call('custom','post','/product-groups',{name:'Catálogo delegado',presentations:[{label:'Bloque',units:[{unit:'Unidad',price:9000}]}]});assert.equal(created.status,200,JSON.stringify(created.body));
+ const group=(await call('custom','get','/product-groups/'+created.body.id)).body;const product=group.variants[0];assert.ok(product);
+ assert.equal((await call('custom','post','/products/'+product.id+'/photo',{data:testProof})).status,200);
+ assert.equal((await call('custom','put','/prices',{clientId:users.client.id,prices:[{productId:product.id,price:8000}]})).status,200);
+ const priced=(await call('custom','get','/products?clientId='+users.client.id)).body.find(p=>p.id===product.id);assert.equal(Number(priced.price),8000);
+ assert.equal((await call('custom','patch','/product-groups/'+group.id,{active:false})).status,200);
+ assert.ok((await call('custom','get','/products')).body.some(p=>p.id===product.id&&!p.active));
+ assert.equal((await call('custom','get','/products/'+product.id+'/photo')).status,200);
+ await call('admin','patch','/users/'+users.custom.id,{permissions:['orders','plant']});await login('custom');
+ assert.equal((await call('custom','post','/product-groups',{name:'No permitido',presentations:[]})).status,403);assert.equal((await call('custom','get','/product-groups')).status,403);
+ assert.equal((await call('custom','put','/prices',{clientId:users.client.id,prices:[{productId:product.id,price:1}]})).status,403);
+ }finally{await call('admin','patch','/users/'+users.custom.id,{permissions:['orders','plant']});await login('custom');}
+});
+
+test('Clientes y geografía suman solo pedidos aceptados y omiten coordenadas vencidas sin perder ventas',async()=>{
+ const client=(await call('admin','post','/users',{name:'Cliente BI prueba',email:'bi-report@demo.test',role:'client'})).body;
+ const branch=(await call('admin','post','/branches',{clientId:client.id,address:'Sucursal BI',city:'Ciudad BI prueba',lat:7.02,lng:-73.04})).body;
+ const payload={...body,credit:false,paymentMethod:'online',clientId:client.id,branchId:branch.id};
+ const accepted=await call('admin','post','/orders',payload,randomUUID());assert.equal(accepted.status,200,JSON.stringify(accepted.body));
+ assert.equal((await call('admin','post','/orders/'+accepted.body.id+'/action',{action:'confirm'})).status,200);
+ assert.equal((await call('admin','post','/orders',payload,randomUUID())).status,200);
+ const rejected=await call('admin','post','/orders',payload,randomUUID());assert.equal((await call('admin','post','/orders/'+rejected.body.id+'/action',{action:'reject'})).status,200);
+ const day=new Date(accepted.body.window_start).toISOString().slice(0,10),path='/analytics?from='+day+'&to='+day;
+ const report=(await call('admin','get',path)).body,customer=report.customers.find(c=>c.id===client.id),geo=report.geography.find(g=>g.city==='Ciudad BI prueba');
+ assert.equal(customer.count,1);assert.equal(Number(customer.total),Number(accepted.body.total));assert.equal(geo.count,1);assert.equal(Number(geo.total),Number(customer.total));assert.ok(Math.abs(Number(geo.lat)-7.02)<0.00001);
+ assert.equal(report.geography.reduce((n,g)=>n+g.count,0)+report.unmappedOrders,report.totals.accepted);
+ assert.equal(report.customers.reduce((n,c)=>n+Number(c.total),0),Number(report.totals.accepted_total));
+ await pool.query("UPDATE branches SET location_expires_at=now()-interval '1 hour' WHERE id=$1",[branch.id]);await pool.query("UPDATE orders SET delivery_location_expires_at=now()-interval '1 hour' WHERE id=$1",[accepted.body.id]);
+ const expired=(await call('admin','get',path)).body;assert.ok(!expired.geography.some(g=>g.city==='Ciudad BI prueba'));assert.equal(expired.unmappedOrders,report.unmappedOrders+1);assert.deepEqual(expired.customers,report.customers);
+ assert.equal((await call('client','get',path)).status,403);
+});

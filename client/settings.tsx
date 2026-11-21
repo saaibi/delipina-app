@@ -321,7 +321,7 @@ export function SettingsView({
         </Section>
       )}
       {user.role === "client" && (
-        <Section title="Usuarios de mi cliente">
+        <Section title="Usuarios de mi negocio">
           <MembersEditor />
         </Section>
       )}

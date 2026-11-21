@@ -2,6 +2,7 @@ import { fail } from "./db.js";
 export const modules = [
   "orders",
   "plant",
+  "catalog",
   "portfolio",
   "analytics",
   "audit",

@@ -45,23 +45,28 @@ export const auth = (req, roles = undefined) => {
   const path = req.path || req.url || "";
   const customGrant =
     req.user.role === "custom" &&
-    (path.includes("analytics")
-      ? hasModule(req.user, "analytics")
-      : path.includes("business-day")
-        ? hasModule(req.user, "days")
-        : path.includes("credit-accounts") || path.includes("invoices")
-          ? req.method === "GET" && hasModule(req.user, "portfolio")
-          : path.includes("orders") ||
-              path.includes("branches") ||
-              path.includes("users") ||
-              path.includes("products")
-            ? (req.method === "GET" &&
-                (hasModule(req.user, "orders") ||
-                  hasModule(req.user, "plant"))) ||
-              (path.endsWith("orders") &&
-                req.method === "POST" &&
-                hasModule(req.user, "orders"))
-            : false);
+    (hasModule(req.user, "catalog") &&
+    (/^\/api\/(products|product-groups)(?:\/|$)/.test(path) ||
+      (path === "/api/prices" && req.method === "PUT") ||
+      (path === "/api/users" && req.method === "GET"))
+      ? true
+      : path.includes("analytics")
+        ? hasModule(req.user, "analytics")
+        : path.includes("business-day")
+          ? hasModule(req.user, "days")
+          : path.includes("credit-accounts") || path.includes("invoices")
+            ? req.method === "GET" && hasModule(req.user, "portfolio")
+            : path.includes("orders") ||
+                path.includes("branches") ||
+                path.includes("users") ||
+                path.includes("products")
+              ? (req.method === "GET" &&
+                  (hasModule(req.user, "orders") ||
+                    hasModule(req.user, "plant"))) ||
+                (path.endsWith("orders") &&
+                  req.method === "POST" &&
+                  hasModule(req.user, "orders"))
+              : false);
   if (
     isCustomer(req.user) &&
     !canPortfolio(req.user) &&

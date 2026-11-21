@@ -158,7 +158,7 @@ export class OperationsController {
     return { ok: true };
   }
   @Get("product-groups") @HttpCode(200) async groups(@Req() req: any) {
-    auth(req);
+    auth(req, ["admin"]);
     return (
       await pool.query(
         "SELECT g.*,count(p.id)::int AS variants FROM catalog_products g LEFT JOIN products p ON p.catalog_product_id=g.id GROUP BY g.id ORDER BY g.name",

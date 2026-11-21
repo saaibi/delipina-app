@@ -10,7 +10,10 @@ function loadCharts() {
   loading = new Promise((resolve, reject) => {
     const draw = () => {
       const g = (window as any).google;
-      g.charts.load("current", { packages: ["corechart"], language: "es" });
+      g.charts.load("current", {
+        packages: ["corechart", "geochart"],
+        language: "es",
+      });
       g.charts.setOnLoadCallback(() => resolve(g));
     };
     if ((window as any).google?.charts) {
@@ -28,9 +31,9 @@ function loadCharts() {
   });
   return loading;
 }
-function Chart({ title, type, rows }: any) {
+function Chart({ title, type, rows, options, description, tableRows }: any) {
   const root = useRef<HTMLDivElement>(null),
-    [error, E] = useState(periodDates("1 Año").from);
+    [error, E] = useState("");
   useEffect(() => {
     if (rows.length < 2) return;
     let active = true,
@@ -40,9 +43,16 @@ function Chart({ title, type, rows }: any) {
         .then((g) => {
           if (!active || !root.current) return;
           const data = g.visualization.arrayToDataTable(rows);
-          chart = new g.visualization[type](root.current);
+          chart ||= new g.visualization[type](root.current);
           chart.draw(data, {
-            colors: ["#215438", "#e6bf42", "#789468", "#bd6a4d"],
+            colors: [
+              "#215438",
+              "#e6bf42",
+              "#789468",
+              "#bd6a4d",
+              "#496f9f",
+              "#9b7bb6",
+            ],
             backgroundColor: "transparent",
             height: 270,
             chartArea: { left: 68, top: 24, width: "77%", height: "68%" },
@@ -50,7 +60,8 @@ function Chart({ title, type, rows }: any) {
             fontName: "Arial",
             hAxis: { textStyle: { fontSize: 10 } },
             vAxis: { minValue: 0 },
-            pieHole: 0.45,
+            pieHole: 0.55,
+            ...(options || {}),
           });
           E("");
         })
@@ -63,10 +74,11 @@ function Chart({ title, type, rows }: any) {
       observer.disconnect();
       chart?.clearChart();
     };
-  }, [rows, type]);
+  }, [rows, type, options]);
   return (
     <section className="panel chart-panel">
       <h2>{title}</h2>
+      {description && <p>{description}</p>}
       {rows.length < 2 ? (
         <p>Sin datos en este rango.</p>
       ) : (
@@ -77,7 +89,7 @@ function Chart({ title, type, rows }: any) {
             <summary>Ver datos del gráfico</summary>
             <table className="chart-data">
               <tbody>
-                {rows.map((r, i) => (
+                {(tableRows || rows).map((r, i) => (
                   <tr key={i}>
                     {r.map((v, j) => (
                       <td key={j}>{String(v)}</td>
@@ -171,6 +183,60 @@ export function AnalyticsView({ money, labels, closings }: any) {
               ]}
             />
             <Chart
+              title="Clientes que más compran"
+              type="PieChart"
+              description="Valor de pedidos aceptados (COP), según la fecha de entrega."
+              rows={[
+                ["Cliente", "Valor aceptado COP"],
+                ...(report.customers || [])
+                  .slice(0, 5)
+                  .map((d) => [d.name, Number(d.total) / 100]),
+                ...((report.customers || []).length > 5
+                  ? [
+                      [
+                        "Otros clientes",
+                        report.customers
+                          .slice(5)
+                          .reduce((sum, d) => sum + Number(d.total) / 100, 0),
+                      ],
+                    ]
+                  : []),
+              ]}
+            />
+            <Chart
+              title="Pedidos aceptados por ciudad"
+              type="GeoChart"
+              description="Vista general de Colombia. El tamaño indica pedidos y el color su valor aceptado."
+              options={{
+                region: "CO",
+                displayMode: "markers",
+                magnifyingGlass: { enable: true, zoomFactor: 20 },
+                colorAxis: { colors: ["#b9d7aa", "#16402e"] },
+                sizeAxis: { minSize: 6, maxSize: 24 },
+                datalessRegionColor: "#edf1e8",
+                legend: "none",
+                height: 320,
+                chartArea: { left: 8, top: 8, width: "95%", height: "90%" },
+              }}
+              rows={[
+                ["Ciudad", "Longitud", "Valor aceptado COP", "Pedidos"],
+                ...(report.geography || []).map((d) => [
+                  { v: Number(d.lat), f: d.city },
+                  Number(d.lng),
+                  Number(d.total) / 100,
+                  d.count,
+                ]),
+              ]}
+              tableRows={[
+                ["Ciudad", "Pedidos", "Valor aceptado COP"],
+                ...(report.geography || []).map((d) => [
+                  d.city,
+                  d.count,
+                  Number(d.total) / 100,
+                ]),
+              ]}
+            />
+            <Chart
               title="Entregas por mensajero"
               type="ColumnChart"
               rows={[
@@ -179,6 +245,12 @@ export function AnalyticsView({ money, labels, closings }: any) {
               ]}
             />
           </div>
+          {report.unmappedOrders > 0 && (
+            <p>
+              {report.unmappedOrders} pedidos aceptados sin ubicación vigente no
+              aparecen en el mapa.
+            </p>
+          )}
         </>
       )}
     </>

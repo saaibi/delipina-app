@@ -51,8 +51,10 @@ export function RoleFields({
           ))}
           <small>
             Pedidos permite crear, aceptar y rechazar solicitudes; Planta
-            permite preparar. Cartera y análisis son de consulta. La gestión de
-            accesos y la confirmación de cobros siguen en administración.
+            permite preparar. Catálogo permite administrar productos,
+            presentaciones, imágenes y precios. Cartera y análisis son de
+            consulta. La gestión de accesos y la confirmación de cobros siguen
+            en administración.
           </small>
         </fieldset>
       )}

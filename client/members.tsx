@@ -33,8 +33,8 @@ export function MembersEditor({ clientId, admin = false }: any) {
       {error && <Alert severity="error">{error}</Alert>}
       <p>
         Cada persona ingresa con su propia cuenta de Google. Sus pedidos
-        pertenecen a este cliente; puedes desactivar su acceso y decidir si ve
-        la cartera.
+        pertenecen {admin ? "a este cliente" : "a tu negocio"}; puedes
+        desactivar su acceso y decidir si ve la cartera.
       </p>
       <form
         onSubmit={async (e) => {
@@ -71,7 +71,9 @@ export function MembersEditor({ clientId, admin = false }: any) {
           label="Puede ver cartera"
         />
         <Button type="submit" disabled={busy}>
-          Agregar usuario del cliente
+          {admin
+            ? "Agregar usuario del cliente"
+            : "Agregar usuario a mi negocio"}
         </Button>
       </form>
       {rows.map((m) => (

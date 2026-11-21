@@ -1,6 +1,7 @@
 export const moduleLabels = {
   orders: "Pedidos",
   plant: "Planta",
+  catalog: "Catálogo",
   portfolio: "Cartera",
   analytics: "Análisis",
   audit: "Trazabilidad",

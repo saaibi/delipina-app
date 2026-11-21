@@ -342,6 +342,7 @@ const navFor = (user: any) => {
       ...[
         ["orders", "Pedidos", ReceiptLong, "orders"],
         ["plant", "Planta", Restaurant, "plant"],
+        ["catalog", "Catálogo", Inventory, "catalog"],
         ["payments", "Cartera", Payments, "portfolio"],
         ["analytics", "Análisis", Insights, "analytics"],
         ["audit", "Trazabilidad", ReceiptLong, "audit"],
@@ -448,6 +449,7 @@ export function Navigation({
             <Avatar
               src={user.avatarUrl || undefined}
               alt={user.name}
+              slotProps={{ img: { referrerPolicy: "no-referrer" } }}
               sx={{
                 width: 36,
                 height: 36,

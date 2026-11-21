@@ -40,7 +40,7 @@ export class CustomersController {
     if (actor.role === "plant_admin" || actor.role === "custom")
       return (
         await pool.query(
-          "SELECT id,name,role FROM users WHERE role='client' AND active AND deleted_at IS NULL ORDER BY name",
+          "SELECT id,name,role,active,deleted_at FROM users WHERE role='client' AND active AND deleted_at IS NULL ORDER BY name",
         )
       ).rows;
     return (

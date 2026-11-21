@@ -44,13 +44,14 @@ export class CatalogController {
         "SELECT p.*,g.name AS product_name,g.active AS group_active,(p.active AND COALESCE(g.active,true)) AS active,p.price AS base_price,s.price AS special_price,EXISTS(SELECT 1 FROM product_photos f WHERE f.product_id=p.id) AS has_image,COALESCE(s.price,p.price) AS price FROM products p LEFT JOIN catalog_products g ON g.id=p.catalog_product_id LEFT JOIN prices s ON s.product_id=p.id AND s.client_id=$1 WHERE (p.active AND COALESCE(g.active,true)) OR $2",
         [
           (["admin", "plant_admin"].includes(u.role) ||
-            hasModule(u, "orders")) &&
+            hasModule(u, "orders") ||
+            hasModule(u, "catalog")) &&
           typeof req.query.clientId === "string"
             ? req.query.clientId
             : isCustomer(u)
               ? customerId(u)
               : u.id,
-          u.role === "admin",
+          hasModule(u, "catalog"),
         ],
       )
     ).rows;
@@ -176,7 +177,7 @@ export class CatalogController {
     const r = (
       await pool.query(
         "SELECT f.* FROM product_photos f JOIN products p ON p.id=f.product_id WHERE f.product_id=$1 AND (p.active OR $2)",
-        [req.params.id, u.role === "admin"],
+        [req.params.id, hasModule(u, "catalog")],
       )
     ).rows[0];
     if (!r) fail(404, "Sin imagen");
