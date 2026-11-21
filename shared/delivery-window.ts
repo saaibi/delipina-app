@@ -16,7 +16,7 @@ export function deliveryClosing(settings: any, start: string) {
   const day = deliveryDay(start);
   const schedule = deliverySchedule(settings, day);
   return new Date(
-    +new Date(`${day}T${schedule.close}:00-05:00`) -
+    +new Date(`${day}T${schedule.close}:00-05:00`) +
       schedule.leadHours * 3600000,
   ).toISOString();
 }
@@ -38,17 +38,17 @@ export function suggestedDelivery(
     )
       continue;
     const open = +new Date(`${day}T${schedule.open}:00-05:00`),
-      close =
-        +new Date(`${day}T${schedule.close}:00-05:00`) -
-        schedule.leadHours * 3600000;
+      close = +new Date(`${day}T${schedule.close}:00-05:00`),
+      cutoff = close - schedule.leadHours * 3600000,
+      end = close + schedule.leadHours * 3600000;
     // Round up to the next minute so the suggestion survives opening/submitting the form.
     const earliest =
       (Math.floor((+now + schedule.leadHours * 3600000) / 60000) + 1) * 60000;
     const start = Math.max(open + schedule.leadHours * 3600000, earliest);
-    if (start >= close) continue;
+    if (+now > cutoff || start >= close) continue;
     return {
       start: new Date(start).toISOString(),
-      end: new Date(close).toISOString(),
+      end: new Date(end).toISOString(),
     };
   }
   return { start: "", end: "" };

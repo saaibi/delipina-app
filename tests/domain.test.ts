@@ -1148,3 +1148,18 @@ test('Los avisos aplazados no aparecen ni cuentan hasta el momento de activació
  await pool.query("UPDATE notifications SET available_at=now()-interval '1 second',updated_at=now()-interval '3 days' WHERE id=$1",[notice.id]);
  const active=(await call('admin','get','/notifications')).body.find(n=>n.id===notice.id);assert.ok(active);assert.equal(active.read,false);assert.equal(await count(),before);
 });
+
+test('Hasta permite cierre más anticipación para cliente y admin, incluso al día siguiente',async()=>{
+ const previous=(await call('admin','get','/settings')).body,oldNow=Date.now;
+ const day=new Date();day.setUTCDate(day.getUTCDate()+25);const key=day.toISOString().slice(0,10);
+ try{
+ const week=Object.fromEntries(Array.from({length:7},(_,i)=>[i+1,{enabled:true,open:'06:00',close:'18:00',leadHours:2}]));
+ await pool.query('UPDATE settings SET data=data||$1::jsonb WHERE id=1',[JSON.stringify({weeklySchedule:week})]);Date.now=()=>+new Date(key+'T08:00:00-05:00');
+ const payload={...body,clientId:users.client.id,credit:false,paymentMethod:'online',start:key+'T10:05:00-05:00',end:key+'T20:00:00-05:00'};
+ for(const role of ['admin','client']){assert.equal((await call(role,'post','/orders',payload,randomUUID())).status,200);assert.equal((await call(role,'post','/orders',{...payload,end:key+'T20:01:00-05:00'},randomUUID())).status,400);}
+ const night=Object.fromEntries(Array.from({length:7},(_,i)=>[i+1,{enabled:true,open:'06:00',close:'23:00',leadHours:2}]));await pool.query('UPDATE settings SET data=data||$1::jsonb WHERE id=1',[JSON.stringify({weeklySchedule:night})]);
+ const next=new Date(+new Date(key+'T12:00:00Z')+86400000).toISOString().slice(0,10);
+ const result=await call('client','post','/orders',{...payload,end:next+'T01:00:00-05:00',recurrence:{enabled:true,frequency:'days',intervalDays:1,weekdays:[]}},randomUUID());assert.equal(result.status,200,JSON.stringify(result.body));
+ assert.equal((await pool.query('SELECT body FROM order_schedules WHERE source_order_id=$1',[result.body.id])).rows[0].body.endDayOffset,1);
+ }finally{Date.now=oldNow;await pool.query('UPDATE settings SET data=$1 WHERE id=1',[previous]);}
+});

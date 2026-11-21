@@ -11,11 +11,11 @@ const week = Object.fromEntries(
     { enabled: true, open: "06:00", close: "18:00", leadHours: 2 },
   ]),
 );
-test("Desde suma anticipación y Hasta resta anticipación al cierre; ajustes nuevos se aplican inmediatamente", () => {
+test("Desde suma anticipación y Hasta suma anticipación al cierre; ajustes nuevos se aplican inmediatamente", () => {
   const now = new Date("2026-11-20T08:15:30-05:00");
   assert.deepEqual(suggestedDelivery({ weeklySchedule: week }, null, now), {
     start: "2026-11-20T15:16:00.000Z",
-    end: "2026-11-20T21:00:00.000Z",
+    end: "2026-11-21T01:00:00.000Z",
   });
   const changed = {
     ...week,
@@ -23,7 +23,7 @@ test("Desde suma anticipación y Hasta resta anticipación al cierre; ajustes nu
   };
   const next = suggestedDelivery({ weeklySchedule: changed }, null, now);
   assert.equal(next.start, "2026-11-20T16:16:00.000Z");
-  assert.equal(next.end, "2026-11-20T22:00:00.000Z");
+  assert.equal(next.end, "2026-11-21T04:00:00.000Z");
   assert.equal(
     deliveryClosing({ weeklySchedule: changed }, "2026-11-20T15:00:00Z"),
     next.end,
@@ -40,10 +40,10 @@ test("Sin margen suficiente o día cerrado salta al próximo día habilitado con
   const next = suggestedDelivery(
     settings,
     null,
-    new Date("2026-11-20T15:00:00-05:00"),
+    new Date("2026-11-20T17:00:00-05:00"),
   );
   assert.equal(next.start, "2026-11-22T13:00:00.000Z");
-  assert.equal(next.end, "2026-11-22T19:00:00.000Z");
+  assert.equal(next.end, "2026-11-22T21:00:00.000Z");
   assert.equal(
     suggestedDelivery(
       settings,
@@ -104,4 +104,24 @@ test("Antes de abrir y en días futuros suma la anticipación a la apertura del 
       .start,
     "2026-11-21T13:00:00.000Z",
   );
+});
+
+test("Hasta conserva la suma si cruza medianoche y permite pedir antes del límite de recepción", () => {
+  const cfg = {
+    weeklySchedule: {
+      ...week,
+      5: { enabled: true, open: "06:00", close: "23:00", leadHours: 2 },
+    },
+  };
+  assert.equal(
+    deliveryClosing(cfg, "2026-11-20T15:00:00Z"),
+    "2026-11-21T06:00:00.000Z",
+  );
+  const normal = suggestedDelivery(
+    { weeklySchedule: week },
+    null,
+    new Date("2026-11-20T15:00:00-05:00"),
+  );
+  assert.equal(normal.start, "2026-11-20T22:01:00.000Z");
+  assert.equal(normal.end, "2026-11-21T01:00:00.000Z");
 });

@@ -211,9 +211,11 @@ export async function validateDeliveryWindow(
     fail(400, "No cumple la anticipación del día de entrega");
   if (
     !schedule.enabled ||
-    r.day !== r.end_day ||
     r.start_time < schedule.open ||
-    r.end_time > schedule.close
+    +start >= +new Date(`${r.day}T${schedule.close}:00-05:00`) ||
+    +end >
+      +new Date(`${r.day}T${schedule.close}:00-05:00`) +
+        schedule.leadHours * 3600000
   )
     fail(400, "El rango está fuera del horario del día elegido");
   if (scheduled && +end <= Date.now())

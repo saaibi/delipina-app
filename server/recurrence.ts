@@ -48,7 +48,7 @@ export async function saveOrderSchedule(
   const cfg = recurrenceConfig(b),
     day = (
       await c.query(
-        "SELECT to_char($1::timestamptz AT TIME ZONE 'America/Bogota','YYYY-MM-DD') AS day,to_char($1::timestamptz AT TIME ZONE 'America/Bogota','HH24:MI') AS start,to_char($2::timestamptz AT TIME ZONE 'America/Bogota','HH24:MI') AS end",
+        "SELECT to_char($1::timestamptz AT TIME ZONE 'America/Bogota','YYYY-MM-DD') AS day,to_char($1::timestamptz AT TIME ZONE 'America/Bogota','HH24:MI') AS start,to_char($2::timestamptz AT TIME ZONE 'America/Bogota','HH24:MI') AS end,(($2::timestamptz AT TIME ZONE 'America/Bogota')::date-($1::timestamptz AT TIME ZONE 'America/Bogota')::date)::int AS end_days",
         [o.window_start, o.window_end],
       )
     ).rows[0];
@@ -71,6 +71,7 @@ export async function saveOrderSchedule(
         recurrence: undefined,
         startTime: day.start,
         endTime: day.end,
+        endDayOffset: day.end_days,
       },
       cfg.frequency,
       cfg.intervalDays,
@@ -159,11 +160,17 @@ export async function ensureRecurrences() {
         error = null;
       try {
         if (day < today) fail(409, "Repetición omitida: fecha pasada");
+        const endDay = new Date(
+          +new Date(day + "T12:00:00Z") +
+            Number(r.body.endDayOffset || 0) * 86400000,
+        )
+          .toISOString()
+          .slice(0, 10);
         const b = {
           ...r.body,
           clientId: r.client_id,
           start: day + "T" + r.body.startTime + ":00-05:00",
-          end: day + "T" + r.body.endTime + ":00-05:00",
+          end: endDay + "T" + r.body.endTime + ":00-05:00",
           recurrence: undefined,
         };
         const { OrdersController } =

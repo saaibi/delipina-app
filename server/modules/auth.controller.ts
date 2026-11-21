@@ -101,9 +101,36 @@ export class AuthController {
           )
         ).rows[0];
       }
+      let avatar = null;
+      if (typeof p.picture === "string" && p.picture.length < 2000) {
+        try {
+          const url = new URL(p.picture);
+          if (
+            url.protocol === "https:" &&
+            (url.hostname === "googleusercontent.com" ||
+              url.hostname.endsWith(".googleusercontent.com"))
+          )
+            avatar = url.href;
+        } catch {}
+      }
+      u = (
+        await c.query(
+          "UPDATE users SET avatar_url=$2 WHERE id=$1 RETURNING *",
+          [u.id, avatar],
+        )
+      ).rows[0];
       return u;
     });
-    if(u.role==='client_member'&&!(await pool.query("SELECT id FROM users WHERE id=$1 AND role='client' AND active",[u.client_account_id])).rowCount)fail(403,'Cliente no disponible');
+    if (
+      u.role === "client_member" &&
+      !(
+        await pool.query(
+          "SELECT id FROM users WHERE id=$1 AND role='client' AND active",
+          [u.client_account_id],
+        )
+      ).rowCount
+    )
+      fail(403, "Cliente no disponible");
     return login(res, u);
   }
   @Post("logout")

@@ -1,3 +1,7 @@
+import Avatar from "@mui/material/Avatar";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import Divider from "@mui/material/Divider";
 import { readTextScale } from "./text-scale";
 import ClickAwayListener from "@mui/material/ClickAwayListener";
 import { has, customer, portfolio } from "./access";
@@ -325,19 +329,14 @@ const navFor = (user: any) => {
       ["plant", "Planta", Restaurant],
       ["payments", "Cartera", Payments],
       ["analytics", "Análisis", Insights],
-      ["settings", "Ajustes", Settings],
+      ["catalog", "Catálogo", Inventory],
     ];
   if (user.role === "courier")
     return [
       ["deliveries", "Entregas", LocalShipping],
       ["payments", "Cartera", Payments],
-      ["settings", "Ajustes", Settings],
     ];
-  if (user.role === "preparation")
-    return [
-      ["plant", "Planta", Restaurant],
-      ["settings", "Ajustes", Settings],
-    ];
+  if (user.role === "preparation") return [["plant", "Planta", Restaurant]];
   if (user.role === "custom")
     return [
       ...[
@@ -353,12 +352,10 @@ const navFor = (user: any) => {
             (r[0] === "payments" && has(user, "days")),
         )
         .map((r) => r.slice(0, 3)),
-      ["settings", "Ajustes", Settings],
     ];
   return [
     ["orders", "Mis pedidos", ReceiptLong],
     ...(portfolio(user) ? [["payments", "Mi cartera", Payments]] : []),
-    ["settings", "Ajustes", Settings],
   ];
 };
 export function Navigation({
@@ -375,6 +372,14 @@ export function Navigation({
 }: any) {
   const nav = navFor(user);
   const mobileNav = nav;
+  const [profileAnchor, PROFILE] = useState<HTMLElement | null>(null);
+  const initials = (user.name || user.email || "U")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
   return (
     <>
       <AppBar position="sticky" elevation={0} sx={{ zIndex: 1201 }}>
@@ -434,11 +439,68 @@ export function Navigation({
           </IconButton>
           <IconButton
             color="inherit"
-            aria-label="Cerrar sesión"
-            onClick={onLogout}
+            aria-label="Perfil de la cuenta"
+            aria-controls={profileAnchor ? "profile-menu" : undefined}
+            aria-haspopup="menu"
+            aria-expanded={!!profileAnchor}
+            onClick={(e) => PROFILE(e.currentTarget)}
           >
-            <Logout />
+            <Avatar
+              src={user.avatarUrl || undefined}
+              alt={user.name}
+              sx={{
+                width: 36,
+                height: 36,
+                bgcolor: "secondary.main",
+                color: "primary.main",
+                fontSize: 14,
+                fontWeight: 700,
+              }}
+            >
+              {initials}
+            </Avatar>
           </IconButton>
+          <Menu
+            id="profile-menu"
+            anchorEl={profileAnchor}
+            open={!!profileAnchor}
+            onClose={() => PROFILE(null)}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            transformOrigin={{ vertical: "top", horizontal: "right" }}
+            sx={{ zIndex: 1302 }}
+          >
+            <Box sx={{ px: 2, py: 1, maxWidth: 300 }}>
+              <Typography sx={{ fontWeight: 700 }}>{user.name}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {user.email}
+              </Typography>
+            </Box>
+            <Divider />
+            <MenuItem
+              selected={view === "settings"}
+              onClick={() => {
+                PROFILE(null);
+                onNavigate("settings");
+              }}
+            >
+              <ListItemIcon>
+                <Settings fontSize="small" />
+              </ListItemIcon>
+              Ajustes
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                PROFILE(null);
+                onLogout();
+              }}
+              sx={{ color: "error.main" }}
+            >
+              <ListItemIcon>
+                <Logout fontSize="small" color="error" />
+              </ListItemIcon>
+              Cerrar sesión
+            </MenuItem>
+          </Menu>
         </Toolbar>
       </AppBar>
       {pending > 0 && (

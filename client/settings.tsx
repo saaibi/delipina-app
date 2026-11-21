@@ -295,24 +295,6 @@ export function SettingsView({
               onRestore={onRestoreUser}
             />
           </Section>
-          <Section title="Productos y presentaciones">
-            <div className="actions">
-              <Button onClick={() => onAction("catalog")}>
-                Crear producto
-              </Button>
-              <Button
-                className="neutral"
-                onClick={() => onAction({ kind: "price" })}
-              >
-                Precios especiales por cliente
-              </Button>
-            </div>
-            <ProductCatalog
-              products={products}
-              onEdit={onEditProduct}
-              onRefresh={onRefresh}
-            />
-          </Section>
           <Section title="Horario, cierre y anticipación">
             {settings && (
               <ScheduleEditor settings={settings} onSaved={onRefresh} />
@@ -353,5 +335,28 @@ export function SettingsView({
         </Section>
       )}
     </div>
+  );
+}
+
+export function CatalogView({
+  products,
+  onAction,
+  onEditProduct,
+  onRefresh,
+}: any) {
+  return (
+    <section className="panel">
+      <div className="actions">
+        <Button onClick={() => onAction("catalog")}>Crear producto</Button>
+        <Button className="neutral" onClick={() => onAction({ kind: "price" })}>
+          Precios especiales por cliente
+        </Button>
+      </div>
+      <ProductCatalog
+        products={products}
+        onEdit={onEditProduct}
+        onRefresh={onRefresh}
+      />
+    </section>
   );
 }

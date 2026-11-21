@@ -27,7 +27,7 @@ import {
   emptyRecurrence,
 } from "./recurrences";
 import { ClientPriceCatalog } from "./special-prices";
-import { SettingsView } from "./settings";
+import { SettingsView, CatalogView } from "./settings";
 import { ProductEditor } from "./product-editor";
 import { CreditsView, CreditDetails, GeneralPaymentForm } from "./credits";
 import { AnalyticsView } from "./analytics";
@@ -190,6 +190,7 @@ function App() {
     }
     lastTap.current = { id, at: now };
     V(id);
+    F(false);
     ST("");
     scrollModuleTop();
   }
@@ -477,7 +478,8 @@ function App() {
   }
   const admin = user?.role === "admin",
     plantAdmin = user?.role === "custom" && has(user, "orders"),
-    prep = user?.role === "preparation" || view === "plant",
+    prep =
+      view === "plant" || (user?.role === "preparation" && view === "orders"),
     client = customer(user),
     delivery = user?.role === "courier";
   const editUser = (u) => M({ kind: "editUser", user: u });
@@ -926,7 +928,14 @@ function App() {
                 <Tab value="recurrences" label="Frecuencias" />
               </Tabs>
             )}
-          {view === "settings" ? (
+          {view === "catalog" && admin ? (
+            <CatalogView
+              products={products}
+              onAction={M}
+              onEditProduct={editProduct}
+              onRefresh={() => run(() => refresh())}
+            />
+          ) : view === "settings" ? (
             <SettingsView
               {...{ user, push, settings, users, products, branches, accounts }}
               onAction={M}
@@ -1894,7 +1903,7 @@ function OrderForm({
       </div>
       <p>
         Hora de Colombia · Desde: hora actual más anticipación. Hasta por
-        defecto: cierre menos anticipación del día de entrega.
+        defecto: cierre más anticipación del día de entrega.
       </p>
       <ProductChoices
         products={priced}

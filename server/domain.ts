@@ -25,6 +25,7 @@ export const safeUser = (u) => ({
   name: u.name,
   role: u.role,
   email: u.email,
+  avatarUrl: u.avatar_url || null,
   permissions: u.permissions || [],
   clientId: customerId(u),
   canViewPortfolio: canPortfolio(u),
