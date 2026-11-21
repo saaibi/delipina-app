@@ -109,21 +109,33 @@ export function AnalyticsView({ money, labels, closings }: any) {
     [to, T] = useState(periodDates("1 Año").to),
     [report, R] = useState<any>(null),
     [error, E] = useState("");
-  const load = () =>
-    cached(
+  const requestVersion = useRef(0);
+  const load = () => {
+    const version = ++requestVersion.current;
+    return cached(
       "/analytics?" +
         new URLSearchParams({
           ...(from ? { from } : {}),
           ...(to ? { to } : {}),
         }),
     )
-      .then(R)
-      .catch((e) => E(e.message));
+      .then((data) => {
+        if (version !== requestVersion.current) return;
+        R(data);
+        E("");
+      })
+      .catch((e) => {
+        if (version === requestVersion.current) E(e.message);
+      });
+  };
   useEffect(() => {
     load();
     const handler = () => load();
     window.addEventListener("delipina:refresh", handler);
-    return () => window.removeEventListener("delipina:refresh", handler);
+    return () => {
+      requestVersion.current++;
+      window.removeEventListener("delipina:refresh", handler);
+    };
   }, [from, to]);
   return (
     <>

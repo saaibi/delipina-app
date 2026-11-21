@@ -9,6 +9,8 @@ import dayjs from "dayjs";
 import { Field } from "./ui";
 export function periodDates(label: string) {
   const now = dayjs().tz("America/Bogota");
+  if (label === "Hoy")
+    return { from: now.format("YYYY-MM-DD"), to: now.format("YYYY-MM-DD") };
   if (label === "Mes Actual")
     return {
       from: now.startOf("month").format("YYYY-MM-DD"),
@@ -43,7 +45,7 @@ export function PeriodPicker({ onChange }: any) {
     L(value);
     A(null);
     if (value === "Rango de fecha") return;
-    const dates = periodDates(value);
+    const dates = periodDates(value === "Fecha específica" ? "Hoy" : value);
     if (dates) {
       R(dates);
       onChange(dates);
@@ -80,6 +82,8 @@ export function PeriodPicker({ onChange }: any) {
       />
       <Menu anchorEl={anchor} open={!!anchor} onClose={() => A(null)}>
         {[
+          "Hoy",
+          "Fecha específica",
           "Mes Actual",
           "1 Mes",
           "6 Meses",
@@ -92,6 +96,21 @@ export function PeriodPicker({ onChange }: any) {
           </MenuItem>
         ))}
       </Menu>
+      {label === "Fecha específica" && (
+        <Field
+          type="date"
+          label="Fecha de análisis"
+          value={range.from}
+          max={periodDates("Hoy").to}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (!value || value > periodDates("Hoy").to) return;
+            const dates = { from: value, to: value };
+            R(dates);
+            onChange(dates);
+          }}
+        />
+      )}
       {label === "Rango de fecha" && (
         <div className="row">
           <Field

@@ -228,3 +228,5 @@ Las frecuencias se generan al abrir el horario de su fecha, nunca con varios dí
 Catálogo es un módulo principal para administración, separado de Ajustes. El avatar de la cuenta abre el menú Ajustes/Cerrar sesión; Ajustes conserva la navegación principal. La foto de Google se actualiza al iniciar sesión, con iniciales como respaldo.
 
 El permiso personalizado Catálogo permite administrar productos, presentaciones, imágenes y precios especiales, sin habilitar gestión de usuarios ni cartera. Inteligencia de negocio incorpora el donut de valor aceptado por cliente (cinco primeros y Otros) y GeoChart de pedidos aceptados por ciudad, usando coordenadas vigentes sin geocodificar direcciones. Los pedidos sin coordenadas vigentes se informan fuera del mapa. Ajustes del cliente agrupa sus gestores en Usuarios de mi negocio.
+
+El período de análisis incluye Hoy y Fecha específica. Esta última usa un solo selector con máximo en la fecha actual de Colombia y consulta desde/hasta el mismo día para todas las métricas y gráficos.
