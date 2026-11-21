@@ -654,6 +654,9 @@ export function SecondaryActions({ role, user, onAction }: any) {
           ? [
               ["Crear pedido", ReceiptLong, () => onAction("order")],
               ["Crear sucursal", AddLocationAlt, () => onAction("branch")],
+              ...(portfolio(user)
+                ? [["Enviar abono", Payments, () => onAction("paymentSelf")]]
+                : []),
             ]
           : [];
   if (!actions.length) return null;

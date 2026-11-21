@@ -29,7 +29,12 @@ import {
 import { ClientPriceCatalog } from "./special-prices";
 import { SettingsView, CatalogView } from "./settings";
 import { ProductEditor } from "./product-editor";
-import { CreditsView, CreditDetails, GeneralPaymentForm } from "./credits";
+import {
+  CreditsView,
+  CreditDetails,
+  GeneralPaymentForm,
+  PaymentHistory,
+} from "./credits";
 import { AnalyticsView } from "./analytics";
 import { OrderCards, OrderDetails } from "./orders";
 import { NotificationList } from "./notifications";
@@ -176,6 +181,14 @@ function App() {
   }
   const M = (value: any) => {
     E("");
+    if (value === "paymentSelf") {
+      const account = accounts[0];
+      if (!account || Number(account.available_to_pay) <= 0) {
+        S("No tienes saldo disponible para abonar.");
+        return;
+      }
+      value = { kind: "payment", client: account };
+    }
     setModal(value);
   };
   const lastTap = useRef({ id: "", at: 0 });
@@ -347,10 +360,7 @@ function App() {
         cached("/credit-accounts").then(guard(AC)),
       );
     if (["admin", "courier"].includes(u.role))
-      tasks.push(
-        cached("/payments").then(guard(PAY)),
-        cached("/settlements").then(guard(SS)),
-      );
+      tasks.push(cached("/settlements").then(guard(SS)));
     const results = await Promise.allSettled(tasks);
     if (
       revision !== refreshVersion.current ||
@@ -861,7 +871,9 @@ function App() {
                 <small>DELIPIÑA / OPERACIÓN</small>
                 <h1>
                   {view === "payments"
-                    ? "Cartera de clientes"
+                    ? client
+                      ? "Mi cartera"
+                      : "Cartera de clientes"
                     : view === "recurrences"
                       ? "Frecuencias"
                       : view === "audit"
@@ -887,11 +899,13 @@ function App() {
                                         : "Pedidos del día"}
                 </h1>
                 <p>
-                  {prep
-                    ? "Cantidades claras, entregas a tiempo."
-                    : client
-                      ? "Organiza tu próxima entrega."
-                      : "Cada pedido, en su momento."}
+                  {client && view === "payments"
+                    ? "Tus compras, tu saldo y tus abonos."
+                    : prep
+                      ? "Cantidades claras, entregas a tiempo."
+                      : client
+                        ? "Organiza tu próxima entrega."
+                        : "Cada pedido, en su momento."}
                 </p>
               </div>
               <div className="heading-actions">
@@ -966,14 +980,14 @@ function App() {
                   money={money}
                   onReview={(client) => M({ kind: "creditDetail", client })}
                   onPay={(client) => M({ kind: "payment", client })}
-                  onVerify={(p) =>
-                    run(async () => {
-                      await api("/payments/" + p.id + "/verify", {
-                        method: "POST",
-                      });
-                      await refresh();
-                    })
-                  }
+                  onChanged={refresh}
+                  onPayments={(client) => M({ kind: "paymentHistory", client })}
+                  onVerify={async (p) => {
+                    await api("/payments/" + p.id + "/verify", {
+                      method: "POST",
+                    });
+                    await refresh();
+                  }}
                 />
               )}
               {has(user, "days") && <ServerTable kind="days" />}
@@ -1175,6 +1189,7 @@ function App() {
             modal === "users" ||
             modal === "catalogList" ||
             modal === "order" ||
+            modal.kind === "paymentHistory" ||
             modal.kind === "creditDetail" ||
             modal.kind === "price"
           }
@@ -1200,7 +1215,8 @@ function App() {
                     ? "Reasignar mensajero"
                     : "Asignar mensajero",
                   map: "Recorrido",
-                  payment: "Registrar abono",
+                  payment: client ? "Enviar abono" : "Registrar abono",
+                  paymentHistory: "Abonos del cliente",
                   invoice: "Vincular factura externa",
                   tracking: "Seguimiento",
                   deliver: "Confirmar entrega y dinero recibido",
@@ -1619,9 +1635,28 @@ function App() {
               money={money}
               onSaved={async (r) => {
                 M(null);
-                S("Abono registrado en jornada " + r.businessDay);
+                S(
+                  client
+                    ? "Abono enviado para revisión"
+                    : "Abono registrado en jornada " + r.businessDay,
+                );
                 await refresh();
               }}
+            />
+          )}
+          {modal.kind === "paymentHistory" && (
+            <PaymentHistory
+              client={modal.client}
+              money={money}
+              onChanged={refresh}
+              onVerify={
+                admin
+                  ? async (p) => {
+                      await api(`/payments/${p.id}/verify`, { method: "POST" });
+                      await refresh();
+                    }
+                  : undefined
+              }
             />
           )}
           {modal.kind === "creditDetail" && (

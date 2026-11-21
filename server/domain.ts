@@ -54,7 +54,9 @@ export const auth = (req, roles = undefined) => {
         ? hasModule(req.user, "analytics")
         : path.includes("business-day")
           ? hasModule(req.user, "days")
-          : path.includes("credit-accounts") || path.includes("invoices")
+          : path.includes("credit-accounts") ||
+              path.includes("invoices") ||
+              path.includes("payments")
             ? req.method === "GET" && hasModule(req.user, "portfolio")
             : path.includes("orders") ||
                 path.includes("branches") ||
@@ -70,7 +72,7 @@ export const auth = (req, roles = undefined) => {
   if (
     isCustomer(req.user) &&
     !canPortfolio(req.user) &&
-    /credit-accounts|invoices/.test(path)
+    /credit-accounts|invoices|payments/.test(path)
   )
     fail(403, "No tienes permiso para ver cartera");
   if (roles && !roles.includes(req.user.role) && !customerGrant && !customGrant)

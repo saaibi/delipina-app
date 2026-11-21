@@ -78,8 +78,17 @@ export class PaymentsController {
     @Req() req: any,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const u = auth(req, ["admin", "courier"]),
-      b = req.body;
+    const u = auth(req, ["admin", "courier", "client"]),
+      b = { ...req.body };
+    if (isCustomer(u)) {
+      if (!canPortfolio(u)) fail(403, "Sin permiso de cartera");
+      if (b.clientId !== customerId(u))
+        fail(403, "Solo puedes abonar a tu negocio");
+      if (b.method === "cash")
+        fail(400, "Envía un abono por Nequi o Bancolombia");
+      if (b.allocations !== undefined)
+        fail(400, "El abono del cliente es general");
+    }
     const key = req.get("Idempotency-Key");
     if (!key) fail(400, "Falta clave");
     const hash = createHash("sha256").update(JSON.stringify(b)).digest("hex");
@@ -96,7 +105,7 @@ export class PaymentsController {
         return prev.response;
       }
       const proof = b.receiptPhoto ? imagePayload(b.receiptPhoto) : null;
-      if (u.role === "courier" && !proof)
+      if ((u.role === "courier" || isCustomer(u)) && !proof)
         fail(
           400,
           "Adjunta la foto de la factura o comprobante del dinero recibido",
@@ -134,7 +143,7 @@ export class PaymentsController {
       if (!Array.isArray(b.allocations)) {
         const invoices = (
           await c.query(
-            "SELECT i.*,COALESCE((SELECT sum(a.amount) FROM allocations a JOIN payments p ON p.id=a.payment_id WHERE a.invoice_id=i.id AND NOT p.verified),0) AS pending FROM invoices i JOIN orders o ON o.id=i.order_id WHERE i.client_id=$1 AND i.balance>0 AND ($2<>'courier' OR o.courier_id=$3 OR o.delivered_by=$3) ORDER BY o.created_at,i.id FOR UPDATE OF i",
+            "SELECT i.*,COALESCE((SELECT sum(a.amount) FROM allocations a JOIN payments p ON p.id=a.payment_id WHERE a.invoice_id=i.id AND NOT p.verified AND p.rejected_at IS NULL),0) AS pending FROM invoices i JOIN orders o ON o.id=i.order_id WHERE i.client_id=$1 AND i.balance>0 AND ($2<>'courier' OR o.courier_id=$3 OR o.delivered_by=$3) ORDER BY o.created_at,i.id FOR UPDATE OF i",
             [b.clientId, u.role, u.id],
           )
         ).rows;
@@ -200,7 +209,7 @@ export class PaymentsController {
         const pending = Number(
           (
             await c.query(
-              "SELECT COALESCE(sum(a.amount),0) AS n FROM allocations a JOIN payments p ON p.id=a.payment_id WHERE a.invoice_id=$1 AND NOT p.verified",
+              "SELECT COALESCE(sum(a.amount),0) AS n FROM allocations a JOIN payments p ON p.id=a.payment_id WHERE a.invoice_id=$1 AND NOT p.verified AND p.rejected_at IS NULL",
               [a.invoiceId],
             )
           ).rows[0].n,
@@ -281,13 +290,80 @@ export class PaymentsController {
     @Req() req: any,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const u = auth(req, ["admin", "courier"]);
-    return (
+    const u = auth(req, ["admin", "courier", "client"]);
+    const page = Number(req.query.page || 0),
+      size = Number(req.query.pageSize || 10);
+    if (
+      !Number.isInteger(page) ||
+      page < 0 ||
+      page > 1000000 ||
+      !Number.isInteger(size) ||
+      size < 1 ||
+      size > 100
+    )
+      fail(400, "Paginación inválida");
+    const params = [
+      u.id,
+      u.role === "admin" || u.role === "custom",
+      isCustomer(u) ? customerId(u) : null,
+      req.query.clientId || null,
+      req.query.pending === "true",
+    ];
+    const where =
+      "(p.receiver_id=$1 OR $2 OR p.client_id=$3) AND ($4::uuid IS NULL OR p.client_id=$4) AND (NOT $5 OR (NOT p.verified AND p.rejected_at IS NULL))";
+    const rows = (
       await pool.query(
-        "SELECT p.*,EXISTS(SELECT 1 FROM payment_proofs f WHERE f.payment_id=p.id) has_proof,u.name AS receiver FROM payments p JOIN users u ON u.id=p.receiver_id WHERE receiver_id=$1 OR $2 ORDER BY created_at DESC",
-        [u.id, u.role === "admin"],
+        `SELECT p.*,EXISTS(SELECT 1 FROM payment_proofs f WHERE f.payment_id=p.id) has_proof,u.name AS receiver,cl.name AS client_name FROM payments p JOIN users u ON u.id=p.receiver_id JOIN users cl ON cl.id=p.client_id WHERE ${where} ORDER BY p.created_at DESC,p.id ${req.query.page !== undefined ? "LIMIT $6 OFFSET $7" : ""}`,
+        req.query.page !== undefined ? [...params, size, page * size] : params,
       )
     ).rows;
+    if (req.query.page === undefined) return rows;
+    const total = Number(
+      (
+        await pool.query(
+          `SELECT count(*) n FROM payments p WHERE ${where}`,
+          params,
+        )
+      ).rows[0].n,
+    );
+    return { rows, total, page, pageSize: size };
+  }
+  @Post("payments/:id/reject")
+  @HttpCode(200)
+  async rejectPayment(@Req() req: any) {
+    const u = auth(req, ["admin"]);
+    const reason = text(req.body.reason, 500);
+    if (!reason?.trim()) fail(400, "Indica el motivo del rechazo");
+    await tx(async (c) => {
+      const p = (
+        await c.query("SELECT * FROM payments WHERE id=$1 FOR UPDATE", [
+          req.params.id,
+        ])
+      ).rows[0];
+      if (!p) fail(404, "Abono no disponible");
+      if (p.verified) fail(409, "El abono ya fue aplicado");
+      if (p.rejected_at) return;
+      await c.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [
+        p.client_id,
+      ]);
+      await c.query(
+        "UPDATE payments SET rejected_at=clock_timestamp(),rejection_reason=$2,reviewed_by=$3 WHERE id=$1",
+        [p.id, reason, u.id],
+      );
+      await c.query(
+        "INSERT INTO audit(actor_id,action,entity_type,entity_id) VALUES($1,'payment-rejected','payment',$2)",
+        [u.id, p.id],
+      );
+      await notifyEvent(c, ["admin"], [p.client_id, p.receiver_id], {
+        key: "payment:" + p.id,
+        module: "credits",
+        targetId: p.client_id,
+        title: "Abono rechazado · " + reason,
+        status: "rejected",
+      });
+    });
+    await broadcast();
+    return { ok: true };
   }
   @Post("payments/:id/verify")
   @HttpCode(200)
@@ -295,7 +371,7 @@ export class PaymentsController {
     @Req() req: any,
     @Res({ passthrough: true }) res: Response,
   ) {
-    auth(req, ["admin"]);
+    const reviewer = auth(req, ["admin"]);
     await tx(async (c) => {
       const p = (
         await c.query("SELECT * FROM payments WHERE id=$1 FOR UPDATE", [
@@ -303,6 +379,7 @@ export class PaymentsController {
         ])
       ).rows[0];
       if (!p) fail(404, "No existe");
+      if (p.rejected_at) fail(409, "El abono fue rechazado");
       if (p.verified) return;
       await c.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [
         p.client_id,
@@ -324,8 +401,12 @@ export class PaymentsController {
         await applyAllocation(c, inv, a.amount);
       }
       await c.query(
-        "UPDATE payments SET verified=true,verified_at=clock_timestamp(),verified_day=$2 WHERE id=$1",
-        [p.id, await accountingDate(c)],
+        "UPDATE payments SET verified=true,verified_at=clock_timestamp(),verified_day=$2,reviewed_by=$3 WHERE id=$1",
+        [p.id, await accountingDate(c), reviewer.id],
+      );
+      await c.query(
+        "INSERT INTO audit(actor_id,action,entity_type,entity_id) VALUES($1,'payment-verified','payment',$2)",
+        [reviewer.id, p.id],
       );
       await notifyEvent(c, ["admin"], [p.client_id, p.receiver_id], {
         key: "payment:" + p.id,
@@ -349,7 +430,7 @@ export class PaymentsController {
         "SELECT f.mime,f.data FROM payment_proofs f JOIN payments p ON p.id=f.payment_id WHERE p.id=$1 AND ($2 OR p.receiver_id=$3 OR p.client_id=$4)",
         [
           req.params.id,
-          u.role === "admin",
+          u.role === "admin" || u.role === "custom",
           u.id,
           isCustomer(u) ? customerId(u) : null,
         ],
@@ -429,7 +510,7 @@ export class PaymentsController {
       if (
         (
           await c.query(
-            "SELECT id FROM payments WHERE receiver_id=$1 AND business_day=$2 AND NOT verified",
+            "SELECT id FROM payments WHERE receiver_id=$1 AND business_day=$2 AND NOT verified AND rejected_at IS NULL",
             [courierId, b.day],
           )
         ).rowCount

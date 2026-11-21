@@ -1,3 +1,4 @@
+import Payments from "@mui/icons-material/Payments";
 import LocationOn from "@mui/icons-material/LocationOn";
 import People from "@mui/icons-material/People";
 import PriceChange from "@mui/icons-material/PriceChange";
@@ -42,6 +43,7 @@ export function ManagementTable({
   onPrices,
   onMembers,
   onBranches,
+  onPayments,
 }: any) {
   const [archived, SA] = useState(false);
   const [search, S] = useState(""),
@@ -188,6 +190,16 @@ export function ManagementTable({
                   />
                 </TableCell>
                 <TableCell sx={{ whiteSpace: "nowrap" }}>
+                  {clients && onPayments && (
+                    <Tooltip title="Ver abonos">
+                      <IconButton
+                        aria-label={"Abonos de " + r.name}
+                        onClick={() => onPayments(r)}
+                      >
+                        <Payments />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                   {clients && onBranches && (
                     <Tooltip title="Sucursales del cliente">
                       <IconButton

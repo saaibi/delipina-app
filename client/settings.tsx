@@ -289,6 +289,9 @@ export function SettingsView({
                 )}
               onMembers={(u) => onAction({ kind: "members", clientId: u.id })}
               onBranches={(u) => onAction({ kind: "branches", clientId: u.id })}
+              onPayments={(u) =>
+                onAction({ kind: "paymentHistory", client: u })
+              }
               onPrices={(u) => onAction({ kind: "price", clientId: u.id })}
               onEdit={onEditUser}
               onRemove={onRemoveUser}

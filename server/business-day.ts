@@ -305,7 +305,7 @@ export async function ensureBusinessClock() {
       ).rows[0].n;
       const transfers = (
         await c.query(
-          "SELECT count(*)::int n FROM payments WHERE business_day=$1 AND NOT verified",
+          "SELECT count(*)::int n FROM payments WHERE business_day=$1 AND NOT verified AND rejected_at IS NULL",
           [day],
         )
       ).rows[0].n;

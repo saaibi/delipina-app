@@ -1,3 +1,8 @@
+import { PhotoInput } from "./photo-input";
+import { Chart } from "./analytics";
+import { customer } from "./access";
+import { StatusChip } from "./order-badges";
+import Chip from "@mui/material/Chip";
 import { AttachmentLink } from "./attachment-link";
 import TablePagination from "@mui/material/TablePagination";
 import { attachment } from "./photos";
@@ -18,10 +23,21 @@ export function CreditsView({
   onReview,
   onPay,
   onVerify,
+  onPayments,
+  onChanged,
   money,
 }: any) {
   const [q, Q] = useState("");
   const staff = ["admin", "courier"].includes(user.role);
+  if (customer(user))
+    return (
+      <PersonalPortfolio
+        account={accounts[0]}
+        user={user}
+        money={money}
+        onPay={onPay}
+      />
+    );
   return (
     <>
       <div className="summary-cards">
@@ -32,7 +48,7 @@ export function CreditsView({
           </strong>
         </article>
         <article>
-          <small>Transferencias en verificación</small>
+          <small>Abonos en revisión</small>
           <strong>
             {money(accounts.reduce((s, a) => s + Number(a.pending), 0))}
           </strong>
@@ -84,6 +100,12 @@ export function CreditsView({
                         <Button className="neutral" onClick={() => onReview(a)}>
                           Ver pedidos
                         </Button>
+                        <Button
+                          className="neutral"
+                          onClick={() => onPayments(a)}
+                        >
+                          Ver abonos
+                        </Button>
                         {staff && Number(a.available_to_pay) > 0 && (
                           <Button onClick={() => onPay(a)}>
                             Registrar abono
@@ -98,71 +120,33 @@ export function CreditsView({
         </TableContainer>
         {!accounts.length && <p>No hay saldos registrados.</p>}
       </div>
-      {staff && payments.some((p) => p.has_proof) && (
+      {user.role === "courier" && (
         <section className="panel">
-          <h2>Comprobantes de cobro</h2>
-          {payments
-            .filter((p) => p.has_proof)
-            .slice(-50)
-            .map((p) => (
-              <p key={p.id}>
-                {money(p.amount)} ·{" "}
-                {{
-                  cash: "Efectivo",
-                  nequi: "Nequi",
-                  bancolombia: "Bancolombia",
-                }[p.method] || p.method}{" "}
-                ·{" "}
-                <AttachmentLink
-                  href={"/api/payments/" + p.id + "/proof"}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Ver factura o comprobante
-                </AttachmentLink>
-              </p>
-            ))}
+          <h2>Mis abonos registrados</h2>
+          <PaymentHistory money={money} />
         </section>
       )}
-      {user.role === "admin" && payments.some((p) => !p.verified) && (
-        <div className="panel">
-          <h2>Transferencias por verificar</h2>
-          {payments
-            .filter((p) => !p.verified)
-            .map((p) => (
-              <article className="invoice" key={p.id}>
-                <div>
-                  {money(p.amount)} ·{" "}
-                  {{
-                    cash: "Efectivo",
-                    nequi: "Nequi",
-                    bancolombia: "Bancolombia",
-                  }[p.method] || p.method}
-                  {p.has_proof && (
-                    <AttachmentLink
-                      href={"/api/payments/" + p.id + "/proof"}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Ver comprobante
-                    </AttachmentLink>
-                  )}
-                  <p>
-                    Recibida por {p.receiver} ·{" "}
-                    {new Date(p.created_at).toLocaleString("es-CO")}
-                  </p>
-                </div>
-                <Button onClick={() => onVerify(p)}>
-                  Verificar y aplicar abono
-                </Button>
-              </article>
-            ))}
-        </div>
+      {user.role === "admin" && (
+        <section className="panel">
+          <h2>Abonos pendientes de revisión</h2>
+          <PaymentHistory
+            money={money}
+            pendingOnly
+            onVerify={onVerify}
+            onChanged={onChanged}
+          />
+        </section>
       )}
     </>
   );
 }
-export function CreditDetails({ client, money, onPay, canPay }: any) {
+export function CreditDetails({
+  client,
+  money,
+  onPay,
+  canPay,
+  personal = false,
+}: any) {
   const [revision, RV] = useState(0);
   useEffect(() => {
     const handler = () => RV((n) => n + 1);
@@ -197,25 +181,34 @@ export function CreditDetails({ client, money, onPay, canPay }: any) {
   return (
     <>
       {error && <Alert severity="error">{error}</Alert>}
-      <div className="credit-detail-summary">
-        <strong>{client.name}</strong>
-        <p>
-          Saldo del cliente: {money(client.balance)} · En verificación:{" "}
-          {money(client.pending)}
-        </p>
-        {canPay && Number(client.available_to_pay) > 0 && (
-          <Button onClick={() => onPay(client)}>Registrar abono general</Button>
-        )}
-      </div>
+      {!personal && (
+        <div className="credit-detail-summary">
+          <strong>{client.name}</strong>
+          <p>
+            Saldo del cliente: {money(client.balance)} · En verificación:{" "}
+            {money(client.pending)}
+          </p>
+          {canPay && Number(client.available_to_pay) > 0 && (
+            <Button onClick={() => onPay(client)}>
+              Registrar abono general
+            </Button>
+          )}
+        </div>
+      )}
       <TableContainer>
         <Table size="small">
           <TableHead>
             <TableRow>
-              {["Pedido", "Fecha de entrega", "Detalle", "Valor", "Saldo"].map(
-                (t) => (
-                  <TableCell key={t}>{t}</TableCell>
-                ),
-              )}
+              {[
+                "Pedido",
+                "Fecha de entrega",
+                "Detalle",
+                "Estado",
+                "Valor",
+                "Saldo",
+              ].map((t) => (
+                <TableCell key={t}>{t}</TableCell>
+              ))}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -237,6 +230,9 @@ export function CreditDetails({ client, money, onPay, canPay }: any) {
                     </div>
                   ))}
                 </TableCell>
+                <TableCell>
+                  <StatusChip status={o.status} />
+                </TableCell>
                 <TableCell>{money(o.total)}</TableCell>
                 <TableCell>{money(o.balance)}</TableCell>
               </TableRow>
@@ -244,6 +240,7 @@ export function CreditDetails({ client, money, onPay, canPay }: any) {
           </TableBody>
         </Table>
       </TableContainer>
+      {!orders.length && <p>No hay pedidos registrados.</p>}
       <TablePagination
         component="div"
         count={total}
@@ -275,7 +272,9 @@ export function GeneralPaymentForm({
 }: any) {
   const key = useRef(crypto.randomUUID()),
     [busy, B] = useState(false),
-    [error, E] = useState("");
+    [error, E] = useState(""),
+    [proof, PROOF] = useState<File | null>(null);
+  const personal = customer(user);
   return (
     <form
       onSubmit={async (e) => {
@@ -289,10 +288,7 @@ export function GeneralPaymentForm({
             headers: { "Idempotency-Key": key.current },
             body: {
               clientId: client.id,
-              receiptPhoto:
-                b.proof instanceof File && b.proof.size
-                  ? await attachment(b.proof)
-                  : undefined,
+              receiptPhoto: proof ? await attachment(proof) : undefined,
               method: b.method,
               amount: Math.round(Number(b.amount) * 100),
             },
@@ -313,33 +309,363 @@ export function GeneralPaymentForm({
       </p>
       <Field
         name="amount"
-        label="Total recibido COP"
+        label={personal ? "Valor del abono COP" : "Total recibido COP"}
         type="number"
         min="0.01"
         max={Number(client.available_to_pay) / 100}
         step="0.01"
       />
-      <Select name="method" label="Medio de pago" defaultValue="cash">
-        <option value="cash">Efectivo</option>
+      <Select
+        name="method"
+        label="Medio de pago"
+        defaultValue={personal ? "nequi" : "cash"}
+      >
+        {!personal && <option value="cash">Efectivo</option>}
         <option value="nequi">Nequi · requiere verificación</option>
         <option value="bancolombia">Bancolombia · requiere verificación</option>
       </Select>
-      <Field
-        name="proof"
+      <PhotoInput
         label="Foto de la factura o comprobante"
-        type="file"
-        accept="image/*"
-        capture="environment"
-        required={user?.role === "courier"}
+        onFile={PROOF}
+        required={personal || user?.role === "courier"}
+        disabled={busy}
       />
       <p>
-        El abono se aplica al saldo general del cliente, empezando por los
+        {personal
+          ? "Tu abono se enviará a revisión. Solo al aceptarlo se reducirá tu saldo y se liberará cupo. "
+          : ""}
+        El abono se aplica al saldo general del negocio, empezando por los
         pedidos con saldo más antiguos. Jornada de registro:{" "}
         {business?.nextOperatingDay || business?.day}.
       </p>
       <Button type="submit" disabled={busy}>
-        {busy ? "Registrando…" : "Registrar abono"}
+        {busy
+          ? "Enviando…"
+          : personal
+            ? "Enviar abono para revisión"
+            : "Registrar abono"}
       </Button>
     </form>
+  );
+}
+
+export function PersonalPortfolio({ account, user, money, onPay }: any) {
+  const [summary, S] = useState<any>(null),
+    [error, E] = useState("");
+  useEffect(() => {
+    if (!account) return;
+    let live = true;
+    const load = () =>
+      cached(`/credit-accounts/${account.id}/summary`)
+        .then((x) => {
+          if (live) {
+            S(x);
+            E("");
+          }
+        })
+        .catch((e) => {
+          if (live) E(e.message);
+        });
+    load();
+    window.addEventListener("delipina:refresh", load);
+    return () => {
+      live = false;
+      window.removeEventListener("delipina:refresh", load);
+    };
+  }, [account?.id]);
+  if (!account) return <p>Cargando mi cartera…</p>;
+  const available = Math.max(
+    0,
+    Number(account.credit_limit) - Number(account.credit_used),
+  );
+  return (
+    <>
+      {error && <Alert severity="error">{error}</Alert>}
+      <div className="summary-cards">
+        <article>
+          <small>Mi saldo pendiente</small>
+          <strong>{money(account.balance)}</strong>
+        </article>
+        <article>
+          <small>Mis abonos en revisión</small>
+          <strong>{money(account.pending)}</strong>
+        </article>
+        <article>
+          <small>Mis compras entregadas</small>
+          <strong>{money(summary?.spent || 0)}</strong>
+        </article>
+        <article>
+          <small>Mis pedidos realizados</small>
+          <strong>{summary?.orders ?? "…"}</strong>
+        </article>
+        <article>
+          <small>Mi cupo disponible</small>
+          <strong>
+            {Number(account.credit_limit) > 0
+              ? money(available)
+              : "Sin cupo autorizado"}
+          </strong>
+          <small>
+            {Number(account.credit_limit) > 0
+              ? `Cupo total: ${money(account.credit_limit)}`
+              : "Puedes solicitar autorización a administración."}
+          </small>
+        </article>
+      </div>
+      <section className="panel">
+        <div className="actions">
+          <Button
+            disabled={Number(account.available_to_pay) <= 0}
+            onClick={() => onPay(account)}
+          >
+            Enviar abono
+          </Button>
+        </div>
+        <p>
+          Envía el soporte de tu pago para revisión. Los abonos pendientes
+          todavía no reducen tu deuda.
+        </p>
+      </section>
+      {summary && (
+        <div className="personal-portfolio-charts">
+          <Chart
+            title="Mis pedidos por mes"
+            type="ColumnChart"
+            rows={[
+              ["Mes", "Pedidos"],
+              ...summary.monthly.map((m) => [m.month, m.orders]),
+            ]}
+            options={{ legend: { position: "none" } }}
+          />
+          <Chart
+            title="Mis compras por mes"
+            type="ColumnChart"
+            description="Valor de pedidos entregados (COP). Últimos 12 meses con actividad."
+            rows={[
+              ["Mes", "COP"],
+              ...summary.monthly.map((m) => [m.month, Number(m.spent) / 100]),
+            ]}
+            options={{ legend: { position: "none" } }}
+          />
+        </div>
+      )}
+      <section className="panel">
+        <h2>Mis pedidos</h2>
+        <CreditDetails client={account} money={money} personal />
+      </section>
+      <section className="panel">
+        <h2>Mis abonos</h2>
+        <PaymentHistory client={account} money={money} />
+      </section>
+    </>
+  );
+}
+export function PaymentHistory({
+  client,
+  money,
+  pendingOnly = false,
+  onVerify,
+  onChanged,
+}: any) {
+  const [rows, R] = useState([]),
+    [total, T] = useState(0),
+    [page, P] = useState(0),
+    [revision, V] = useState(0),
+    [error, E] = useState(""),
+    [busy, B] = useState(false),
+    [reject, REJ] = useState<any>(null),
+    [reason, WHY] = useState("");
+  useEffect(() => {
+    const load = () => V((n) => n + 1);
+    window.addEventListener("delipina:refresh", load);
+    return () => window.removeEventListener("delipina:refresh", load);
+  }, []);
+  useEffect(() => {
+    let live = true;
+    cached(
+      `/payments?page=${page}&pageSize=10${client ? `&clientId=${client.id}` : ""}${pendingOnly ? "&pending=true" : ""}`,
+    )
+      .then((data) => {
+        if (live) {
+          R(data.rows);
+          T(data.total);
+          if (page > Math.max(0, Math.ceil(data.total / 10) - 1))
+            P(Math.max(0, Math.ceil(data.total / 10) - 1));
+          E("");
+        }
+      })
+      .catch((e) => {
+        if (live) E(e.message);
+      });
+    return () => {
+      live = false;
+    };
+  }, [client?.id, page, pendingOnly, revision]);
+  const review = async (p: any, rejected = false) => {
+    B(true);
+    E("");
+    try {
+      if (rejected)
+        await api(`/payments/${p.id}/reject`, {
+          method: "POST",
+          body: { reason },
+        });
+      else await onVerify(p);
+      if (rejected) await onChanged?.();
+      REJ(null);
+      WHY("");
+      V((n) => n + 1);
+      window.dispatchEvent(new Event("delipina:refresh"));
+    } catch (e) {
+      E(e.message);
+    } finally {
+      B(false);
+    }
+  };
+  return (
+    <>
+      {error && <Alert severity="error">{error}</Alert>}
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              {[
+                ...(!client ? ["Cliente"] : []),
+                "Fecha",
+                "Valor",
+                "Medio",
+                "Estado",
+                "Soporte",
+                ...(onVerify ? ["Acciones"] : []),
+              ].map((t) => (
+                <TableCell key={t}>{t}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((p) => (
+              <TableRow key={p.id}>
+                {!client && <TableCell>{p.client_name}</TableCell>}
+                <TableCell>
+                  {new Date(p.created_at).toLocaleString("es-CO", {
+                    timeZone: "America/Bogota",
+                  })}
+                </TableCell>
+                <TableCell>{money(p.amount)}</TableCell>
+                <TableCell>
+                  {{
+                    cash: "Efectivo",
+                    nequi: "Nequi",
+                    bancolombia: "Bancolombia",
+                  }[p.method] || p.method}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    size="small"
+                    label={
+                      p.rejected_at
+                        ? "Rechazado"
+                        : p.verified
+                          ? "Aplicado"
+                          : "En revisión"
+                    }
+                    color={
+                      p.rejected_at
+                        ? "error"
+                        : p.verified
+                          ? "success"
+                          : "warning"
+                    }
+                  />
+                  {p.rejection_reason && <p>{p.rejection_reason}</p>}
+                </TableCell>
+                <TableCell>
+                  {p.has_proof ? (
+                    <AttachmentLink
+                      href={`/api/payments/${p.id}/proof`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Ver comprobante
+                    </AttachmentLink>
+                  ) : (
+                    "Sin soporte"
+                  )}
+                </TableCell>
+                {onVerify && (
+                  <TableCell>
+                    {!p.verified && !p.rejected_at && (
+                      <div className="actions">
+                        <Button disabled={busy} onClick={() => review(p)}>
+                          Aceptar
+                        </Button>
+                        <Button
+                          className="danger"
+                          disabled={busy}
+                          onClick={() => {
+                            REJ(p);
+                            WHY("");
+                          }}
+                        >
+                          Rechazar
+                        </Button>
+                      </div>
+                    )}
+                  </TableCell>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      {!rows.length && (
+        <p>
+          {pendingOnly
+            ? "No hay abonos pendientes de revisión."
+            : "No hay abonos registrados."}
+        </p>
+      )}
+      {reject && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            review(reject, true);
+          }}
+        >
+          <p>
+            Rechazar abono de {money(reject.amount)} · {reject.client_name}
+          </p>
+          <Field
+            label="Motivo del rechazo"
+            value={reason}
+            onChange={(e) => WHY(e.target.value)}
+            maxLength={500}
+          />
+          <div className="actions">
+            <Button type="submit" className="danger" disabled={busy}>
+              Confirmar rechazo
+            </Button>
+            <Button className="neutral" onClick={() => REJ(null)}>
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      )}
+      <TablePagination
+        component="div"
+        count={total}
+        page={page}
+        rowsPerPage={10}
+        rowsPerPageOptions={[10]}
+        onPageChange={(_, n) => P(n)}
+        labelRowsPerPage="Abonos por página"
+        labelDisplayedRows={({ from, to, count }) =>
+          `${from}–${to} de ${count}`
+        }
+        getItemAriaLabel={(t) =>
+          t === "next" ? "Página siguiente" : "Página anterior"
+        }
+      />
+    </>
   );
 }

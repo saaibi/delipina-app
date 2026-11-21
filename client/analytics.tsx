@@ -31,7 +31,14 @@ function loadCharts() {
   });
   return loading;
 }
-function Chart({ title, type, rows, options, description, tableRows }: any) {
+export function Chart({
+  title,
+  type,
+  rows,
+  options,
+  description,
+  tableRows,
+}: any) {
   const root = useRef<HTMLDivElement>(null),
     [error, E] = useState("");
   useEffect(() => {

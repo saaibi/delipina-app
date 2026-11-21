@@ -1755,3 +1755,5 @@ footer {
 @media(max-width:600px) { .module-refresh { display:none!important; } }
 
 .MuiButton-outlined.danger { color:#a53c35; border-color:#a53c35; background:transparent; }
+
+.personal-portfolio-charts { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,320px),1fr)); gap: 16px; margin: 16px 0; }

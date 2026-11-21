@@ -230,3 +230,9 @@ Catálogo es un módulo principal para administración, separado de Ajustes. El 
 El permiso personalizado Catálogo permite administrar productos, presentaciones, imágenes y precios especiales, sin habilitar gestión de usuarios ni cartera. Inteligencia de negocio incorpora el donut de valor aceptado por cliente (cinco primeros y Otros) y GeoChart de pedidos aceptados por ciudad, usando coordenadas vigentes sin geocodificar direcciones. Los pedidos sin coordenadas vigentes se informan fuera del mapa. Ajustes del cliente agrupa sus gestores en Usuarios de mi negocio.
 
 El período de análisis incluye Hoy y Fecha específica. Esta última usa un solo selector con máximo en la fecha actual de Colombia y consulta desde/hasta el mismo día para todas las métricas y gráficos.
+
+### Cartera personal y revisión de abonos
+
+Clientes y gestores con permiso de cartera consultan únicamente su negocio: saldo, cupo, pedidos y compras entregadas, gráficos mensuales e historial de pedidos/abonos con paginación en servidor. El cliente envía abonos generales por Nequi o Bancolombia con imagen obligatoria (galería o cámara), también desde el speed dial. No se ejecuta una transacción bancaria: se registra el soporte de un pago ya realizado.
+
+Administración revisa la bandeja de pendientes en Cartera y los abonos de cada cliente desde Cartera o Ajustes. Aceptar aplica las asignaciones una sola vez; rechazar exige motivo, preserva soporte e historial y libera las reservas de saldo. Ni saldo ni cupo cambian por un comprobante pendiente. La migración 028 agrega revisión, índices y restricción de estados exclusivamente en el schema Delipiña.
