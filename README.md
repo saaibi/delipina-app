@@ -238,3 +238,13 @@ Clientes y gestores con permiso de cartera consultan únicamente su negocio: sal
 Administración revisa la bandeja de pendientes en Cartera y los abonos de cada cliente desde Cartera o Ajustes. Aceptar aplica las asignaciones una sola vez; rechazar exige motivo, preserva soporte e historial y libera las reservas de saldo. Ni saldo ni cupo cambian por un comprobante pendiente. La migración 028 agrega revisión, índices y restricción de estados exclusivamente en el schema Delipiña.
 
 La tabla de pedidos de cartera conserva su paginación en servidor y muestra un resumen por fila; «Ver detalle» abre productos, cantidades y valores en una modal. El gráfico de compras mensuales se complementa con barras horizontales de cantidades entregadas por presentación, filtradas por unidad para evitar comparar medidas distintas. Se preserva la unidad histórica del renglón del pedido.
+
+### Inventario de piña entera y módulos globales
+
+Inventario está apagado por defecto. Todos los módulos previos permanecen activos. Administración puede guardar sus interruptores en Ajustes > General. La desactivación bloquea las operaciones del módulo en el servidor, conserva historial y mantiene Ajustes disponible. Las lecturas compartidas del catálogo y pedidos siguen disponibles para los otros módulos activos. Las frecuencias automáticas se detienen si Pedidos o Frecuencias está desactivado.
+
+El inventario registra compras pesadas en kg, proveedor reutilizable, valor total COP, fecha, madurez Verde/En punto/Madura y rendimientos de cada unidad de venta. Las sugerencias de rendimiento se copian al ingreso; cada compra conserva sus valores. No hay equivalencias reales precargadas ni conversión de guacales. Las compras disponibles se consumen por fecha y orden de recepción. El cálculo se conserva por pedido; cambiar una sugerencia no reescribe movimientos anteriores.
+
+Solo las presentaciones configuradas participan del cálculo. Aceptar descuenta una vez, dentro de la transacción. Si faltan kilos o rendimientos, se registra una conciliación pendiente sin bloquear al cliente ni alterar el estado del pedido. Se revisa en Inventario tras completar los ingresos. Cancelar antes de preparar repone las compras originales; después de iniciar preparación requiere revisión manual. Las salidas y mermas manuales no deben duplicar el descuento ya registrado por pedidos. Movimientos e historial usan paginación en servidor; no se borran registros para corregir existencias, se registra un ajuste con motivo.
+
+No se han incluido en este primer alcance empaques, otras materias primas, recetas de fabricación ni conexión con una pasarela bancaria. La migración 029 se limita al schema Delipiña y el archivo/restauración operativos incluye el inventario.

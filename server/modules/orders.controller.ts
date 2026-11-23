@@ -1,3 +1,4 @@
+import { consumeOrderInventory, refundOrderInventory } from "../inventory.js";
 import { statusLabels } from "../status-labels.js";
 import { saveOrderSchedule } from "../recurrence.js";
 import { customerId, isCustomer, hasModule, metropolitan } from "../access.js";
@@ -471,6 +472,7 @@ export class OrdersController {
           status = t[1];
         }
         if (status === "confirmed") {
+          await consumeOrderInventory(c, o, u.id);
           if (o.credit) {
             const client = (
               await c.query("SELECT * FROM users WHERE id=$1 FOR UPDATE", [
@@ -490,6 +492,7 @@ export class OrdersController {
           await createInvoice(c, o);
         }
         if (status === "cancelled" && o.status !== "pending") {
+          await refundOrderInventory(c, o, u.id);
           const inv = (
             await c.query(
               "SELECT * FROM invoices WHERE order_id=$1 FOR UPDATE",

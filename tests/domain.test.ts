@@ -1256,3 +1256,50 @@ test('Cantidades de cartera separan unidades, preservan la unidad histórica y o
  const history=await call('client','get',`/credit-accounts/${users.client.id}/orders?page=0&pageSize=100`);assert.ok(history.body.rows.find(o=>o.id===delivered.id).window_end);
  const other=await call('owner','get',`/credit-accounts/${users.owner.id}/summary`);assert.ok(!other.body.products.some(p=>p.name.includes('Comparación de cantidades')));
 });
+
+test('Módulos globales conservan valores anteriores y protegen inventario en servidor',async()=>{
+ const cfg=(await call('admin','get','/settings')).body;
+ assert.equal(cfg.enabledModules.inventory,false);assert.ok(Object.entries(cfg.enabledModules).every(([k,v])=>k==='inventory'||v===true));
+ assert.equal((await call('admin','get','/inventory')).status,403);
+ assert.equal((await call('client','put','/settings/modules',{enabledModules:{inventory:true}})).status,403);
+ assert.equal((await call('admin','put','/settings/modules',{enabledModules:{unknown:true}})).status,400);
+ assert.equal((await call('admin','put','/settings/modules',{enabledModules:{inventory:true,catalog:false,recurrences:false}})).status,200);
+ assert.equal((await call('admin','post','/products',{name:'No',presentation:'No',unit:'kg',price:100})).status,403);
+ assert.equal((await call('admin','get','/schedules')).status,403);
+ assert.equal((await call('admin','get','/products')).status,200);
+ assert.equal((await call('admin','put','/settings',cfg)).status,200);
+ assert.equal((await call('admin','get','/settings')).body.enabledModules.inventory,true);
+ assert.equal((await call('admin','get','/settings')).body.enabledModules.catalog,false);
+ assert.equal((await call('admin','put','/settings/modules',{enabledModules:{catalog:true,recurrences:true}})).status,200);
+ assert.equal((await call('client','get','/inventory')).status,403);
+});
+
+test('Compras por proveedor, madurez y rendimiento interno sin alterar la creación o aceptación de pedidos',async()=>{
+ const created=await call('admin','post','/product-groups',{name:'Piña inventario',presentations:[{label:'Picada',units:[{unit:'kg',price:10000}]}]});assert.equal(created.status,200,JSON.stringify(created.body));
+ const product=(await call('admin','get',`/product-groups/${created.body.id}`)).body.variants[0];
+ const rule={productId:product.id,rawUnit:'kg',rawQuantity:37.5,outputQuantity:31.25,maturity:'madura',active:true};assert.equal((await call('admin','put','/inventory/rules',rule)).status,200);
+ const purchase={kind:'purchase',unit:'kg',quantity:37.5,totalCost:10000000,supplierName:'Proveedor inventario',maturity:'madura',notes:'Ingreso de prueba'};
+ const key=randomUUID(),received=await call('admin','post','/inventory/movements',purchase,key);assert.equal(received.status,200,JSON.stringify(received.body));assert.equal((await call('admin','post','/inventory/movements',purchase,key)).body.id,received.body.id);
+ const summary=async()=>{const r=await call('admin','get','/inventory');assert.equal(r.status,200,JSON.stringify(r.body));return r.body;};assert.equal(Number((await summary()).stock[0].quantity),37.5);
+ const supplier=(await summary()).suppliers.find(s=>s.name==='Proveedor inventario');assert.ok(supplier);
+ const make=async(qty)=>{const r=await call('client','post','/orders',{...body,credit:false,paymentMethod:'online',items:[{productId:product.id,quantity:qty}]},randomUUID());assert.equal(r.status,200,JSON.stringify(r.body));return r.body;};
+ const first=await make(1);assert.equal(Number((await summary()).stock[0].quantity),37.5);
+ assert.equal((await call('admin','post',`/orders/${first.id}/action`,{action:'confirm'})).status,200);assert.equal(Number((await summary()).stock[0].quantity),36.3);
+ assert.equal((await call('admin','post',`/orders/${first.id}/action`,{action:'confirm'})).status,409);assert.equal(Number((await summary()).stock[0].quantity),36.3);
+ assert.equal((await call('admin','put','/inventory/rules',{...rule,rawQuantity:50,outputQuantity:1})).status,200);
+ const second=await make(2);assert.equal((await call('admin','post',`/orders/${second.id}/action`,{action:'confirm'})).status,200);assert.equal(Number((await summary()).stock[0].quantity),33.9);
+ assert.equal((await call('admin','post',`/orders/${second.id}/action`,{action:'cancel',reason:'Antes de preparar'})).status,200);assert.equal(Number((await summary()).stock[0].quantity),36.3);
+ const oversized=await make(100);assert.equal((await call('admin','post',`/orders/${oversized.id}/action`,{action:'confirm'})).status,200);assert.equal(Number((await summary()).stock[0].quantity),36.3);assert.ok((await summary()).pending.some(p=>p.order_id===oversized.id));
+ const missing=await call('admin','post','/inventory/movements',{...purchase,quantity:200,maturity:'verde',yields:[]},randomUUID());assert.equal(missing.status,200);
+ assert.equal((await call('admin','post','/inventory/reconcile',{orderId:oversized.id})).status,200);assert.ok((await summary()).pending.some(p=>p.order_id===oversized.id));
+ assert.equal((await call('admin','put',`/inventory/lots/${missing.body.id}`,{maturity:'verde',yields:[{productId:product.id,rawQuantity:2,outputQuantity:1}]})).status,200);
+ assert.equal((await call('admin','post','/inventory/reconcile',{orderId:oversized.id})).status,200);assert.ok(!(await summary()).pending.some(p=>p.order_id===oversized.id));
+ const effect=(await pool.query('SELECT * FROM inventory_order_effects WHERE order_id=$1',[oversized.id])).rows[0];assert.ok(effect.details.some(d=>d.maturity==='madura'&&d.ratio===1.2));assert.ok(effect.details.some(d=>d.maturity==='verde'&&d.ratio===2));
+ const before=Number((await summary()).stock[0].quantity);assert.equal((await call('admin','post','/inventory/reconcile',{orderId:oversized.id})).status,200);assert.equal(Number((await summary()).stock[0].quantity),before);
+ assert.equal((await call('admin','post','/inventory/movements',{kind:'waste',unit:'kg',quantity:1,notes:'Pérdida por madurez'},randomUUID())).status,200);assert.equal(Number((await summary()).stock[0].quantity),Math.round((before-1)*1000)/1000);
+ assert.equal((await call('admin','post','/inventory/movements',{kind:'consumption',unit:'kg',quantity:99999,notes:'Salida'},randomUUID())).status,409);
+ const history=await call('admin','get',`/inventory/movements?page=0&pageSize=2&supplierId=${supplier.id}`);assert.equal(history.status,200);assert.equal(history.body.rows.length,2);assert.equal(history.body.total,2);
+ const denied=await call('client','post','/inventory/movements',purchase,randomUUID());assert.equal(denied.status,403);
+ await pool.query("INSERT INTO users(id,email,name,role,permissions) VALUES($1,'stockstaff@demo.test','Inventario personalizado','custom','[\"inventory\"]')",[randomUUID()]);await login('stockstaff');assert.equal((await call('stockstaff','get','/inventory')).status,200);assert.equal((await call('stockstaff','get','/payments')).status,403);assert.equal((await call('stockstaff','put','/settings/modules',{enabledModules:{inventory:false}})).status,403);
+ assert.equal((await call('admin','put','/settings/modules',{enabledModules:{inventory:false}})).status,200);assert.equal((await call('stockstaff','get','/inventory')).status,403);
+});

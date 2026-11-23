@@ -1,5 +1,6 @@
 import { fail } from "./db.js";
 export const modules = [
+  "inventory",
   "orders",
   "plant",
   "catalog",

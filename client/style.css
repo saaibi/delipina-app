@@ -1768,3 +1768,7 @@ footer {
 .portfolio-detail-items li strong { flex-shrink: 0; background: #f0f3e8; padding: 4px 10px; border-radius: 8px; }
 .portfolio-detail-totals { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .portfolio-detail-totals small, .portfolio-detail-totals strong { display: block; }
+
+.inventory-actions { margin-bottom: 20px; }
+.inventory-filters { display: flex; gap: 16px; flex-wrap: wrap; }
+.inventory-yield-row { border: 1px solid #e1e7db; border-radius: 10px; padding: 12px; margin: 12px 0; }

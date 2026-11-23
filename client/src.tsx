@@ -1,3 +1,5 @@
+import { InventoryView } from "./inventory";
+import { isModuleEnabled, featureForView } from "../shared/modules";
 import { nativeAndroid, NativeBridge } from "./native";
 import GoogleIcon from "@mui/icons-material/Google";
 import { NativePair } from "./native-pair";
@@ -317,8 +319,12 @@ function App() {
     };
     setOfflineUser(u.id);
     await saveIdentity(u);
+    const cfg = await cached("/settings");
+    guard(SET)(cfg);
+    const on = (key) => isModuleEnabled(cfg, key);
     const tasks = [
-      (u.role === "custom" && !has(u, "orders") && !has(u, "plant")
+      ((!on("orders") && !on("plant") && !on("deliveries")) ||
+      (u.role === "custom" && !has(u, "orders") && !has(u, "plant"))
         ? Promise.resolve([])
         : cached("/orders")
       ).then((value) => {
@@ -341,7 +347,6 @@ function App() {
       cached("/products").then(guard(P)),
       cached("/notifications").then(guard(N)),
       cached("/notifications/counts").then(guard(NC)),
-      cached("/settings").then(guard(SET)),
       cached("/business-day").then(guard(BD)),
       queued().then((q) => guard(PN)(q.length)),
     ];
@@ -352,14 +357,16 @@ function App() {
     if (u.role === "admin")
       tasks.push(
         cached("/users").then(guard(US)),
-        cached("/business-days").then(guard(CL)),
+        (on("days") ? cached("/business-days") : Promise.resolve([])).then(
+          guard(CL),
+        ),
       );
-    if (portfolio(u))
+    if (portfolio(u) && on("portfolio"))
       tasks.push(
         cached("/invoices").then(guard(I)),
         cached("/credit-accounts").then(guard(AC)),
       );
-    if (["admin", "courier"].includes(u.role))
+    if (["admin", "courier"].includes(u.role) && on("portfolio"))
       tasks.push(cached("/settlements").then(guard(SS)));
     const results = await Promise.allSettled(tasks);
     if (
@@ -798,6 +805,7 @@ function App() {
       <PushPermissionPrompt controller={push} />
 
       <Navigation
+        settings={settings}
         user={user}
         view={view}
         online={online}
@@ -826,7 +834,12 @@ function App() {
           })
         }
       />
-      <SecondaryActions role={user.role} user={user} onAction={M} />
+      <SecondaryActions
+        role={user.role}
+        user={user}
+        onAction={M}
+        settings={settings}
+      />
       <WorkspaceDialog full={prep && full} onClose={() => F(false)}>
         <main
           className={
@@ -870,33 +883,35 @@ function App() {
               <div>
                 <small>DELIPIÑA / OPERACIÓN</small>
                 <h1>
-                  {view === "payments"
-                    ? client
-                      ? "Mi cartera"
-                      : "Cartera de clientes"
-                    : view === "recurrences"
-                      ? "Frecuencias"
-                      : view === "audit"
-                        ? "Trazabilidad"
-                        : view === "days"
-                          ? "Jornadas"
-                          : view === "analytics"
-                            ? "Inteligencia de negocio"
-                            : view === "users"
-                              ? "Usuarios"
-                              : view === "catalog"
-                                ? "Catálogo"
-                                : view === "settings"
-                                  ? "Ajustes"
-                                  : prep
-                                    ? plantAdmin
-                                      ? "Pedidos de planta"
-                                      : "Planta"
-                                    : client
-                                      ? "Mis pedidos"
-                                      : delivery
-                                        ? "Entregas"
-                                        : "Pedidos del día"}
+                  {view === "inventory"
+                    ? "Inventario"
+                    : view === "payments"
+                      ? client
+                        ? "Mi cartera"
+                        : "Cartera de clientes"
+                      : view === "recurrences"
+                        ? "Frecuencias"
+                        : view === "audit"
+                          ? "Trazabilidad"
+                          : view === "days"
+                            ? "Jornadas"
+                            : view === "analytics"
+                              ? "Inteligencia de negocio"
+                              : view === "users"
+                                ? "Usuarios"
+                                : view === "catalog"
+                                  ? "Catálogo"
+                                  : view === "settings"
+                                    ? "Ajustes"
+                                    : prep
+                                      ? plantAdmin
+                                        ? "Pedidos de planta"
+                                        : "Planta"
+                                      : client
+                                        ? "Mis pedidos"
+                                        : delivery
+                                          ? "Entregas"
+                                          : "Pedidos del día"}
                 </h1>
                 <p>
                   {client && view === "payments"
@@ -909,9 +924,11 @@ function App() {
                 </p>
               </div>
               <div className="heading-actions">
-                {(admin || plantAdmin || client) && view === "orders" && (
-                  <Button onClick={() => M("order")}>＋ Crear pedido</Button>
-                )}
+                {(admin || plantAdmin || client) &&
+                  view === "orders" &&
+                  isModuleEnabled(settings, "orders") && (
+                    <Button onClick={() => M("order")}>＋ Crear pedido</Button>
+                  )}
                 <Button
                   className="neutral module-refresh"
                   aria-label="Actualizar módulo"
@@ -941,10 +958,20 @@ function App() {
                 onChange={(_, v) => V(v)}
               >
                 <Tab value="orders" label="Pedidos" />
-                <Tab value="recurrences" label="Frecuencias" />
+                {isModuleEnabled(settings, "recurrences") && (
+                  <Tab value="recurrences" label="Frecuencias" />
+                )}
               </Tabs>
             )}
-          {view === "catalog" && has(user, "catalog") ? (
+          {!isModuleEnabled(settings, featureForView(view)) ? (
+            <section className="panel">
+              <h2>Módulo deshabilitado</h2>
+              <p>Este módulo está deshabilitado en los ajustes de Delipiña.</p>
+              <Button onClick={() => V("settings")}>Abrir Ajustes</Button>
+            </section>
+          ) : view === "inventory" && has(user, "inventory") ? (
+            <InventoryView money={money} />
+          ) : view === "catalog" && has(user, "catalog") ? (
             <CatalogView
               products={products}
               onAction={M}
@@ -990,7 +1017,9 @@ function App() {
                   }}
                 />
               )}
-              {has(user, "days") && <ServerTable kind="days" />}
+              {has(user, "days") && isModuleEnabled(settings, "days") && (
+                <ServerTable kind="days" />
+              )}
               {(admin || delivery) && (
                 <SettlementsView user={user} money={money} />
               )}
@@ -1962,11 +1991,13 @@ function OrderForm({
           electrónicos.
         </p>
       )}
-      <RecurrenceEditor
-        value={recurrence}
-        onChange={RC}
-        baseDay={orderStart ? deliveryDay(orderStart) : undefined}
-      />
+      {isModuleEnabled(settings, "recurrences") && (
+        <RecurrenceEditor
+          value={recurrence}
+          onChange={RC}
+          baseDay={orderStart ? deliveryDay(orderStart) : undefined}
+        />
+      )}
       <FormControlLabel
         control={<Switch name="credit" />}
         label="Solicitar crédito autorizado"

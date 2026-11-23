@@ -1,3 +1,4 @@
+import {InventoryModule} from "./modules/inventory.module.js";
 import { OperationsModule } from "./modules/operations.module.js";
 import { CreditsModule } from "./modules/credits.module.js";
 import { AnalyticsModule } from "./modules/analytics.module.js";
@@ -11,7 +12,7 @@ import { OrdersModule } from "./modules/orders.module.js";
 import { PaymentsModule } from "./modules/payments.module.js";
 import { NotificationsModule } from "./modules/notifications.module.js";
 @Module({
-  imports: [
+  imports: [InventoryModule,
     OperationsModule,
     CreditsModule,
     AnalyticsModule,

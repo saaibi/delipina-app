@@ -1,4 +1,5 @@
 export const moduleLabels = {
+  inventory: "Inventario",
   orders: "Pedidos",
   plant: "Planta",
   catalog: "Catálogo",

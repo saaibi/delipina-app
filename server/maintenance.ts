@@ -27,6 +27,13 @@ export const operationalTables = [
   "route_matrix_cache",
   "route_geometry_cache",
   "geocode_cache",
+  "inventory_suppliers",
+  "inventory_stock",
+  "inventory_rules",
+  "inventory_movements",
+  "inventory_lots",
+  "inventory_order_effects",
+  "inventory_pending",
 ];
 const table = (name: string) => `${schemaIdentifier(databaseSchema)}."${name}"`;
 async function snapshot(c: any) {

@@ -1,3 +1,4 @@
+import { isModuleEnabled } from "../shared/modules.js";
 import { weeklySchedule } from "./business-day.js";
 import { pool, tx, fail } from "./db.js";
 import { randomUUID } from "node:crypto";
@@ -45,6 +46,13 @@ export async function saveOrderSchedule(
   body: any,
 ) {
   if (!b?.enabled) return;
+  if (
+    !isModuleEnabled(
+      (await c.query("SELECT data FROM settings WHERE id=1")).rows[0].data,
+      "recurrences",
+    )
+  )
+    fail(403, "Frecuencias está deshabilitado");
   const cfg = recurrenceConfig(b),
     day = (
       await c.query(
@@ -100,6 +108,8 @@ export async function ensureRecurrences() {
     ).rows;
     const cfg = (await pool.query("SELECT data FROM settings WHERE id=1"))
       .rows[0]?.data;
+    if (!isModuleEnabled(cfg, "orders") || !isModuleEnabled(cfg, "recurrences"))
+      return;
     for (const r of rules) {
       const day = String(
         r.next_day instanceof Date

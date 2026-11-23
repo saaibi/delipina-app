@@ -1,3 +1,5 @@
+import { isModuleEnabled } from "../shared/modules";
+import { ModuleSettings } from "./module-settings";
 import { LocationPicker } from "./location-picker";
 import Slider from "@mui/material/Slider";
 import { readTextScale, saveTextScale } from "./text-scale";
@@ -211,6 +213,7 @@ export function SettingsView({
   return (
     <div className="settings-sections">
       <Section title="General">
+        {admin && <ModuleSettings settings={settings} onSaved={onRefresh} />}
         <Typography variant="h6">Tamaño del texto</Typography>
         <Typography id="text-scale-label">
           Tamaño del texto · {textScale}%
@@ -305,7 +308,7 @@ export function SettingsView({
           </Section>
         </>
       )}
-      {has(user, "audit") && (
+      {has(user, "audit") && isModuleEnabled(settings, "audit") && (
         <Section title="Trazabilidad">
           <ServerTable kind="audit" />
         </Section>

@@ -1,3 +1,4 @@
+import { isModuleEnabled, featureForView } from "../shared/modules";
 import Avatar from "@mui/material/Avatar";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
@@ -330,6 +331,7 @@ const navFor = (user: any) => {
       ["payments", "Cartera", Payments],
       ["analytics", "Análisis", Insights],
       ["catalog", "Catálogo", Inventory],
+      ["inventory", "Inventario", Inventory],
     ];
   if (user.role === "courier")
     return [
@@ -343,6 +345,7 @@ const navFor = (user: any) => {
         ["orders", "Pedidos", ReceiptLong, "orders"],
         ["plant", "Planta", Restaurant, "plant"],
         ["catalog", "Catálogo", Inventory, "catalog"],
+        ["inventory", "Inventario", Inventory, "inventory"],
         ["payments", "Cartera", Payments, "portfolio"],
         ["analytics", "Análisis", Insights, "analytics"],
         ["audit", "Trazabilidad", ReceiptLong, "audit"],
@@ -370,8 +373,11 @@ export function Navigation({
   pending,
   business,
   counts = {},
+  settings,
 }: any) {
-  const nav = navFor(user);
+  const nav = navFor(user).filter((row) =>
+    isModuleEnabled(settings, featureForView(row[0] as string)),
+  );
   const mobileNav = nav;
   const [profileAnchor, PROFILE] = useState<HTMLElement | null>(null);
   const initials = (user.name || user.email || "U")
@@ -603,7 +609,7 @@ export function Navigation({
     </>
   );
 }
-export function SecondaryActions({ role, user, onAction }: any) {
+export function SecondaryActions({ role, user, onAction, settings }: any) {
   const [open, OPEN] = useState(false);
   const [position, POS] = useState(() => {
     try {
@@ -659,6 +665,17 @@ export function SecondaryActions({ role, user, onAction }: any) {
                 : []),
             ]
           : [];
+  const allowed = actions.filter(([name]) =>
+    isModuleEnabled(
+      settings,
+      name === "Precio especial"
+        ? "catalog"
+        : name === "Autorizar cupo"
+          ? "portfolio"
+          : "orders",
+    ),
+  );
+  actions.splice(0, actions.length, ...allowed);
   if (!actions.length) return null;
   actions.push(["Restablecer posición", RestorePosition, reset]);
   return (

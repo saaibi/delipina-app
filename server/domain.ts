@@ -1,3 +1,4 @@
+import { assertFeature } from "./module-gates.js";
 import { notificationPayload } from "./notification-payload.js";
 import { maintainGoogleLocations } from "./google-locations.js";
 import { dispatchNativePush } from "./native-push.js";
@@ -50,25 +51,27 @@ export const auth = (req, roles = undefined) => {
       (path === "/api/prices" && req.method === "PUT") ||
       (path === "/api/users" && req.method === "GET"))
       ? true
-      : path.includes("analytics")
-        ? hasModule(req.user, "analytics")
-        : path.includes("business-day")
-          ? hasModule(req.user, "days")
-          : path.includes("credit-accounts") ||
-              path.includes("invoices") ||
-              path.includes("payments")
-            ? req.method === "GET" && hasModule(req.user, "portfolio")
-            : path.includes("orders") ||
-                path.includes("branches") ||
-                path.includes("users") ||
-                path.includes("products")
-              ? (req.method === "GET" &&
-                  (hasModule(req.user, "orders") ||
-                    hasModule(req.user, "plant"))) ||
-                (path.endsWith("orders") &&
-                  req.method === "POST" &&
-                  hasModule(req.user, "orders"))
-              : false);
+      : path.includes("inventory")
+        ? hasModule(req.user, "inventory")
+        : path.includes("analytics")
+          ? hasModule(req.user, "analytics")
+          : path.includes("business-day")
+            ? hasModule(req.user, "days")
+            : path.includes("credit-accounts") ||
+                path.includes("invoices") ||
+                path.includes("payments")
+              ? req.method === "GET" && hasModule(req.user, "portfolio")
+              : path.includes("orders") ||
+                  path.includes("branches") ||
+                  path.includes("users") ||
+                  path.includes("products")
+                ? (req.method === "GET" &&
+                    (hasModule(req.user, "orders") ||
+                      hasModule(req.user, "plant"))) ||
+                  (path.endsWith("orders") &&
+                    req.method === "POST" &&
+                    hasModule(req.user, "orders"))
+                : false);
   if (
     isCustomer(req.user) &&
     !canPortfolio(req.user) &&
@@ -198,6 +201,12 @@ export function configureApp(app: any) {
   app.use(async (req, res, next) => {
     try {
       req.user = await session(req.cookies.session);
+      if (req.user && req.path.startsWith("/api/"))
+        assertFeature(
+          req,
+          (await pool.query("SELECT data FROM settings WHERE id=1")).rows[0]
+            ?.data,
+        );
       if (
         req.user &&
         req.path.startsWith("/api/") &&

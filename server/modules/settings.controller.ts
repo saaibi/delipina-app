@@ -1,3 +1,4 @@
+import { enabledModules, featureLabels } from "../../shared/modules.js";
 import { locationMetadata } from "../google-locations.js";
 import { coordinates } from "../coordinates.js";
 import {
@@ -51,7 +52,11 @@ export class SettingsController {
     auth(req);
     const cfg = (await pool.query("SELECT data FROM settings WHERE id=1"))
       .rows[0].data;
-    return { ...cfg, weeklySchedule: weeklySchedule(cfg) };
+    return {
+      ...cfg,
+      enabledModules: enabledModules(cfg),
+      weeklySchedule: weeklySchedule(cfg),
+    };
   }
   @Put("settings")
   @HttpCode(200)
@@ -88,7 +93,9 @@ export class SettingsController {
         weeklySchedule: week,
       };
     await tx(async (c) => {
-      await c.query("UPDATE settings SET data=$1 WHERE id=1", [cfg]);
+      await c.query("UPDATE settings SET data=data || $1::jsonb WHERE id=1", [
+        cfg,
+      ]);
       const today = await businessDate(c);
       const days = (
         await c.query(
@@ -105,6 +112,30 @@ export class SettingsController {
       }
     });
     await ensureBusinessClock();
+    await broadcast();
+    return { ok: true };
+  }
+  @Put("settings/modules") @HttpCode(200) async modules(@Req() req: any) {
+    auth(req, ["admin"]);
+    const changes = req.body.enabledModules;
+    if (
+      !changes ||
+      typeof changes !== "object" ||
+      Array.isArray(changes) ||
+      Object.entries(changes).some(
+        ([k, v]) => !Object.hasOwn(featureLabels, k) || typeof v !== "boolean",
+      )
+    )
+      fail(400, "Configuración de módulos inválida");
+    await tx(async (c) => {
+      const cfg = (
+        await c.query("SELECT data FROM settings WHERE id=1 FOR UPDATE")
+      ).rows[0].data;
+      await c.query(
+        "UPDATE settings SET data=jsonb_set(data,'{enabledModules}',$1::jsonb) WHERE id=1",
+        [{ ...enabledModules(cfg), ...changes }],
+      );
+    });
     await broadcast();
     return { ok: true };
   }
